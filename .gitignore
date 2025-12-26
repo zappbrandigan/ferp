@@ -6,6 +6,7 @@ build/
 
 __pycache__/
 
+ferp/config/*
 ferp/data/logs/*
 ferp/data/cache/*
 ferp.egg-info/

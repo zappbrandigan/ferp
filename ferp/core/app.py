@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Callable, Sequence
@@ -62,6 +63,31 @@ class DirectoryListingResult:
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class AppPaths:
+    app_root: Path
+    config_dir: Path
+    config_file: Path
+    settings_file: Path
+    data_dir: Path
+    cache_dir: Path
+    logs_dir: Path
+    tasks_file: Path
+    scripts_dir: Path
+
+
+DEFAULT_SETTINGS: dict[str, Any] = {
+    "userPreferences": {
+        "theme": "slate-copper",
+        "startupPath": str(Path().home())
+    },
+    "logs": {
+        "maxFiles": 50,
+        "maxAgeDays": 14
+    },
+}
+
+
 class Ferp(App):
     TITLE = "FERP"
     CSS_PATH = Path(__file__).parent.parent / "styles" / "index.tcss"
@@ -88,13 +114,14 @@ class Ferp(App):
     ]
 
     def __init__(self, start_path: Path | None = None) -> None:
-        self.app_root = Path(__file__).parent.parent
-        self.settings_store = SettingsStore(self.app_root / "config" / "settings.json")
+        self._paths = self._prepare_paths()
+        self.app_root = self._paths.app_root
+        self.settings_store = SettingsStore(self._paths.settings_file)
         self.settings = self.settings_store.load()
-        self.current_path = Path(self.settings.get("userPreferences", {}).get("startupPath", Path.home()))
+        self.current_path = self._resolve_start_path(start_path)
         self.highlighted_path: Path | None = None
-        self.scripts_dir = self.app_root / "scripts"
-        self.task_store = TaskStore(self.app_root / "data" / "cache" / "tasks.json")
+        self.scripts_dir = self._paths.scripts_dir
+        self.task_store = TaskStore(self._paths.tasks_file)
         self._task_status_indicator: TaskStatusIndicator | None = None
         self._pending_task_totals: tuple[int, int] = (0, 0)
         self._directory_listing_token = 0
@@ -120,6 +147,59 @@ class Ferp(App):
             fs_controller=self.fs_controller,
         )
 
+    def _prepare_paths(self) -> AppPaths:
+        app_root = Path(__file__).parent.parent
+        config_dir = app_root / "config"
+        config_file = config_dir / "config.json"
+        settings_file = config_dir / "settings.json"
+        data_dir = app_root / "data"
+        cache_dir = data_dir / "cache"
+        logs_dir = data_dir / "logs"
+        tasks_file = cache_dir / "tasks.json"
+        scripts_dir = app_root / "scripts"
+
+        for directory in (config_dir, data_dir, cache_dir, logs_dir, scripts_dir):
+            directory.mkdir(parents=True, exist_ok=True)
+
+        if not tasks_file.exists():
+            tasks_file.write_text("[]", encoding="utf-8")
+        if not settings_file.exists():
+            settings_file.write_text(json.dumps(DEFAULT_SETTINGS, indent=4), encoding="utf-8")
+
+        return AppPaths(
+            app_root=app_root,
+            config_dir=config_dir,
+            config_file=config_file,
+            settings_file=settings_file,
+            data_dir=data_dir,
+            cache_dir=cache_dir,
+            logs_dir=logs_dir,
+            tasks_file=tasks_file,
+            scripts_dir=scripts_dir,
+        )
+
+    def _resolve_start_path(self, start_path: Path | None) -> Path:
+        def normalize(candidate: Path | str | None) -> Path | None:
+            if candidate is None:
+                return None
+            try:
+                return Path(candidate).expanduser()
+            except (TypeError, ValueError):
+                return None
+
+        preferences = self.settings.get("userPreferences", {})
+        candidates = [
+            normalize(start_path),
+            normalize(preferences.get("startupPath")),
+            Path.home(),
+        ]
+
+        for candidate in candidates:
+            if candidate and candidate.exists():
+                return candidate
+
+        return Path.home()
+
     def compose(self) -> ComposeResult:
         output_panel = ScriptOutputPanel()
         scroll_container = VerticalScroll(
@@ -134,7 +214,7 @@ class Ferp(App):
             yield Horizontal(
                 FileTree(id="file_list"),
                 Vertical(
-                    ScriptManager(self.app_root / "config" / "config.json", id="scripts_panel"),
+                    ScriptManager(self._paths.config_file, id="scripts_panel"),
                     scroll_container,
                     id="details_pane",
                 ),
@@ -191,7 +271,7 @@ class Ferp(App):
         scripts_panel.load_scripts()
 
     def _command_open_latest_log(self) -> None:
-        logs_dir = self.app_root / "data" / "logs"
+        logs_dir = self._paths.logs_dir
         candidates = [entry for entry in logs_dir.glob("*.log") if entry.is_file()]
 
         if not candidates:
@@ -501,7 +581,7 @@ class Ferp(App):
             self.action_hide_help_panel()
 
     def update_cache_timestamp(self) -> None:
-        cache_path = self.app_root / "data" / "cache" / "publishers_cache.json"
+        cache_path = self._paths.cache_dir / "publishers_cache.json"
         assert cache_path.exists()
 
         if cache_path.exists():
