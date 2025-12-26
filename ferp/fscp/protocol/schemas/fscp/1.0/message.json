@@ -1,0 +1,23 @@
+{
+  "$id": "https://ferp.dev/schema/fscp/1.0/message.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["protocol", "type", "payload"],
+  "properties": {
+    "protocol": { "const": "ferp/1.0" },
+    "type": {
+      "enum": [
+        "init",
+        "input_response",
+        "cancel",
+        "log",
+        "progress",
+        "request_input",
+        "result",
+        "exit"
+      ]
+    },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": false
+}

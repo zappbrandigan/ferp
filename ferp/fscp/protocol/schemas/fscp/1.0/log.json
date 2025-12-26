@@ -1,0 +1,21 @@
+{
+  "$id": "https://ferp.dev/schema/fscp/1.0/log.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    { "$ref": "envelope.json" },
+    {
+      "properties": {
+        "type": { "const": "log" },
+        "payload": {
+          "type": "object",
+          "required": ["level", "message"],
+          "properties": {
+            "level": { "$ref": "definitions.json#/definitions/logLevel" },
+            "message": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

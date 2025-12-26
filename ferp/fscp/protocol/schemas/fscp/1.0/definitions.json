@@ -1,0 +1,29 @@
+{
+  "$id": "https://ferp.dev/schema/fscp/1.0/definitions.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "definitions": {
+    "protocol": {
+      "type": "string",
+      "const": "ferp/1.0"
+    },
+
+    "messageType": {
+      "type": "string",
+      "enum": [
+        "init",
+        "input_response",
+        "cancel",
+        "log",
+        "progress",
+        "request_input",
+        "result",
+        "exit"
+      ]
+    },
+
+    "logLevel": {
+      "type": "string",
+      "enum": ["info", "warn", "error", "debug"]
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "$id": "https://ferp.dev/schema/fscp/1.0/envelope.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+
+  "type": "object",
+  "required": ["protocol", "type", "payload"],
+  "properties": {
+    "protocol": { "$ref": "definitions.json#/definitions/protocol" },
+    "type": { "$ref": "definitions.json#/definitions/messageType" },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ferp"
+description = "Terminal-first file manager and FSCP automation workbench built with Textual."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Brandon Johnson" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Framework :: Textual",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: System :: Shells",
+  "Topic :: Utilities",
+]
+dependencies = [
+  "jsonschema>=4.21",
+  "watchdog>=4.0",
+  "PyPDF2>=3.0",
+  "openpyxl>=3.1",
+  "googletrans==4.0.2",
+]
+dynamic = ["version"]
+
+[project.scripts]
+ferp = "ferp.cli:main"
+ferp-ui = "ferp.app:main"
+
+[project.urls]
+Homepage = "https://github.com/zappbrandigan/ferp"
+Documentation = "https://github.com/zappbrandigan/ferp#readme"
+Issues = "https://github.com/zappbrandigan/ferp/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "ferp.__version__.__version__" }
+
+[tool.setuptools.package-data]
+"ferp" = ["styles/*.tcss", "config/*.json", "scripts/**/*.md", "data/cache/*.json"]

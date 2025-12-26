@@ -1,0 +1,369 @@
+/* ============================================================================
+   Layout
+============================================================================ */
+#main_pane {
+    layout: horizontal;
+    height: 1fr;
+    padding: 1 1 0 1;
+}
+
+#details_pane {
+    layout: vertical;
+    width: 1fr;
+    background: $background;
+}
+
+/* ============================================================================
+   Top Bar
+============================================================================ */
+TopBar {
+    layout: horizontal;
+    height: 1;
+    padding: 0;
+    color: $text;
+    background: $primary;
+}
+
+#topbar_title {
+    text-style: bold;
+}
+
+#topbar_status {
+    width: 1fr;
+    text-align: center;
+}
+
+.status_idle_icon {
+    text-style: dim;
+}
+
+.status_running_icon {
+    color: $success;
+    text-style: bold;
+}
+
+/* ============================================================================
+   ListView General
+============================================================================ */
+ListView.dimmed {
+    opacity: 0.4;
+}
+
+ListItem.-highlight {
+    color: $text !important;
+}
+
+ListItem:focus ListItem.-highlight {
+    background: $secondary;
+}
+
+ListItem Horizontal {
+    color: $text-primary;
+}
+
+ListItem.-highlight Horizontal {
+    color: $text;
+}
+
+/* ============================================================================
+   File Tree
+============================================================================ */
+#file_list {
+    width: 2fr;
+    padding: 0 1;
+    border: round $secondary;
+    border-title-align: right;
+    background: $background;
+}
+
+.item_dir {
+    text-style: bold;
+    color: $text-primary;
+}
+
+.item_file {
+    color: $text-accent;
+}
+
+/* ============================================================================
+   Scripts Panel
+============================================================================ */
+#scripts_panel {
+    height: 2fr;
+    border: round $secondary;
+    border-title-align: right;
+    background: $background;
+}
+
+#script_item {
+    height: 1;
+    padding: 0 1;
+}
+
+.script_name {
+    width: 1fr;
+    background: transparent;
+}
+
+.script_version {
+    color: $text-muted;
+    text-style: italic;
+}
+
+/* ============================================================================
+   Output Panel
+============================================================================ */
+#output_panel_container {
+    height: 1fr;
+    border: round $secondary;
+    border-title-align: right;
+}
+
+#output_panel {
+    width: 100%;
+    padding: 0 1;
+}
+
+#output_panel_container:focus {
+    background: $surface;
+}
+
+/* ============================================================================
+   Terminal Bar
+============================================================================ */
+#terminal_widget {
+    display: none;
+    padding: 0 1;
+    background: $panel;
+    height: 3;
+}
+
+#terminal_widget Input {
+    width: 100%;
+    border: round $secondary;
+}
+
+/* ============================================================================
+   Dialogs & Prompt Forms
+============================================================================ */
+#dialog_container {
+    align: center middle;
+    height: 100%;
+    margin: 20 60;
+    padding: 1 2;
+    border: round $secondary;
+    background: $panel;
+}
+
+#dialog_container #dialog_message {
+    width: 100%;
+    text-style: bold;
+    content-align: center middle;
+}
+
+#dialog_container #prompt_input, #dialog_container #input_container {
+    width: 100%;
+    height: 3;
+    margin: 1 5 0 5;
+    border: round $primary;
+    background: transparent;
+
+    #input {
+        border: none;
+        background: transparent;
+    }
+}
+
+#dialog_container #prompt_flags {
+    height: 3;
+    align: center middle;
+}
+
+#dialog_container #prompt_flags Checkbox {
+    border: none;
+    background: transparent;
+}
+
+#dialog_container #prompt_flags Checkbox:focus {
+    text-style: bold;
+}
+
+#dialog_container .dialog_buttons {
+    dock: bottom;
+    height: auto;
+}
+
+#dialog_container .dialog_buttons Button {
+    width: 1fr;
+}
+
+#dialog_container .hidden {
+    display: none;
+}
+
+/* ============================================================================
+   README Modal
+============================================================================ */
+#readme_modal {
+    align: center middle;
+    margin: 3 35;
+    padding: 0 1 0 0;
+    border: round $primary;
+    background: $panel;
+    overflow: auto;
+}
+
+#readme_modal Footer {
+    align: center middle;
+    background: $background;
+}
+
+/* ============================================================================
+   Task Capture & Edit Modals
+============================================================================ */
+#task_capture_modal,
+#task_edit_modal {
+    align: center middle;
+    height: 90%;
+    margin: 20 40;
+    padding: 1 2;
+    border: round $secondary;
+    background: $panel;
+}
+
+#task_capture_input,
+#task_edit_input {
+    width: 100%;
+    height: 3;
+    margin-top: 2;
+    border: round $primary;
+    background: transparent;
+}
+
+/* ============================================================================
+   Task List Screen
+============================================================================ */
+TaskListScreen {
+    background: $background 70%;
+}
+
+#task_list_modal {
+    align: center middle;
+    height: 100%;
+    margin: 5 40;
+    padding: 0;
+    background: $surface;
+}
+
+#task_list_view {
+    height: 1fr;
+    margin: 0 0;
+    border: round $secondary;
+    background: $background;
+}
+
+#task_filter_container {
+    width: 1fr;
+    padding: 0 0 0 0;
+    height: 3;
+}
+
+#task_filter_input {
+    width: 1fr;
+    border: round $secondary;
+    background: $background;
+    padding: 0 1;
+    height: auto;
+    margin-bottom: 1;
+}
+
+.task_item {
+    padding: 0 1;
+    height: 1;
+}
+
+.task_item--completed {
+    opacity: 0.55;
+}
+
+.task_item--loading {
+    height: 1fr;
+}
+
+.task_item--priority {
+    border-left: tall $error;
+}
+
+.task_item_text {
+    width: 1fr;
+    layout: horizontal;
+}
+
+.task_item_text--completed .task_token {
+    color: $text-muted;
+    text-style: strike;
+}
+
+.task_item_text--priority .task_token {
+    color: $text;
+    text-style: bold;
+}
+
+.task_item_meta {
+    width: auto;
+    min-width: 16;
+    text-align: right;
+    color: $text-muted;
+    padding-left: 1;
+}
+
+.task_token {
+    color: $text;
+    margin-right: 1;
+    width: auto;
+}
+
+.task_token--tag {
+    color: $primary;
+    text-style: italic;
+}
+
+ListItem.-highlight .task_token--tag {
+    color: $text;
+}
+
+.task_token--empty {
+    color: $text-muted;
+    text-style: italic;
+}
+
+/* ============================================================================
+   Task Indicator
+============================================================================ */
+#task_status {
+    height: 1;
+    padding-right: 1;
+    text-align: right;
+    color: $text-muted;
+}
+
+/* ============================================================================
+   Script Progress
+============================================================================ */
+#progress-container {
+    align: center middle;
+    content-align: center middle;
+}
+
+#script_progress_bar {
+    width: 100%;
+    align: center middle;
+}
+
+#script_progress_bar #bar {
+    width: 90%;
+}
+
+#progress_status {
+    text-align: center;
+}

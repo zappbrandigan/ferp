@@ -1,0 +1,36 @@
+{
+  "$id": "https://ferp.dev/schema/fscp/1.0/init.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    { "$ref": "envelope.json" },
+    {
+      "properties": {
+        "type": { "const": "init" },
+        "payload": {
+          "type": "object",
+          "required": ["target"],
+          "properties": {
+            "target": {
+              "type": "object",
+              "required": ["path", "kind"],
+              "properties": {
+                "path": { "type": "string" },
+                "kind": { "enum": ["file", "directory"] }
+              },
+              "additionalProperties": false
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "environment": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

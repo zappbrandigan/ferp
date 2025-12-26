@@ -1,0 +1,21 @@
+{
+  "$id": "https://ferp.dev/schema/fscp/1.0/input_response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    { "$ref": "envelope.json" },
+    {
+      "properties": {
+        "type": { "const": "input_response" },
+        "payload": {
+          "type": "object",
+          "required": ["id", "value"],
+          "properties": {
+            "id": { "type": "string" },
+            "value": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

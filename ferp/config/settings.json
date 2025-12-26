@@ -1,0 +1,9 @@
+{
+    "userPreferences": {
+        "theme": "slate-copper"
+    },
+    "logs": {
+        "maxFiles": 50,
+        "maxAgeDays": 14
+    }
+}

@@ -1,0 +1,14 @@
+{
+  "$id": "https://ferp.dev/schema/fscp/1.0/message.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    { "$ref": "init.json" },
+    { "$ref": "input_response.json" },
+    { "$ref": "cancel.json" },
+    { "$ref": "log.json" },
+    { "$ref": "progress.json" },
+    { "$ref": "request_input.json" },
+    { "$ref": "result.json" },
+    { "$ref": "exit.json" }
+  ]
+}

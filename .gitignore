@@ -1,0 +1,11 @@
+.env
+.venv
+.DS_Store
+
+build/
+
+__pycache__/
+
+ferp/data/logs/*
+ferp/data/cache/*
+ferp.egg-info/
