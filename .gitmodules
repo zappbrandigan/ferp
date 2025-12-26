@@ -1,0 +1,3 @@
+[submodule "ferp/scripts"]
+	path = ferp/scripts
+	url = https://github.com/zappbrandigan/ferp-scripts.git
