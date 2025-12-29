@@ -13,8 +13,7 @@ class ConfirmDialog(ModalScreen[bool | None]):
             Label(self.message, id="dialog_message"),
             Horizontal(
                 Button("Yes", id="yes", variant="primary"),
-                Button("No", id="no"),
-                Button("Cancel", id="cancel"),
+                Button("No", id="cancel"),
                 classes="dialog_buttons",
             ),
             id="dialog_container",

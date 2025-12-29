@@ -410,7 +410,6 @@ ListItem.-highlight .task_token--tag {
     color: $text-muted;
 }
 
-/* Highlighted process list item stub (customize as needed) */
 .process_row.-highlight .process_row_title,
 .process_row.-highlight .process_row_meta {
     color: $text;
