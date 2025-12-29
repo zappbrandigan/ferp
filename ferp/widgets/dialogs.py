@@ -3,7 +3,7 @@ from textual.widgets import Button, Label, Input
 from textual.containers import Horizontal, Vertical, Container
 
 
-class ConfirmDialog(ModalScreen[bool]):
+class ConfirmDialog(ModalScreen[bool | None]):
     def __init__(self, message: str):
         super().__init__()
         self.message = message
@@ -14,13 +14,17 @@ class ConfirmDialog(ModalScreen[bool]):
             Horizontal(
                 Button("Yes", id="yes", variant="primary"),
                 Button("No", id="no"),
+                Button("Cancel", id="cancel"),
                 classes="dialog_buttons",
             ),
             id="dialog_container",
         )
 
     def on_button_pressed(self, event):
-        self.dismiss(event.button.id == "yes")
+        if event.button.id == "cancel":
+            self.dismiss(None)
+        else:
+            self.dismiss(event.button.id == "yes")
 
 
 class InputDialog(ModalScreen[str | None]):

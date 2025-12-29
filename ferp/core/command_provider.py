@@ -34,6 +34,11 @@ class FerpCommandProvider(SimpleProvider):
             "Open the most recent transcript log file.",
             "_command_open_latest_log",
         ),
+        (
+            "Show Processes",
+            "View and manage tracked script processes.",
+            "_command_show_processes",
+        ),
     )
 
     def __init__(self, screen: Screen[Any], match_style: Style | None = None) -> None:

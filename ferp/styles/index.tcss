@@ -367,3 +367,51 @@ ListItem.-highlight .task_token--tag {
 #progress_status {
     text-align: center;
 }
+
+/* ============================================================================
+   Process List
+============================================================================ */
+#process_list_modal {
+    align: center middle;
+    height: 100%;
+    margin: 5 40;
+    padding: 0;
+    background: $surface;
+}
+
+#process_list_view {
+    height: 1fr;
+    margin: 0;
+    border: round $secondary;
+    background: $background;
+}
+
+#process_list_status {
+    height: 1;
+    padding: 0 1;
+    color: $text-muted;
+}
+
+.process_row {
+    height: 2;
+    padding: 0 1;
+}
+
+.process_row--empty {
+    color: $text-muted;
+}
+
+.process_row_title {
+    color: $text-primary;
+    text-style: bold;
+}
+
+.process_row_meta {
+    color: $text-muted;
+}
+
+/* Highlighted process list item stub (customize as needed) */
+.process_row.-highlight .process_row_title,
+.process_row.-highlight .process_row_meta {
+    color: $text;
+}

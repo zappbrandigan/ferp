@@ -54,12 +54,31 @@ class ScriptLifecycleController:
     def active_script_name(self) -> str | None:
         return self._active_script_name
 
+    @property
+    def process_registry(self):
+        return self._runner.process_registry
+
+    @property
+    def active_process_handle(self) -> str | None:
+        return self._runner.active_process_handle
+
     def run_script(self, script: Script, context: ScriptExecutionContext) -> None:
         if self._script_running:
             return
         self._active_script_name = script.name
         self._active_target = context.target_path
         self._start_worker(lambda: self._runner.start(context))
+
+    def abort_active(self, reason: str = "Operation cancelled by user.") -> bool:
+        if not self._script_running:
+            return False
+        cancelled = self._runner.abort(reason)
+        if cancelled:
+            script_name = self._active_script_name or "Script"
+            self._app.render_script_output(script_name, cancelled)
+        self._app.refresh_listing()
+        self._reset_after_script()
+        return cancelled is not None
 
     def handle_worker_state(self, event: Worker.StateChanged) -> bool:
         worker = event.worker
@@ -214,12 +233,7 @@ class ScriptLifecycleController:
         self._app.push_screen(dialog, on_close)
 
     def _handle_user_cancelled(self) -> None:
-        cancelled = self._runner.abort("Operation cancelled by user.")
-        if cancelled:
-            script_name = self._active_script_name or "Script"
-            self._app.render_script_output(script_name, cancelled)
-        self._app.refresh_listing()
-        self._reset_after_script()
+        self.abort_active("Operation cancelled by user.")
 
     def _boolean_fields_for_request(self, request: ScriptInputRequest) -> list[BooleanField]:
         if request.id and request.id.startswith("query_pdf_options"):

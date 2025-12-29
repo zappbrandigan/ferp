@@ -50,6 +50,10 @@ class ManagedProcess:
             return
 
         self.process.terminate()
+        if not self._wait_for_exit(timeout=1.0):
+            # Process refused to exit, escalate to a kill.
+            self.kill()
+            return
         self._cleanup_connection()
 
     def kill(self) -> None:
@@ -60,6 +64,7 @@ class ManagedProcess:
             return
 
         self.process.kill()
+        self._wait_for_exit(timeout=1.0)
         self._cleanup_connection()
 
     def poll_exit(self) -> Optional[int]:
@@ -74,6 +79,20 @@ class ManagedProcess:
 
         self.exit_code = self.process.exitcode
         return self.exit_code
+
+    def _wait_for_exit(self, *, timeout: Optional[float]) -> bool:
+        """
+        Wait for the subprocess to exit. Returns True if it exited.
+        """
+        if self.process is None:
+            return True
+
+        self.process.join(timeout=timeout)
+        if self.process.exitcode is not None:
+            self.exit_code = self.process.exitcode
+            return True
+
+        return False
 
     def _cleanup_connection(self) -> None:
         if self.connection is not None:

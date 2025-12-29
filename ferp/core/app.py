@@ -47,12 +47,14 @@ from ferp.widgets.top_bar import TopBar
 from ferp.widgets.dialogs import InputDialog, ConfirmDialog
 from ferp.themes.themes import ALL_THEMES
 from ferp import __version__
+from ferp.widgets.process_list import ProcessListScreen
 
 from textual.worker import Worker, WorkerState
 from ferp.core.command_provider import FerpCommandProvider
 from ferp.core.task_store import TaskStore, Task
 from ferp.widgets.task_list import TaskListScreen
 from ferp.widgets.task_status import TaskStatusIndicator
+from ferp.fscp.host.process_registry import ProcessRecord
 
 
 @dataclass(frozen=True)
@@ -293,6 +295,19 @@ class Ferp(App):
                 subprocess.run(["xdg-open", str(latest)], check=False)
         except Exception as exc:
             self.show_error(exc)
+
+    def _command_show_processes(self) -> None:
+        screen = ProcessListScreen(
+            self.script_controller.process_registry,
+            self._request_process_abort,
+        )
+        self.push_screen(screen)
+
+    def _request_process_abort(self, record: ProcessRecord) -> bool:
+        active_handle = self.script_controller.active_process_handle
+        if not active_handle or record.handle != active_handle:
+            return False
+        return self.script_controller.abort_active("Termination requested from process list.")
 
     @on(ShowTerminalRequest)
     def show_terminal(self, _: ShowTerminalRequest) -> None:

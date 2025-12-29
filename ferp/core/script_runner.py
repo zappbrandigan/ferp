@@ -19,6 +19,10 @@ from ferp.fscp.protocol.state import HostState
 from ferp.fscp.scripts.runtime.io import configure_connection
 from ferp.fscp.transcript.events import TranscriptEvent
 from ferp.services.scripts import ScriptExecutionContext
+from ferp.fscp.host.process_registry import (
+    ProcessMetadata,
+    ProcessRegistry,
+)
 
 
 def _patch_spawnv_passfds() -> None:
@@ -86,11 +90,13 @@ class ScriptRunner:
         self,
         app_root: Path,
         progress_handler: Callable[[dict[str, Any]], None] | None = None,
+        process_registry: ProcessRegistry | None = None,
     ) -> None:
         self.app_root = app_root
         self._session: HostSession | None = None
         self._lock = Lock()
         self._progress_handler = progress_handler
+        self.process_registry = process_registry or ProcessRegistry()
 
     @property
     def active_script_name(self) -> str | None:
@@ -106,9 +112,25 @@ class ScriptRunner:
             return None
         return session.context.target_path
 
+    @property
+    def active_process_handle(self) -> str | None:
+        session = self._session
+        if session is None:
+            return None
+        return session.host.process_handle
+
     def start(self, context: ScriptExecutionContext) -> ScriptResult:
         worker = self._create_worker(context.script_path)
-        host = Host(worker=worker)
+        metadata = ProcessMetadata(
+            script_name=context.script.name,
+            script_id=context.script.id,
+            target_path=context.target_path,
+        )
+        host = Host(
+            worker=worker,
+            process_registry=self.process_registry,
+            process_metadata=metadata,
+        )
         session = HostSession(context=context, host=host)
 
         with self._lock:
