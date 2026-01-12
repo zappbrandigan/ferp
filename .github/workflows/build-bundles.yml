@@ -63,21 +63,14 @@ jobs:
           # For workflow_dispatch (manual): build all directories (fallback).
           changed_dirs=""
           if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            # Convert JSON array to newline list.
-            changed_dirs="$(python - <<'PY'
-import json, os
-raw = os.environ.get("CHANGED_DIRS_JSON", "null")
-try:
-    data = json.loads(raw) if raw else []
-except Exception:
-    data = []
-if not isinstance(data, list):
-    data = []
-for x in data:
-    if isinstance(x, str) and x.strip():
-        print(x.strip())
-PY
-            )"
+            # Normalize JSON input from Actions; toJson(null) can become "null"
+            raw="${CHANGED_DIRS_JSON:-[]}"
+            if [ "$raw" = "null" ] || [ -z "$raw" ]; then
+              raw="[]"
+            fi
+
+            changed_dirs="$(python -c 'import json,sys; data=json.loads(sys.argv[1]); print("\n".join([d.strip() for d in data if isinstance(d,str) and d.strip()]))' "$raw")"
+
             if [ -z "$changed_dirs" ]; then
               echo "No changed script directories detected; nothing to bundle."
               exit 0
