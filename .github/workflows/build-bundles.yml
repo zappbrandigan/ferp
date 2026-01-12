@@ -112,7 +112,6 @@ jobs:
           rsync -av --delete dist/ bundle-repo/
 
           cd bundle-repo
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/zappbrandigan/ferp-script-bundles.git"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
