@@ -122,4 +122,11 @@ jobs:
           fi
 
           git commit -m "Update ferp bundles"
+
+          # debug
+          echo "REMOTE:"
+          git remote -v
+          echo "BRANCH:"
+          git branch -vv || true
+
           git push
