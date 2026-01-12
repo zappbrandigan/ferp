@@ -51,7 +51,7 @@ jobs:
         shell: bash
         env:
           # May be empty for workflow_dispatch; handled below.
-          CHANGED_DIRS_JSON: ${{ toJson(github.event.client_payload.changed_dirs) }}
+          CHANGED_DIRS_JSON: ${{ github.event.client_payload.changed_dirs || '[]' }}
         run: |
           set -euo pipefail
 
