@@ -164,9 +164,13 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "bundle":
         args.handler(args)
+        print(args)
         return
 
     if args.no_ui:
         return
 
     run_app()
+
+if __name__ == "__main__":
+    main()
