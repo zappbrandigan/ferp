@@ -86,10 +86,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Add a pip requirement specifier (repeat for multiple).",
     )
     bundle_parser.add_argument(
-        "--input-prompt",
-        help="Prompt text displayed when requesting input (requires --requires-input).",
-    )
-    bundle_parser.add_argument(
         "-o",
         "--output",
         help="Output file (.ferp). Defaults to <script_id>.ferp in the current directory.",
@@ -139,8 +135,6 @@ def handle_bundle(args: argparse.Namespace) -> None:
         "args": args_list,
     }
 
-    if args.input_prompt:
-        manifest["input_prompt"] = args.input_prompt
     if readme_path:
         manifest["readme"] = readme_path.name
     dependencies = [dep.strip() for dep in args.dependencies if dep and dep.strip()]
