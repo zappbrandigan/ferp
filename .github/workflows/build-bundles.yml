@@ -1,0 +1,128 @@
+name: Build ferp bundles
+
+on:
+  repository_dispatch:
+    types: ["scripts_push"]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ferp-bundles
+  cancel-in-progress: false
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout ferp (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Force scripts submodule to dispatched SHA
+        if: ${{ github.event_name == 'repository_dispatch' }}
+        env:
+          SCRIPTS_SHA: ${{ github.event.client_payload.scripts_sha }}
+        run: |
+          set -euo pipefail
+
+          echo "Target scripts SHA: ${SCRIPTS_SHA}"
+
+          # Your submodule is at ferp/scripts relative to repo root.
+          # (You stated: ferp/ferp/scripts/ is a path, meaning repo root has "ferp/" package directory.)
+          cd ferp/scripts
+
+          # Ensure we can fetch the exact commit.
+          git fetch --no-tags origin "${SCRIPTS_SHA}" --depth=1
+          git checkout --detach "${SCRIPTS_SHA}"
+
+          echo "Pinned submodule to: $(git rev-parse HEAD)"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ferp (and UI deps)
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install . textual
+
+      - name: Build bundles (and duplicate readmes)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf dist
+          mkdir -p dist
+
+          shopt -s nullglob
+          for d in ferp/scripts/*; do
+            [ -d "$d" ] || continue
+
+            # Require README
+            readme="$d/readme.md"
+            if [ ! -f "$readme" ]; then
+              echo "ERROR: Missing required readme.md in $d" >&2
+              exit 1
+            fi
+
+            # Require script entrypoint:
+            # Your earlier snippet used script.py; your example uses scripts.py.
+            # Enforce scripts.py; fail if absent.
+            script="$d/scripts.py"
+            if [ ! -f "$script" ]; then
+              echo "ERROR: Missing required scripts.py in $d" >&2
+              exit 1
+            fi
+
+            base="$(basename "$d")"
+
+            # If directory name is "ferp.hello_world", output should be "hello_world"
+            name="$base"
+            if [[ "$name" == ferp.* ]]; then
+              name="${name#ferp.}"
+            fi
+
+            out_dir="dist/$name"
+            mkdir -p "$out_dir"
+
+            python -m ferp.cli bundle "$script" "$readme" -o "$out_dir/$name.ferp"
+
+            # Duplicate README for end-user browsing
+            cp "$readme" "$out_dir/readme.md"
+          done
+
+          echo "Built bundles:"
+          find dist -maxdepth 2 -type f -print
+
+      - name: Checkout bundle repo
+        uses: actions/checkout@v4
+        with:
+          repository: zappbrandigan/ferp-script-bundles
+          token: ${{ secrets.BUNDLE_PUBLISH_TOKEN }}
+          path: bundle-repo
+
+      - name: Publish bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Publish to repo root as:
+          # hello_world/hello_world.ferp
+          # hello_world/readme.md
+          rsync -av --delete dist/ bundle-repo/
+
+          cd bundle-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+
+          git commit -m "Update ferp bundles"
+          git push
