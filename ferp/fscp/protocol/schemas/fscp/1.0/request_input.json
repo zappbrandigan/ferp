@@ -14,7 +14,22 @@
             "prompt": { "type": "string" },
             "default": { "type": "string" },
             "secret": { "type": "boolean" },
-            "mode": { "enum": ["input", "confirm"] }
+            "mode": { "enum": ["input", "confirm"] },
+            "show_text_input": { "type": "boolean" },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "type", "label"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "type": { "enum": ["bool"] },
+                  "label": { "type": "string" },
+                  "default": { "type": "boolean" }
+                },
+                "additionalProperties": false
+              }
+            }
           },
           "additionalProperties": false
         }

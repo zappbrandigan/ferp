@@ -52,6 +52,8 @@ class ScriptInputRequest:
     default: str | None = None
     secret: bool = False
     mode: Literal["input", "confirm"] = "input"
+    fields: list[dict[str, Any]] = field(default_factory=list)
+    show_text_input: bool = True
 
 
 @dataclass(frozen=True)
@@ -278,12 +280,23 @@ class ScriptRunner:
                 mode = str(payload.get("mode", "input"))
                 if mode not in {"input", "confirm"}:
                     mode = "input"
+                raw_fields = payload.get("fields")
+                fields: list[dict[str, Any]] = []
+                if isinstance(raw_fields, list):
+                    for item in raw_fields:
+                        if isinstance(item, dict):
+                            fields.append(dict(item))
+                show_text_input = payload.get("show_text_input", True)
+                if not isinstance(show_text_input, bool):
+                    show_text_input = True
                 return ScriptInputRequest(
                     id=str(raw_id),
                     prompt=str(payload.get("prompt", "")),
                     default=payload.get("default"),
                     secret=bool(payload.get("secret", False)),
                     mode=mode, # type: ignore
+                    fields=fields,
+                    show_text_input=show_text_input,
                 )
 
         raise RuntimeError("FSCP host entered input state without payload.")

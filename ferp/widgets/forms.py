@@ -23,16 +23,19 @@ class PromptDialog(ModalScreen[dict[str, str | bool] | None]):
         *,
         default: str | None = None,
         boolean_fields: Iterable[BooleanField] | None = None,
+        show_text_input: bool = True,
     ) -> None:
         super().__init__()
         self._message = message
         self._default = default or ""
         self._bool_fields = list(boolean_fields or [])
+        self._show_text_input = show_text_input
 
     def compose(self) -> ComposeResult:
-        yield Vertical(
-            Label(self._message, id="dialog_message"),
-            Input(value=self._default, id="prompt_input"),
+        contents = [Label(self._message, id="dialog_message")]
+        if self._show_text_input:
+            contents.append(Input(value=self._default, id="prompt_input"))
+        contents.append(
             Horizontal(
                 *(
                     Checkbox(label=field.label, value=field.value, id=field.id)
@@ -40,21 +43,29 @@ class PromptDialog(ModalScreen[dict[str, str | bool] | None]):
                 ),
                 id="prompt_flags",
                 classes="hidden" if not self._bool_fields else "",
-            ),
+            )
+        )
+        contents.append(
             Horizontal(
                 Button("OK", id="ok", variant="primary"),
                 Button("Cancel", id="cancel"),
                 classes="dialog_buttons",
-            ),
-            id="dialog_container",
+            )
         )
+        yield Vertical(*contents, id="dialog_container")
 
     def on_mount(self) -> None:
-        self.query_one(Input).focus()
+        if self._show_text_input:
+            self.query_one(Input).focus()
+            return
+        if self._bool_fields:
+            self.query_one(Checkbox).focus()
+            return
+        self.query_one("#ok", Button).focus()
 
     def _collect_state(self) -> dict[str, str | bool]:
         state: dict[str, str | bool] = {}
-        state["value"] = self.query_one(Input).value
+        state["value"] = self.query_one(Input).value if self._show_text_input else ""
         for field in self._bool_fields:
             checkbox = self.query_one(f"#{field.id}", Checkbox)
             state[field.id] = bool(checkbox.value)

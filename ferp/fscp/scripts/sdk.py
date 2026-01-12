@@ -78,6 +78,8 @@ class ScriptAPI:
         secret: bool = False,
         id: str | None = None,
         mode: Literal["input", "confirm"] = "input",
+        fields: list[dict[str, Any]] | None = None,
+        show_text_input: bool | None = None,
     ) -> str:
         self._ensure_running()
         request_id = id or f"input-{next(self._request_counter)}"
@@ -90,6 +92,10 @@ class ScriptAPI:
             request["default"] = default
         if secret:
             request["secret"] = True
+        if fields:
+            request["fields"] = fields
+        if show_text_input is not None:
+            request["show_text_input"] = show_text_input
 
         self._transport.send(MessageType.REQUEST_INPUT, request)
         return self._transport.wait_for_input(request_id)

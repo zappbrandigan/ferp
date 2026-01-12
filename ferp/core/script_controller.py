@@ -219,7 +219,12 @@ class ScriptLifecycleController:
 
         self._app.query_one(TopBar).status = "Awaiting input"
         bool_fields = self._boolean_fields_for_request(request)
-        dialog = PromptDialog(prompt, default=request.default, boolean_fields=bool_fields)
+        dialog = PromptDialog(
+            prompt,
+            default=request.default,
+            boolean_fields=bool_fields,
+            show_text_input=request.show_text_input,
+        )
 
         def on_close(data: dict[str, str | bool] | None) -> None:
             if data is None:
@@ -236,12 +241,22 @@ class ScriptLifecycleController:
         self.abort_active("Operation cancelled by user.")
 
     def _boolean_fields_for_request(self, request: ScriptInputRequest) -> list[BooleanField]:
-        if request.id and request.id.startswith("query_pdf_options"):
-            return [
-                BooleanField("regex", "Use regex"),
-                BooleanField("case_sensitive", "Case sensitive"),
-            ]
-        return []
+        fields: list[BooleanField] = []
+        for field in request.fields:
+            if field.get("type") != "bool":
+                continue
+            field_id = field.get("id")
+            label = field.get("label")
+            if not field_id or not label:
+                continue
+            fields.append(
+                BooleanField(
+                    str(field_id),
+                    str(label),
+                    bool(field.get("default", False)),
+                )
+            )
+        return fields
 
     def _handle_script_progress(self, payload: dict[str, Any]) -> None:
         def update() -> None:
