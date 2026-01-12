@@ -14,8 +14,8 @@ class ReadmeScreen(ModalScreen):
         Binding("q", "close", "Close README", show=False),
     ]
 
-    def __init__(self, title: str, content: str) -> None:
-        super().__init__()
+    def __init__(self, title: str, content: str, id: str) -> None:
+        super().__init__(id=id)
         self.heading = title
         self.content = content or "*No README available for this script.*"
 

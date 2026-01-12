@@ -212,7 +212,7 @@ class ScriptLifecycleController:
                 self._start_worker(lambda: self._runner.provide_input(payload))
 
             self._app.push_screen(
-                ConfirmDialog(prompt),
+                ConfirmDialog(prompt, id="confirm_dialog"),
                 handle_confirm,
             )
             return
@@ -224,6 +224,7 @@ class ScriptLifecycleController:
             default=request.default,
             boolean_fields=bool_fields,
             show_text_input=request.show_text_input,
+            id="prompt_dialog",
         )
 
         def on_close(data: dict[str, str | bool] | None) -> None:

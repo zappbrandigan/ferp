@@ -4,8 +4,8 @@ from textual.containers import Horizontal, Vertical, Container
 
 
 class ConfirmDialog(ModalScreen[bool | None]):
-    def __init__(self, message: str):
-        super().__init__()
+    def __init__(self, message: str, id = "confirm_dialog"):
+        super().__init__(id=id)
         self.message = message
 
     def compose(self):
@@ -27,8 +27,8 @@ class ConfirmDialog(ModalScreen[bool | None]):
 
 
 class InputDialog(ModalScreen[str | None]):
-    def __init__(self, message: str, default: str | None = None) -> None:
-        super().__init__()
+    def __init__(self, message: str, id: str = "input_dialog", default: str | None = None) -> None:
+        super().__init__(id=id)
         self._message = message
         self._default = default
 

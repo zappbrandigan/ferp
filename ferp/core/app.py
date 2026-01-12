@@ -376,7 +376,7 @@ class Ferp(App):
         else:
             content = event.readme_path.read_text(encoding="utf-8")
 
-        self.push_screen(ReadmeScreen(event.script.name, content))
+        self.push_screen(ReadmeScreen(event.script.name, content, id="readme_screen"))
 
     @on(RunScriptRequest)
     def handle_script_run(self, event: RunScriptRequest) -> None:

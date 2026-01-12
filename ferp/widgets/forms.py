@@ -20,19 +20,20 @@ class PromptDialog(ModalScreen[dict[str, str | bool] | None]):
     def __init__(
         self,
         message: str,
+        id: str,
         *,
         default: str | None = None,
         boolean_fields: Iterable[BooleanField] | None = None,
         show_text_input: bool = True,
     ) -> None:
-        super().__init__()
+        super().__init__(id=id)
         self._message = message
         self._default = default or ""
         self._bool_fields = list(boolean_fields or [])
         self._show_text_input = show_text_input
 
     def compose(self) -> ComposeResult:
-        contents = [Label(self._message, id="dialog_message")]
+        contents: list[Label | Input | Horizontal] = [Label(self._message, id="dialog_message")]
         if self._show_text_input:
             contents.append(Input(value=self._default, id="prompt_input"))
         contents.append(

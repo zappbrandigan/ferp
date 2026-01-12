@@ -94,8 +94,8 @@ class FileTree(ListView):
         Binding("n", "new_file", "New File", show=True),
         Binding("N", "new_directory", "New Directory", key_display="N", show=True),
         Binding("d,delete,backspace", "delete_entry", "Delete", show=True),
-        Binding("ctrl+enter", "open_finder", "Open in FS", show=True),
-        Binding("ctrl+shift+enter", "open_selected_file", "Open file", show=True),
+        Binding("ctrl+f", "open_finder", "Open in FS", show=True),
+        Binding("ctrl+o", "open_selected_file", "Open file", show=True),
     ]
 
     def __init__(self, *args, **kwargs) -> None:

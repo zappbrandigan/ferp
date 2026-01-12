@@ -4,7 +4,7 @@
 #main_pane {
     layout: horizontal;
     height: 1fr;
-    padding: 1 1 0 1;
+    padding: 0 0 0 0;
 }
 
 #details_pane {
@@ -146,10 +146,24 @@ ListItem.-highlight Horizontal {
 /* ============================================================================
    Dialogs & Prompt Forms
 ============================================================================ */
+#prompt_dialog {
+    align: center middle;
+}
+
+#input_dialog {
+    align: center middle;
+    border: round green;
+}
+
+#confirm_dialog {
+    align: center middle;
+    border: round red;
+}
+
 #dialog_container {
     align: center middle;
-    height: 100%;
-    margin: 20 60;
+    max-height: 20;
+    max-width: 100;
     padding: 1 2;
     border: round $secondary;
     background: $panel;
@@ -157,7 +171,6 @@ ListItem.-highlight Horizontal {
 
 #dialog_container #dialog_message {
     width: 100%;
-    text-style: bold;
     content-align: center middle;
 }
 
@@ -184,8 +197,18 @@ ListItem.-highlight Horizontal {
     background: transparent;
 }
 
-#dialog_container #prompt_flags Checkbox:focus {
-    text-style: bold;
+#dialog_container #prompt_flags Checkbox .toggle--button {
+    border: round $primary;
+    background: $background;    
+}   
+
+#dialog_container #prompt_flags Checkbox.-on > .toggle--button,
+#dialog_container #prompt_flags Checkbox.-on > .toggle--label {
+    color: $text-primary;
+}   
+
+#dialog_container #prompt_flags Checkbox:focus .toggle--label {
+    text-style: bold underline;
 }
 
 #dialog_container .dialog_buttons {
@@ -204,13 +227,22 @@ ListItem.-highlight Horizontal {
 /* ============================================================================
    README Modal
 ============================================================================ */
-#readme_modal {
+
+#readme_screen {
     align: center middle;
-    margin: 3 35;
-    padding: 0 1 0 0;
-    border: round $primary;
-    background: $panel;
-    overflow: auto;
+}
+
+#readme_modal{
+    max-width: 150;
+    max-height: 50;
+}
+
+#readme_scroll {
+    max-width: 150;
+}
+
+#readme_content {
+    border: round $secondary;
 }
 
 #readme_modal Footer {
@@ -221,12 +253,16 @@ ListItem.-highlight Horizontal {
 /* ============================================================================
    Task Capture & Edit Modals
 ============================================================================ */
+TaskEditModal, TaskCaptureModal {
+    align: center middle;
+}
+
 #task_capture_modal,
 #task_edit_modal {
     align: center middle;
-    height: 90%;
-    margin: 20 40;
-    padding: 1 2;
+    max-height: 10;
+    max-width: 130;
+    padding: 1 1;
     border: round $secondary;
     background: $panel;
 }
@@ -235,7 +271,6 @@ ListItem.-highlight Horizontal {
 #task_edit_input {
     width: 100%;
     height: 3;
-    margin-top: 2;
     border: round $primary;
     background: transparent;
 }
@@ -245,12 +280,13 @@ ListItem.-highlight Horizontal {
 ============================================================================ */
 TaskListScreen {
     background: $background 70%;
+    align: center middle;
 }
 
 #task_list_modal {
     align: center middle;
-    height: 100%;
-    margin: 5 40;
+    max-height: 35;
+    max-width: 130;
     padding: 0;
     background: $surface;
 }
@@ -342,7 +378,7 @@ ListItem.-highlight .task_token--tag {
 ============================================================================ */
 #task_status {
     height: 1;
-    padding-right: 1;
+    padding-right: 2;
     text-align: right;
     color: $text-muted;
 }
