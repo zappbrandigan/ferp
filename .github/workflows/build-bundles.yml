@@ -99,6 +99,7 @@ jobs:
           repository: zappbrandigan/ferp-script-bundles
           token: ${{ secrets.BUNDLE_PUBLISH_TOKEN }}
           path: bundle-repo
+          persist-credentials: true
 
       - name: Publish bundles
         shell: bash
@@ -111,6 +112,7 @@ jobs:
           rsync -av --delete dist/ bundle-repo/
 
           cd bundle-repo
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/zappbrandigan/ferp-script-bundles.git"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
