@@ -109,7 +109,7 @@ jobs:
           # Publish to repo root as:
           # hello_world/hello_world.ferp
           # hello_world/readme.md
-          rsync -av --delete dist/ bundle-repo/
+          rsync -av --delete --exclude '.git/' dist/ bundle-repo/
 
           cd bundle-repo
           git config user.name "github-actions[bot]"
