@@ -29,8 +29,6 @@ jobs:
 
           echo "Target scripts SHA: ${SCRIPTS_SHA}"
 
-          # Your submodule is at ferp/scripts relative to repo root.
-          # (You stated: ferp/ferp/scripts/ is a path, meaning repo root has "ferp/" package directory.)
           cd ferp/scripts
 
           # Ensure we can fetch the exact commit.
@@ -69,11 +67,9 @@ jobs:
             fi
 
             # Require script entrypoint:
-            # Your earlier snippet used script.py; your example uses scripts.py.
-            # Enforce scripts.py; fail if absent.
-            script="$d/scripts.py"
+            script="$d/script.py"
             if [ ! -f "$script" ]; then
-              echo "ERROR: Missing required scripts.py in $d" >&2
+              echo "ERROR: Missing required script.py in $d" >&2
               exit 1
             fi
 
