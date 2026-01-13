@@ -434,16 +434,41 @@ class Ferp(App):
             with zipfile.ZipFile(archive_path) as archive:
                 archive.extractall(extract_dir)
 
-            root_dirs = [path for path in extract_dir.iterdir() if path.is_dir()]
-            if not root_dirs:
-                raise RuntimeError("Release archive did not contain any directories.")
-
-            source_dir = root_dirs[0]
+            source_dir = self._find_release_payload_dir(extract_dir)
             if self.scripts_dir.exists():
                 shutil.rmtree(self.scripts_dir)
             shutil.copytree(source_dir, self.scripts_dir)
 
         return tag_name
+
+    def _find_release_payload_dir(self, extract_dir: Path) -> Path:
+        root_dirs = [path for path in extract_dir.iterdir() if path.is_dir()]
+        if not root_dirs:
+            raise RuntimeError("Release archive did not contain any directories.")
+
+        if len(root_dirs) == 1:
+            root = root_dirs[0]
+            direct_config = root / "config.json"
+            if direct_config.exists():
+                return root
+            nested_config = root / "scripts" / "config.json"
+            if nested_config.exists():
+                return root / "scripts"
+
+        for config_path in extract_dir.rglob("config.json"):
+            candidate = config_path.parent
+            if self._payload_has_scripts(candidate):
+                return candidate
+            nested = candidate / "scripts"
+            if self._payload_has_scripts(nested):
+                return nested
+
+        raise RuntimeError("Release archive did not include scripts payload.")
+
+    def _payload_has_scripts(self, candidate: Path) -> bool:
+        if not candidate.exists() or not candidate.is_dir():
+            return False
+        return any(path.name == "script.py" for path in candidate.rglob("script.py"))
 
     def _parse_github_repo(self, repo_url: str) -> tuple[str, str]:
         url = repo_url.strip().removesuffix(".git")
