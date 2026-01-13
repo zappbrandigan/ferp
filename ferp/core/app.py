@@ -448,12 +448,11 @@ class Ferp(App):
 
         if len(root_dirs) == 1:
             root = root_dirs[0]
-            direct_config = root / "config.json"
-            if direct_config.exists():
+            nested_scripts = root / "scripts"
+            if self._payload_has_scripts(nested_scripts):
+                return nested_scripts
+            if self._payload_has_scripts(root):
                 return root
-            nested_config = root / "scripts" / "config.json"
-            if nested_config.exists():
-                return root / "scripts"
 
         for config_path in extract_dir.rglob("config.json"):
             candidate = config_path.parent
