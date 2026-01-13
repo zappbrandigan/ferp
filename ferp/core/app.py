@@ -567,8 +567,7 @@ class Ferp(App):
         created = datetime.strftime(datetime.fromtimestamp(stat.st_ctime), "%x %I:%S %p")
         modified = datetime.strftime(datetime.fromtimestamp(stat.st_mtime), "%x %I:%S %p")
 
-        raw_name = path.stem if not path.is_dir() else f"{path.stem}/"
-        display_name = raw_name if len(raw_name) < 80 else raw_name[:73] + "..."
+        display_name = path.stem if not path.is_dir() else f"{path.stem}/"
 
         type_label = "dir" if path.is_dir() else path.suffix.lstrip(".").lower()
         if not type_label:
