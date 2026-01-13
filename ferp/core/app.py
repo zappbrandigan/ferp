@@ -145,7 +145,7 @@ class Ferp(App):
         )
         self.script_controller = ScriptLifecycleController(self)
         self.transcript_logger = TranscriptLogger(
-            self.app_root,
+            self._paths.logs_dir,
             lambda: self.settings_store.log_preferences(self.settings),
         )
         self.bundle_installer = ScriptBundleInstaller(self)

@@ -13,10 +13,10 @@ class TranscriptLogger:
 
     def __init__(
         self,
-        base_dir: Path,
+        logs_dir: Path,
         log_preferences: Callable[[], tuple[int, int]],
     ) -> None:
-        self._logs_dir = base_dir / "data" / "logs"
+        self._logs_dir = logs_dir
         self._logs_dir.mkdir(parents=True, exist_ok=True)
         self._log_preferences = log_preferences
 
