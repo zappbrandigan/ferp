@@ -4,6 +4,7 @@ from typing import Sequence, cast
 import sys
 import subprocess
 
+from textual.containers import Horizontal
 from textual.widgets import ListView, Label, ListItem, LoadingIndicator
 from textual.binding import Binding
 from textual import on
@@ -18,8 +19,6 @@ from ferp.core.messages import (
     ShowTerminalRequest,
 )
 from ferp.core.protocols import AppWithPath
-
-from rich.text import Text
 
 
 @dataclass(frozen=True)
@@ -40,7 +39,6 @@ class FileItem(ListItem):
         metadata: FileListingEntry | None = None,
         is_header: bool = False,
         classes: str | None = None,
-        name_width: int = 80,
         **kwargs,
     ) -> None:
         self.path = path
@@ -48,23 +46,27 @@ class FileItem(ListItem):
         self.metadata = metadata
 
         if is_header:
-            row = Text()
-            row.append(f"{'Name':<{name_width}}", style="bold")
-            row.append(f"{'Chars':<8} ", style="bold")
-            row.append(f"{'Type':<8}", style="bold")
-            row.append(f"{'Modified':<20}", style="bold")
-            row.append(f"{'Created':<20}", style="bold")
+            row = Horizontal(
+                Label("Name", classes="file_tree_cell file_tree_name file_tree_header"),
+                Label("Chars", classes="file_tree_cell file_tree_chars file_tree_header"),
+                Label("Type", classes="file_tree_cell file_tree_type file_tree_header"),
+                Label("Modified", classes="file_tree_cell file_tree_modified file_tree_header"),
+                Label("Created", classes="file_tree_cell file_tree_created file_tree_header"),
+                classes="file_tree_row",
+            )
         else:
             if metadata is None:
                 raise ValueError("metadata required for non-header FileItems")
-            row = Text()
-            row.append(f"{metadata.display_name:<{name_width}}")
-            row.append(f"{metadata.char_count:<8} ")
-            row.append(f"{metadata.type_label:<8}")
-            row.append(f"{metadata.modified_label:20}")
-            row.append(f"{metadata.created_label:<20}")
+            row = Horizontal(
+                Label(metadata.display_name, classes="file_tree_cell file_tree_name"),
+                Label(str(metadata.char_count), classes="file_tree_cell file_tree_chars"),
+                Label(metadata.type_label, classes="file_tree_cell file_tree_type"),
+                Label(metadata.modified_label, classes="file_tree_cell file_tree_modified"),
+                Label(metadata.created_label, classes="file_tree_cell file_tree_created"),
+                classes=f"file_tree_row {'file_tree_type_dir' if metadata.is_dir else 'file_tree_type_file'}",
+            )
 
-        super().__init__(Label(row), classes=classes, **kwargs)
+        super().__init__(row, classes=classes, **kwargs)
         self.disabled = is_header
 
 
@@ -78,7 +80,6 @@ class ChunkNavigatorItem(ListItem):
 
 class FileTree(ListView):
     CHUNK_SIZE = 250
-    _MARKDOWN_EXTENSIONS = {".md", ".markdown", ".mdown", ".mkd", ".mdx"}
     BINDINGS = [
         Binding("enter", "select_cursor", "Select directory", show=False),
         Binding("g", "cursor_top", "To top", show=False),

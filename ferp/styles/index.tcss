@@ -68,24 +68,63 @@ ListItem.-highlight Horizontal {
     color: $text;
 }
 
+ListItem .file_tree_header {
+    text-style: bold;
+}
+
 /* ============================================================================
    File Tree
 ============================================================================ */
 #file_list {
     width: 2fr;
+    max-width: 100%;
     padding: 0 1;
     border: round $secondary;
     border-title-align: right;
     background: $background;
 }
 
-.item_dir {
-    text-style: bold;
-    color: $text-primary;
+.file_tree_header {
+    color: $text;
 }
 
-.item_file {
+.file_tree_type_dir {
+    color: $text-primary;
+    text-style: bold;
+}
+
+.file_tree_type_file {
     color: $text-accent;
+}
+
+.file_tree_row {
+    width: 100%;
+    height: 1;
+}
+
+.file_tree_cell {
+    height: 1;
+    padding: 0 1 0 0;
+}
+
+.file_tree_name {
+    width: 1fr;
+}
+
+.file_tree_chars {
+    width: 8;
+}
+
+.file_tree_type {
+    width: 8;
+}
+
+.file_tree_modified {
+    width: 20;
+}
+
+.file_tree_created {
+    width: 20;
 }
 
 /* ============================================================================
