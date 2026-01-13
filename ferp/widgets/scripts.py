@@ -33,15 +33,17 @@ def load_scripts_config(path: Path) -> list[Script]:
     for raw in data["scripts"]:
         scripts.append(script_from_config(raw))  # type: ignore[arg-type]
 
-    return sorted(scripts, key=lambda script: script.id)
+    return sorted(scripts, key=lambda script: script.name.lower())
 
 
 
 class ScriptItem(ListItem):
     def __init__(self, script: Script) -> None:
+        category, name = script.name.split(":", 1) if ":" in script.name else ("General", script.name)
         super().__init__(
             Horizontal(
-                Label(script.name, classes="script_name"),
+                Label(f"{category}:", classes="script_category"),
+                Label(name, classes="script_name"),
                 Label(f"v{script.version}", classes="script_version"),
                 id="script_item",
             )

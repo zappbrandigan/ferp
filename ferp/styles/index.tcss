@@ -142,14 +142,23 @@ ListItem .file_tree_header {
     padding: 0 1;
 }
 
+.script_category {
+    color: $primary;
+}
+
+ScriptItem.-highlight .script_category {
+    color: $text;
+}
+
 .script_name {
     width: 1fr;
     background: transparent;
 }
 
 .script_version {
-    color: $text-muted;
+    color: $text;
     text-style: italic;
+    opacity: 0.5;
 }
 
 /* ============================================================================
