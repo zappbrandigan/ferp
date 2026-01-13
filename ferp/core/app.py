@@ -172,7 +172,7 @@ class Ferp(App):
             directory.mkdir(parents=True, exist_ok=True)
 
         default_config_dir = app_root / "config"
-        default_config_file = default_config_dir / "config.json"
+        default_config_file = app_root / "scripts" / "config.json"
         default_settings_file = default_config_dir / "settings.json"
 
         if not config_file.exists():
@@ -389,14 +389,16 @@ class Ferp(App):
         self.push_screen(ConfirmDialog(prompt), after)
 
     def _install_default_scripts(self) -> dict[str, str | bool]:
-        default_config_file = self.app_root / "config" / "config.json"
-        if not default_config_file.exists():
-            raise FileNotFoundError(f"No default config found at {default_config_file}")
-
         release_version = self._update_scripts_from_release(SCRIPTS_REPO_URL)
 
+        scripts_config_file = self.scripts_dir / "config.json"
+        if not scripts_config_file.exists():
+            raise FileNotFoundError(
+                f"No default config found at {scripts_config_file}"
+            )
+
         self._paths.config_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(default_config_file, self._paths.config_file)
+        shutil.copy2(scripts_config_file, self._paths.config_file)
 
         return {
             "config_path": str(self._paths.config_file),
