@@ -1,6 +1,9 @@
 /* ============================================================================
    Layout
 ============================================================================ */
+* {
+    scrollbar-size: 0 1;
+}
 #main_pane {
     layout: horizontal;
     height: 1fr;
@@ -152,12 +155,10 @@ ListItem.-highlight Horizontal {
 
 #input_dialog {
     align: center middle;
-    border: round green;
 }
 
 #confirm_dialog {
     align: center middle;
-    border: round red;
 }
 
 #dialog_container {

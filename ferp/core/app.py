@@ -17,6 +17,8 @@ from textual.binding import Binding
 from textual.widgets import Footer
 from textual.css.query import NoMatches
 
+from rich.markup import escape
+
 from ferp.core.messages import (
     CreatePathRequest,
     DeletePathRequest,
@@ -302,6 +304,33 @@ class Ferp(App):
             self._request_process_abort,
         )
         self.push_screen(screen)
+
+    def _command_set_startup_directory(self) -> None:
+        prompt = "Startup directory"
+        preferences = self.settings.get("userPreferences", {})
+        default_value = str(preferences.get("startupPath") or self.current_path)
+
+        def after(value: str | None) -> None:
+            if not value:
+                return
+            try:
+                path = Path(value).expanduser()
+                if not path.is_absolute():
+                    path = (self.current_path / path).resolve()
+            except Exception as exc:
+                self.show_error(exc)
+                return
+            if not path.exists() or not path.is_dir():
+                self.show_error(ValueError(f"{path} is not a valid directory."))
+                return
+            self.settings_store.update_startup_path(self.settings, path)
+            panel = self.query_one(ScriptOutputPanel)
+            panel.update_content(
+                "[bold $success]Startup directory updated.[/bold $success]\n"
+                f"{escape(str(path))}"
+            )
+
+        self.push_screen(InputDialog(prompt, default=default_value), after)
 
     def _request_process_abort(self, record: ProcessRecord) -> bool:
         active_handle = self.script_controller.active_process_handle

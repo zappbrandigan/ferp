@@ -39,6 +39,11 @@ class FerpCommandProvider(SimpleProvider):
             "View and manage tracked script processes.",
             "_command_show_processes",
         ),
+        (
+            "Set Startup Directory…",
+            "Update the startup directory stored in settings.json.",
+            "_command_set_startup_directory",
+        ),
     )
 
     def __init__(self, screen: Screen[Any], match_style: Style | None = None) -> None:

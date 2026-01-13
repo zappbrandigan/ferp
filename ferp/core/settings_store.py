@@ -32,6 +32,11 @@ class SettingsStore:
         settings.setdefault("userPreferences", {})["theme"] = theme_name
         self.save(settings)
 
+    def update_startup_path(self, settings: dict[str, Any], path: Path | str) -> None:
+        """Store the startup directory."""
+        settings.setdefault("userPreferences", {})["startupPath"] = str(path)
+        self.save(settings)
+
     def log_preferences(self, settings: dict[str, Any]) -> tuple[int, int]:
         """Return (max_files, max_age_days) for transcript pruning."""
         logs = settings.setdefault("logs", {})
