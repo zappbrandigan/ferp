@@ -10,12 +10,9 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Brandon Johnson" }]
 classifiers = [
-  "Development Status :: 3 - Alpha",
   "Environment :: Console",
   "Framework :: Textual",
   "License :: OSI Approved :: MIT License",
-  "Operating System :: OS Independent",
-  "Programming Language :: Python :: 3.11",
   "Topic :: System :: Shells",
   "Topic :: Utilities",
 ]
