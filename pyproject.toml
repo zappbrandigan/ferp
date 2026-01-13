@@ -25,6 +25,7 @@ dependencies = [
   "PyPDF2>=3.0",
   "openpyxl>=3.1",
   "googletrans==4.0.2",
+  "textual>=6.8.0",
   "platformdirs>=4.2",
   "pywin32>=306; platform_system == \"Windows\"",
 ]
