@@ -48,6 +48,7 @@ class ScriptBundleInstaller:
         self._app = app
         self._app_root = app.app_root
         self._scripts_dir = app.scripts_dir
+        self._config_file = app._paths.config_file
 
     def start_install(self, bundle_path: Path) -> None:
         panel = self._app.query_one(ScriptOutputPanel)
@@ -237,7 +238,7 @@ class ScriptBundleInstaller:
         manifest: ScriptBundleManifest,
         script_path: Path,
     ) -> None:
-        config_path = self._app_root / "config" / "config.json"
+        config_path = self._config_file
         if not config_path.exists():
             raise FileNotFoundError(f"Unable to locate config at {config_path}")
 

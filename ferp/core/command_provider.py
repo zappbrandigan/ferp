@@ -20,6 +20,11 @@ class FerpCommandProvider(SimpleProvider):
             "_command_install_script_bundle",
         ),
         (
+            "Install/Update Default Scripts…",
+            "Update scripts from the bundled defaults and overwrite config.json.",
+            "_command_install_default_scripts",
+        ),
+        (
             "Refresh File Tree",
             "Reload the current directory listing.",
             "_command_refresh_file_tree",

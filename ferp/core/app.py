@@ -4,11 +4,16 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 from datetime import datetime, timezone
+import tempfile
 from typing import Any, Callable, Sequence
 import subprocess
 import shlex
 import sys
+import shutil
+import zipfile
+from urllib.request import Request, urlopen
 
+from platformdirs import user_cache_path, user_config_path, user_data_path
 from textual.app import App, ComposeResult
 from textual.containers import Vertical, Horizontal, VerticalScroll
 from textual.theme import Theme
@@ -54,6 +59,7 @@ from ferp.widgets.process_list import ProcessListScreen
 from textual.worker import Worker, WorkerState
 from ferp.core.command_provider import FerpCommandProvider
 from ferp.core.task_store import TaskStore, Task
+from ferp.core.paths import APP_AUTHOR, APP_NAME, SCRIPTS_REPO_URL
 from ferp.widgets.task_list import TaskListScreen
 from ferp.widgets.task_status import TaskStatusIndicator
 from ferp.fscp.host.process_registry import ProcessRecord
@@ -153,11 +159,11 @@ class Ferp(App):
 
     def _prepare_paths(self) -> AppPaths:
         app_root = Path(__file__).parent.parent
-        config_dir = app_root / "config"
+        config_dir = Path(user_config_path(APP_NAME, APP_AUTHOR))
         config_file = config_dir / "config.json"
         settings_file = config_dir / "settings.json"
-        data_dir = app_root / "data"
-        cache_dir = data_dir / "cache"
+        data_dir = Path(user_data_path(APP_NAME, APP_AUTHOR))
+        cache_dir = Path(user_cache_path(APP_NAME, APP_AUTHOR))
         logs_dir = data_dir / "logs"
         tasks_file = cache_dir / "tasks.json"
         scripts_dir = app_root / "scripts"
@@ -165,10 +171,34 @@ class Ferp(App):
         for directory in (config_dir, data_dir, cache_dir, logs_dir, scripts_dir):
             directory.mkdir(parents=True, exist_ok=True)
 
+        default_config_dir = app_root / "config"
+        default_config_file = default_config_dir / "config.json"
+        default_settings_file = default_config_dir / "settings.json"
+
+        if not config_file.exists():
+            if default_config_file.exists():
+                config_file.write_text(
+                    default_config_file.read_text(encoding="utf-8"),
+                    encoding="utf-8",
+                )
+            else:
+                config_file.write_text(
+                    json.dumps({"scripts": []}, indent=2) + "\n",
+                    encoding="utf-8",
+                )
         if not tasks_file.exists():
             tasks_file.write_text("[]", encoding="utf-8")
         if not settings_file.exists():
-            settings_file.write_text(json.dumps(DEFAULT_SETTINGS, indent=4), encoding="utf-8")
+            if default_settings_file.exists():
+                settings_file.write_text(
+                    default_settings_file.read_text(encoding="utf-8"),
+                    encoding="utf-8",
+                )
+            else:
+                settings_file.write_text(
+                    json.dumps(DEFAULT_SETTINGS, indent=4),
+                    encoding="utf-8",
+                )
 
         return AppPaths(
             app_root=app_root,
@@ -334,6 +364,94 @@ class Ferp(App):
             )
 
         self.push_screen(InputDialog(prompt, default=default_value), after)
+
+    def _command_install_default_scripts(self) -> None:
+        prompt = (
+            "Replace your script catalog with the default Ferp scripts?\n"
+            "This will overwrite config.json and replace scripts/ from the latest release."
+        )
+
+        def after(value: bool | None) -> None:
+            if not value:
+                return
+            panel = self.query_one(ScriptOutputPanel)
+            panel.update_content(
+                "[bold $primary]Updating default scripts…[/bold $primary]\n"
+                "[dim]Overwriting config.json in your user config directory.[/dim]"
+            )
+            self.run_worker(
+                self._install_default_scripts,
+                group="default_scripts_update",
+                exclusive=True,
+                thread=True,
+            )
+
+        self.push_screen(ConfirmDialog(prompt), after)
+
+    def _install_default_scripts(self) -> dict[str, str | bool]:
+        default_config_file = self.app_root / "config" / "config.json"
+        if not default_config_file.exists():
+            raise FileNotFoundError(f"No default config found at {default_config_file}")
+
+        release_version = self._update_scripts_from_release(SCRIPTS_REPO_URL)
+
+        self._paths.config_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(default_config_file, self._paths.config_file)
+
+        return {
+            "config_path": str(self._paths.config_file),
+            "release_status": "Scripts updated from release.",
+            "release_detail": "",
+            "release_version": release_version,
+        }
+
+    def _update_scripts_from_release(self, repo_url: str) -> str:
+        owner, repo = self._parse_github_repo(repo_url)
+        api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "ferp",
+        }
+
+        with urlopen(Request(api_url, headers=headers), timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        zip_url = payload.get("zipball_url")
+        if not zip_url:
+            raise RuntimeError("Latest release is missing a zipball URL.")
+
+        tag_name = str(payload.get("tag_name") or "").strip()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            archive_path = tmp_path / "scripts.zip"
+            with urlopen(Request(zip_url, headers=headers), timeout=60) as response:
+                archive_path.write_bytes(response.read())
+
+            extract_dir = tmp_path / "extract"
+            with zipfile.ZipFile(archive_path) as archive:
+                archive.extractall(extract_dir)
+
+            root_dirs = [path for path in extract_dir.iterdir() if path.is_dir()]
+            if not root_dirs:
+                raise RuntimeError("Release archive did not contain any directories.")
+
+            source_dir = root_dirs[0]
+            if self.scripts_dir.exists():
+                shutil.rmtree(self.scripts_dir)
+            shutil.copytree(source_dir, self.scripts_dir)
+
+        return tag_name
+
+    def _parse_github_repo(self, repo_url: str) -> tuple[str, str]:
+        url = repo_url.strip().removesuffix(".git")
+        if "github.com/" not in url:
+            raise ValueError("Only GitHub URLs are supported for release updates.")
+        owner_repo = url.split("github.com/", 1)[1].strip("/")
+        parts = owner_repo.split("/")
+        if len(parts) != 2 or not all(parts):
+            raise ValueError("Invalid GitHub repository URL.")
+        return parts[0], parts[1]
 
     def _request_process_abort(self, record: ProcessRecord) -> bool:
         active_handle = self.script_controller.active_process_handle
@@ -524,6 +642,32 @@ class Ferp(App):
 
         panel.update_content("\n".join(lines))
 
+    def _render_default_scripts_update(self, payload: dict[str, Any]) -> None:
+        panel = self.query_one(ScriptOutputPanel)
+        config_path = payload.get("config_path", "")
+        release_status = payload.get("release_status", "")
+        release_detail = payload.get("release_detail", "")
+        release_version = payload.get("release_version", "")
+
+        lines = [
+            "[bold $success]Default scripts updated.[/bold $success]",
+            f"[bold $primary]Config:[/bold $primary] {escape(str(config_path))}",
+        ]
+
+        if release_status:
+            lines.append(
+                f"[bold $primary]Release:[/bold $primary] {escape(str(release_status))}"
+            )
+        if release_version:
+            lines.append(f"[bold $primary]Version:[/bold $primary] {escape(release_version)}")
+        if release_detail:
+            lines.append("[dim]" + escape(str(release_detail)) + "[/dim]")
+
+        panel.update_content("\n".join(lines))
+
+        scripts_panel = self.query_one(ScriptManager)
+        scripts_panel.load_scripts()
+
     def refresh_listing(self) -> None:
         topbar = self.query_one(TopBar)
         topbar.current_path = str(self.current_path)
@@ -628,7 +772,6 @@ class Ferp(App):
 
     def update_cache_timestamp(self) -> None:
         cache_path = self._paths.cache_dir / "publishers_cache.json"
-        assert cache_path.exists()
 
         if cache_path.exists():
             updated_at = datetime.fromtimestamp(cache_path.stat().st_mtime, tz=timezone.utc)
@@ -669,4 +812,13 @@ class Ferp(App):
         if self.bundle_installer.handle_worker_state(event):
             return
         if self.script_controller.handle_worker_state(event):
+            return
+        if worker.group == "default_scripts_update":
+            if event.state is WorkerState.SUCCESS:
+                result = worker.result
+                if isinstance(result, dict):
+                    self._render_default_scripts_update(result)
+            elif event.state is WorkerState.ERROR:
+                error = worker.error or RuntimeError("Default script update failed.")
+                self.show_error(error)
             return
