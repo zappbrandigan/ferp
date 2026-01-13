@@ -7,7 +7,7 @@
 #main_pane {
     layout: horizontal;
     height: 1fr;
-    padding: 0 0 0 0;
+    padding: 1 0 0 0;
 }
 
 #details_pane {

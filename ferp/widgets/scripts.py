@@ -55,11 +55,11 @@ class ScriptManager(ListView):
 
     BINDINGS = [
         Binding("g", "cursor_top", "To top", show=False),
-        Binding("G", "cursor_bottom", "To bottom", key_display="shift+g", show=False),
+        Binding("G", "cursor_bottom", "To bottom", key_display="G", show=False),
         Binding("k", "cursor_up", "Move cursor up", show=False),
-        Binding("K", "cursor_up_fast", "Cursor up (fast)", key_display="shift+k", show=False),
+        Binding("K", "cursor_up_fast", "Cursor up (fast)", key_display="K", show=False),
         Binding("j", "cursor_down", "Move cursor down", show=False),
-        Binding("J", "cursor_down_fast", "Cursor down (fast)", key_display="shift+j", show=False),
+        Binding("J", "cursor_down_fast", "Cursor down (fast)", key_display="J", show=False),
         Binding("R", "run_script", "Run selected script", show=True),
         Binding("enter", "show_readme", "Show readme", show=True),
     ]

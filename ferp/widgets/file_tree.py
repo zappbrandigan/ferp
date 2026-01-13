@@ -89,14 +89,14 @@ class FileTree(ListView):
         Binding("j", "cursor_down", "Cursor down", show=False),
         Binding("J", "cursor_down_fast", "Cursor down (fast)", key_display="J", show=False),
         Binding("ctrl+t", "open_terminal", "Terminal", show=False),
-        Binding("u", "go_parent", "Go to parent", show=True),
-        Binding("h", "go_home", "Go home", show=True),
-        Binding("r", "rename_entry", "Rename", show=True),
-        Binding("n", "new_file", "New File", show=True),
-        Binding("N", "new_directory", "New Directory", key_display="N", show=True),
-        Binding("d,delete,backspace", "delete_entry", "Delete", show=True),
-        Binding("ctrl+f", "open_finder", "Open in FS", show=True),
-        Binding("ctrl+o", "open_selected_file", "Open file", show=True),
+        Binding("u", "go_parent", "Go to parent", show=True, tooltip="Go to parent directory"),
+        Binding("h", "go_home", "Go to start", show=True, tooltip="Go to default startup path"),
+        Binding("r", "rename_entry", "Rename", show=True, tooltip="Rename selected file or directory"),
+        Binding("n", "new_file", "New File", show=True, tooltip="Create new file in current directory"),
+        Binding("N", "new_directory", "New Directory", key_display="N", show=True, tooltip="Create new directory in current directory"),
+        Binding("d,delete,backspace", "delete_entry", "Delete", show=True, tooltip="Delete selected file or directory"),
+        Binding("ctrl+f", "open_finder", "Open in FS", show=True, tooltip="Open current directory in system file explorer"),
+        Binding("ctrl+o", "open_selected_file", "Open file", show=True, tooltip="Open selected file with default application"),
     ]
 
     def __init__(self, *args, **kwargs) -> None:
@@ -117,7 +117,8 @@ class FileTree(ListView):
 
     def action_go_home(self) -> None:
         self._selection_history.clear()
-        self.post_message(NavigateRequest(Path.home()))
+        app = cast(AppWithPath, self.app)
+        self.post_message(NavigateRequest(app.resolve_startup_path()))
 
     def action_open_finder(self) -> None:
         app = cast(AppWithPath, self.app)
@@ -207,7 +208,14 @@ class FileTree(ListView):
 
     def show_listing(self, path: Path, entries: Sequence[FileListingEntry]) -> None:
         self._current_listing_path = path
-        self._all_entries = list(entries)
+        self._all_entries = sorted(
+            entries,
+            key=lambda entry: (
+                not entry.is_dir,
+                entry.type_label.casefold(),
+                entry.display_name.casefold(),
+            ),
+        )
         self._chunk_start = 0
         self._render_current_chunk()
 

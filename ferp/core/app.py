@@ -111,9 +111,9 @@ class Ferp(App):
     }
 
     BINDINGS = [
-        Binding("l", "show_task_list", "Show tasks", show=True),
-        Binding("t", "capture_task", "Add task", show=True),
-        Binding("?", "toggle_help", "Show all keys", show=True),
+        Binding("l", "show_task_list", "Show tasks", show=True, tooltip="Show task list"),
+        Binding("t", "capture_task", "Add task", show=True, tooltip="Capture new task"),
+        Binding("?", "toggle_help", "Toggle all keys", show=True, tooltip="Show/hide help panel"),
         # Binding("ctrl+q", "quit", "Quit the application", show=True),
     ]
 
@@ -203,6 +203,9 @@ class Ferp(App):
                 return candidate
 
         return Path.home()
+
+    def resolve_startup_path(self) -> Path:
+        return self._resolve_start_path(None)
 
     def compose(self) -> ComposeResult:
         output_panel = ScriptOutputPanel()
@@ -514,10 +517,10 @@ class Ferp(App):
         ]
 
         if stdout:
-            lines.append("\n[bold]stdout[/bold]\n" + stdout.strip())
+            lines.append("\n[bold $success]stdout:[/bold $success]\n" + stdout.strip())
 
         if stderr:
-            lines.append("\n[bold $error]stderr[/bold $error]\n" + stderr.strip())
+            lines.append("\n[bold $error]stderr:[/bold $error]\n" + stderr.strip())
 
         panel.update_content("\n".join(lines))
 
