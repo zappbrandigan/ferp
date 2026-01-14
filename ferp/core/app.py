@@ -121,6 +121,7 @@ class Ferp(App):
     BINDINGS = [
         Binding("l", "show_task_list", "Show tasks", show=True, tooltip="Show task list"),
         Binding("t", "capture_task", "Add task", show=True, tooltip="Capture new task"),
+        Binding("m", "toggle_maximize", "Maximize", show=True, tooltip="Maximize/minimize the focused widget"),
         Binding("?", "toggle_help", "Toggle all keys", show=True, tooltip="Show/hide help panel"),
         # Binding("ctrl+q", "quit", "Quit the application", show=True),
     ]
@@ -677,6 +678,15 @@ class Ferp(App):
             self.action_show_help_panel()
         else:
             self.action_hide_help_panel()
+
+    def action_toggle_maximize(self) -> None:
+        screen = self.screen
+        if screen.maximized is not None:
+            screen.action_minimize()
+            return
+        focused = screen.focused
+        if focused is not None and focused.allow_maximize:
+            screen.action_maximize()
 
     def update_cache_timestamp(self) -> None:
         cache_path = self._paths.cache_dir / "publishers_cache.json"
