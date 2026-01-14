@@ -83,6 +83,7 @@ def _should_skip_entry(entry: Path, directory: Path) -> bool:
 
 
 _WINDOWS_HIDDEN_NAMES = {
+    "intelgraphicsprofiles",
     "desktop.ini",
     "application data",
     "local settings",
