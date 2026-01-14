@@ -173,9 +173,7 @@ class Ferp(App):
         for directory in (config_dir, data_dir, cache_dir, logs_dir, scripts_dir):
             directory.mkdir(parents=True, exist_ok=True)
 
-        default_config_dir = app_root / "config"
         default_config_file = app_root / "scripts" / "config.json"
-        default_settings_file = default_config_dir / "settings.json"
 
         if not config_file.exists():
             if default_config_file.exists():
@@ -191,16 +189,10 @@ class Ferp(App):
         if not tasks_file.exists():
             tasks_file.write_text("[]", encoding="utf-8")
         if not settings_file.exists():
-            if default_settings_file.exists():
-                settings_file.write_text(
-                    default_settings_file.read_text(encoding="utf-8"),
-                    encoding="utf-8",
-                )
-            else:
-                settings_file.write_text(
-                    json.dumps(DEFAULT_SETTINGS, indent=4),
-                    encoding="utf-8",
-                )
+            settings_file.write_text(
+                json.dumps(DEFAULT_SETTINGS, indent=4),
+                encoding="utf-8",
+            )
 
         return AppPaths(
             app_root=app_root,

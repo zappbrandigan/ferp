@@ -1,4 +1,4 @@
-languageArticles: dict[str,list[str]] = {
+language_articles: dict[str, list[str]] = {
   "en": ['a', 'an', 'the'],
   "es": ['el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas'],
   "fr": ['le', 'la', 'les', 'un', 'une', 'des', "l'"],
