@@ -98,8 +98,14 @@ class ScriptManager(ListView):
         for script in scripts:
             self.append(ScriptItem(script))
 
+        self.call_after_refresh(self._focus_first_script)
+
+    def _focus_first_script(self) -> None:
+        if not self.children:
+            return
         self.index = 0
         self.focus()
+        self.scroll_to(y=0)
 
     def action_run_script(self) -> None:
         script = self._get_selected_script()

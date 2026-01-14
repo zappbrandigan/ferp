@@ -47,6 +47,8 @@ class SettingsStore:
     def _with_defaults(self, data: dict[str, Any]) -> dict[str, Any]:
         data.setdefault("userPreferences", {})
         data.setdefault("logs", {})
+        integrations = data.setdefault("integrations", {})
+        integrations.setdefault("monday", {})
         return data
 
     def _coerce_positive_int(

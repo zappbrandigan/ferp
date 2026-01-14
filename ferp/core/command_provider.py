@@ -49,6 +49,11 @@ class FerpCommandProvider(SimpleProvider):
             "Update the startup directory stored in settings.json.",
             "_command_set_startup_directory",
         ),
+        (
+            "Sync Monday Board Cache…",
+            "Fetch the Monday board and refresh publishers_cache.json.",
+            "_command_sync_monday_board",
+        ),
     )
 
     def __init__(self, screen: Screen[Any], match_style: Style | None = None) -> None:

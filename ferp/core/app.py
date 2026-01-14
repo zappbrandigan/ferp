@@ -4,14 +4,10 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 from datetime import datetime, timezone
-import tempfile
-from typing import Any, Callable, Sequence
 import subprocess
-import shlex
+from typing import Any, Callable, Sequence
 import sys
 import shutil
-import zipfile
-from urllib.request import Request, urlopen
 
 from platformdirs import user_cache_path, user_config_path, user_data_path
 from textual.app import App, ComposeResult
@@ -36,7 +32,7 @@ from ferp.core.messages import (
     ShowTerminalRequest,
     TerminalCommandRequest,
 )
-from ferp.widgets.file_tree import FileTree, FileListingEntry
+from ferp.widgets.file_tree import FileTree
 from ferp.widgets.output_panel import ScriptOutputPanel
 from ferp.widgets.scripts import ScriptManager
 from ferp.widgets.readme_modal import ReadmeScreen
@@ -47,6 +43,14 @@ from ferp.core.fs_watcher import FileTreeWatcher
 from ferp.core.script_controller import ScriptLifecycleController
 from ferp.core.bundle_installer import ScriptBundleInstaller
 from ferp.services.scripts import build_execution_context
+from ferp.services.file_listing import (
+    DirectoryListingResult,
+    collect_directory_listing,
+    snapshot_directory,
+)
+from ferp.services.monday_sync import sync_monday_board
+from ferp.services.releases import update_scripts_from_release
+from ferp.services.terminal_runner import format_terminal_output, run_terminal_command
 from ferp.core.settings_store import SettingsStore
 from ferp.core.transcript_logger import TranscriptLogger
 from ferp.core.path_actions import PathActionController
@@ -63,14 +67,6 @@ from ferp.core.paths import APP_AUTHOR, APP_NAME, SCRIPTS_REPO_URL
 from ferp.widgets.task_list import TaskListScreen
 from ferp.widgets.task_status import TaskStatusIndicator
 from ferp.fscp.host.process_registry import ProcessRecord
-
-
-@dataclass(frozen=True)
-class DirectoryListingResult:
-    path: Path
-    token: int
-    entries: list[FileListingEntry]
-    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +90,12 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "logs": {
         "maxFiles": 50,
         "maxAgeDays": 14
+    },
+    "integrations": {
+        "monday": {
+            "apiToken": "",
+            "boardId": "9752384724",
+        }
     },
 }
 
@@ -140,7 +142,7 @@ class Ferp(App):
         self._file_tree_watcher = FileTreeWatcher(
             call_from_thread=self.call_from_thread,
             refresh_callback=self.refresh_listing,
-            snapshot_func=self._snapshot_directory,
+            snapshot_func=snapshot_directory,
             timer_factory=self.set_timer,
         )
         self.script_controller = ScriptLifecycleController(self)
@@ -388,8 +390,50 @@ class Ferp(App):
 
         self.push_screen(ConfirmDialog(prompt), after)
 
+    def _command_sync_monday_board(self) -> None:
+        monday_settings = self.settings.get("integrations", {}).get("monday", {})
+        token = str(monday_settings.get("apiToken") or "").strip()
+        board_id = monday_settings.get("boardId")
+        try:
+            board_id_value = int(board_id)
+        except (TypeError, ValueError):
+            self.show_error(
+                ValueError("Monday board id missing. Set integrations.monday.boardId in settings.json.")
+            )
+            return
+
+        def start_sync(api_token: str) -> None:
+            panel = self.query_one(ScriptOutputPanel)
+            panel.update_content("[bold $primary]Syncing Monday board…[/bold $primary]")
+            self.run_worker(
+                lambda token=api_token, board=board_id_value: self._sync_monday_board(token, board),
+                group="monday_sync",
+                exclusive=True,
+                thread=True,
+            )
+
+        if not token:
+            prompt = "Monday API token"
+
+            def after(value: str | None) -> None:
+                if not value:
+                    return
+                token_value = value.strip()
+                if not token_value:
+                    return
+                self.settings.setdefault("integrations", {}).setdefault("monday", {})[
+                    "apiToken"
+                ] = token_value
+                self.settings_store.save(self.settings)
+                start_sync(token_value)
+
+            self.push_screen(InputDialog(prompt), after)
+            return
+
+        start_sync(token)
+
     def _install_default_scripts(self) -> dict[str, str | bool]:
-        release_version = self._update_scripts_from_release(SCRIPTS_REPO_URL)
+        release_version = update_scripts_from_release(SCRIPTS_REPO_URL, self.scripts_dir)
 
         scripts_config_file = self.scripts_dir / "config.json"
         if not scripts_config_file.exists():
@@ -402,82 +446,14 @@ class Ferp(App):
 
         return {
             "config_path": str(self._paths.config_file),
-            "release_status": "Scripts updated from release.",
+            "release_status": "Scripts updated to latest release.",
             "release_detail": "",
             "release_version": release_version,
         }
 
-    def _update_scripts_from_release(self, repo_url: str) -> str:
-        owner, repo = self._parse_github_repo(repo_url)
-        api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
-        headers = {
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "ferp",
-        }
-
-        with urlopen(Request(api_url, headers=headers), timeout=30) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-
-        zip_url = payload.get("zipball_url")
-        if not zip_url:
-            raise RuntimeError("Latest release is missing a zipball URL.")
-
-        tag_name = str(payload.get("tag_name") or "").strip()
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            archive_path = tmp_path / "scripts.zip"
-            with urlopen(Request(zip_url, headers=headers), timeout=60) as response:
-                archive_path.write_bytes(response.read())
-
-            extract_dir = tmp_path / "extract"
-            with zipfile.ZipFile(archive_path) as archive:
-                archive.extractall(extract_dir)
-
-            source_dir = self._find_release_payload_dir(extract_dir)
-            if self.scripts_dir.exists():
-                shutil.rmtree(self.scripts_dir)
-            shutil.copytree(source_dir, self.scripts_dir)
-
-        return tag_name
-
-    def _find_release_payload_dir(self, extract_dir: Path) -> Path:
-        root_dirs = [path for path in extract_dir.iterdir() if path.is_dir()]
-        if not root_dirs:
-            raise RuntimeError("Release archive did not contain any directories.")
-
-        if len(root_dirs) == 1:
-            root = root_dirs[0]
-            nested_scripts = root / "scripts"
-            if self._payload_has_scripts(nested_scripts):
-                return nested_scripts
-            if self._payload_has_scripts(root):
-                return root
-
-        for config_path in extract_dir.rglob("config.json"):
-            candidate = config_path.parent
-            if self._payload_has_scripts(candidate):
-                return candidate
-            nested = candidate / "scripts"
-            if self._payload_has_scripts(nested):
-                return nested
-
-        raise RuntimeError("Release archive did not include scripts payload.")
-
-    def _payload_has_scripts(self, candidate: Path) -> bool:
-        if not candidate.exists() or not candidate.is_dir():
-            return False
-        return any(path.name == "script.py" for path in candidate.rglob("script.py"))
-
-    def _parse_github_repo(self, repo_url: str) -> tuple[str, str]:
-        url = repo_url.strip().removesuffix(".git")
-        if "github.com/" not in url:
-            raise ValueError("Only GitHub URLs are supported for release updates.")
-        owner_repo = url.split("github.com/", 1)[1].strip("/")
-        parts = owner_repo.split("/")
-        if len(parts) != 2 or not all(parts):
-            raise ValueError("Invalid GitHub repository URL.")
-        return parts[0], parts[1]
+    def _sync_monday_board(self, api_token: str, board_id: int) -> dict[str, object]:
+        cache_path = self._paths.cache_dir / "publishers_cache.json"
+        return sync_monday_board(api_token, board_id, cache_path)
 
     def _request_process_abort(self, record: ProcessRecord) -> bool:
         active_handle = self.script_controller.active_process_handle
@@ -595,78 +571,11 @@ class Ferp(App):
         panel.show_error(error)
 
     def _execute_terminal_command(self, command: str, cwd: Path) -> dict[str, object]:
-        command = command.strip()
-        if not command:
-            return {
-                "command": "",
-                "cwd": str(cwd),
-                "stdout": "",
-                "stderr": "",
-                "returncode": 0,
-            }
-
-        try:
-            tokens = shlex.split(command)
-        except ValueError:
-            tokens = command.split()
-
-        if tokens and tokens[0] in self._INTERACTIVE_DENYLIST:
-            return {
-                "command": command,
-                "cwd": str(cwd),
-                "stdout": "",
-                "stderr": f'"{tokens[0]}" requires a full terminal. Please use your system terminal.',
-                "returncode": 1,
-            }
-
-        try:
-            completed = subprocess.run(
-                command,
-                cwd=cwd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                stdin=subprocess.DEVNULL,
-                timeout=30,
-            )
-        except subprocess.TimeoutExpired:
-            return {
-                "command": command,
-                "cwd": str(cwd),
-                "stdout": "",
-                "stderr": "Command timed out after 30 seconds.",
-                "returncode": -1,
-            }
-
-        return {
-            "command": command,
-            "cwd": str(cwd),
-            "stdout": completed.stdout,
-            "stderr": completed.stderr,
-            "returncode": completed.returncode,
-        }
+        return run_terminal_command(command, cwd, self._INTERACTIVE_DENYLIST)
 
     def _render_terminal_output(self, payload: dict[str, Any]) -> None:
         panel = self.query_one(ScriptOutputPanel)
-        command = payload.get("command", "")
-        cwd = payload.get("cwd", "")
-        stdout = payload.get("stdout", "")
-        stderr = payload.get("stderr", "")
-        returncode = payload.get("returncode", 0)
-
-        lines = [
-            f"[bold $primary]Command:[/bold $primary] {command}",
-            f"[bold $primary]Directory:[/bold $primary] {cwd}",
-            f"[bold $primary]Exit Code:[/bold $primary] {returncode}",
-        ]
-
-        if stdout:
-            lines.append("\n[bold $success]stdout:[/bold $success]\n" + stdout.strip())
-
-        if stderr:
-            lines.append("\n[bold $error]stderr:[/bold $error]\n" + stderr.strip())
-
-        panel.update_content("\n".join(lines))
+        panel.update_content(format_terminal_output(payload))
 
     def _render_default_scripts_update(self, payload: dict[str, Any]) -> None:
         panel = self.query_one(ScriptOutputPanel)
@@ -694,6 +603,28 @@ class Ferp(App):
         scripts_panel = self.query_one(ScriptManager)
         scripts_panel.load_scripts()
 
+    def _render_monday_sync(self, payload: dict[str, Any]) -> None:
+        panel = self.query_one(ScriptOutputPanel)
+        cache_path = payload.get("cache_path", "")
+        board_name = payload.get("board_name", "")
+        group_count = payload.get("group_count", 0)
+        publisher_count = payload.get("publisher_count", 0)
+        skipped = payload.get("skipped", 0)
+
+        lines = [
+            "[bold $success]Monday board cache updated.[/bold $success]",
+            f"[bold $primary]Cache:[/bold $primary] {escape(str(cache_path))}",
+        ]
+
+        if board_name:
+            lines.append(f"[bold $primary]Board:[/bold $primary] {escape(str(board_name))}")
+        lines.append(f"[bold $primary]Groups:[/bold $primary] {group_count}")
+        lines.append(f"[bold $primary]Publishers:[/bold $primary] {publisher_count}")
+        lines.append(f"[bold $primary]Skipped:[/bold $primary] {skipped}")
+
+        panel.update_content("\n".join(lines))
+        self.update_cache_timestamp()
+
     def refresh_listing(self) -> None:
         topbar = self.query_one(TopBar)
         topbar.current_path = str(self.current_path)
@@ -706,51 +637,10 @@ class Ferp(App):
         path = self.current_path
 
         self.run_worker(
-            lambda directory=path, token=token: self._collect_directory_listing(directory, token),
+            lambda directory=path, token=token: collect_directory_listing(directory, token),
             group="directory_listing",
             exclusive=True,
             thread=True,
-        )
-
-    def _collect_directory_listing(self, directory: Path, token: int) -> DirectoryListingResult:
-        try:
-            entries = sorted(directory.iterdir())
-        except OSError as exc:
-            return DirectoryListingResult(directory, token, [], str(exc))
-
-        rows: list[FileListingEntry] = []
-        for entry in entries:
-            if entry.name.startswith("."):
-                continue
-            listing_entry = self._build_listing_entry(entry)
-            if listing_entry is not None:
-                rows.append(listing_entry)
-
-        return DirectoryListingResult(directory, token, rows)
-
-    def _build_listing_entry(self, path: Path) -> FileListingEntry | None:
-        try:
-            stat = path.stat()
-        except OSError:
-            return None
-
-        created = datetime.strftime(datetime.fromtimestamp(stat.st_ctime), "%x %I:%S %p")
-        modified = datetime.strftime(datetime.fromtimestamp(stat.st_mtime), "%x %I:%S %p")
-
-        display_name = path.stem if not path.is_dir() else f"{path.stem}/"
-
-        type_label = "dir" if path.is_dir() else path.suffix.lstrip(".").lower()
-        if not type_label:
-            type_label = "file"
-
-        return FileListingEntry(
-            path=path,
-            display_name=display_name,
-            char_count=len(path.stem),
-            type_label=type_label,
-            modified_label=modified,
-            created_label=created,
-            is_dir=path.is_dir(),
         )
 
     def _handle_directory_listing_result(self, result: DirectoryListingResult) -> None:
@@ -806,13 +696,6 @@ class Ferp(App):
 
         self.query_one(TopBar).cache_updated_at = updated_at
 
-    def _snapshot_directory(self, path: Path) -> tuple[str, ...]:
-        try:
-            entries = sorted(entry.name for entry in path.iterdir())
-        except OSError:
-            entries = []
-        return tuple(entries)
-
     @on(Worker.StateChanged)
     def _on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         worker = event.worker
@@ -846,5 +729,14 @@ class Ferp(App):
                     self._render_default_scripts_update(result)
             elif event.state is WorkerState.ERROR:
                 error = worker.error or RuntimeError("Default script update failed.")
+                self.show_error(error)
+            return
+        if worker.group == "monday_sync":
+            if event.state is WorkerState.SUCCESS:
+                result = worker.result
+                if isinstance(result, dict):
+                    self._render_monday_sync(result)
+            elif event.state is WorkerState.ERROR:
+                error = worker.error or RuntimeError("Monday sync failed.")
                 self.show_error(error)
             return
