@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import sys
 
 from ferp.widgets.file_tree import FileListingEntry
 
@@ -23,7 +24,7 @@ def collect_directory_listing(directory: Path, token: int) -> DirectoryListingRe
 
     rows: list[FileListingEntry] = []
     for entry in entries:
-        if entry.name.startswith("."):
+        if _should_skip_entry(entry, directory):
             continue
         listing_entry = _build_listing_entry(entry)
         if listing_entry is not None:
@@ -34,7 +35,11 @@ def collect_directory_listing(directory: Path, token: int) -> DirectoryListingRe
 
 def snapshot_directory(path: Path) -> tuple[str, ...]:
     try:
-        entries = sorted(entry.name for entry in path.iterdir())
+        entries = sorted(
+            entry.name
+            for entry in path.iterdir()
+            if not _should_skip_entry(entry, path)
+        )
     except OSError:
         entries = []
     return tuple(entries)
@@ -64,3 +69,41 @@ def _build_listing_entry(path: Path) -> FileListingEntry | None:
         created_label=created,
         is_dir=path.is_dir(),
     )
+
+
+def _should_skip_entry(entry: Path, directory: Path) -> bool:
+    name = entry.name
+    if name.startswith("."):
+        return True
+    if sys.platform == "win32" and _should_filter_windows_home(directory):
+        if name in _WINDOWS_HIDDEN_NAMES:
+            return True
+    return False
+
+
+_WINDOWS_HIDDEN_NAMES = {
+    "NTUSER.DAT",
+    "NTUSER.DAT.LOG1",
+    "NTUSER.DAT.LOG2",
+    "NTUSER.DAT.TM.blf",
+    "NTUSER.DAT.TMContainer",
+    "NTUSER.INI",
+    "desktop.ini",
+    "Application Data",
+    "Local Settings",
+    "Cookies",
+    "History",
+    "Recent",
+    "SendTo",
+    "Start Menu",
+    "Templates",
+    "PrintHood",
+    "NetHood",
+}
+
+
+def _should_filter_windows_home(directory: Path) -> bool:
+    try:
+        return directory.resolve() == Path.home().resolve()
+    except OSError:
+        return False
