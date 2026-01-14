@@ -76,29 +76,24 @@ def _should_skip_entry(entry: Path, directory: Path) -> bool:
     if name.startswith("."):
         return True
     if sys.platform == "win32" and _should_filter_windows_home(directory):
-        if name in _WINDOWS_HIDDEN_NAMES:
+        name_folded = name.casefold()
+        if name_folded.startswith("ntuser") or name_folded in _WINDOWS_HIDDEN_NAMES:
             return True
     return False
 
 
 _WINDOWS_HIDDEN_NAMES = {
-    "NTUSER.DAT",
-    "NTUSER.DAT.LOG1",
-    "NTUSER.DAT.LOG2",
-    "NTUSER.DAT.TM.blf",
-    "NTUSER.DAT.TMContainer",
-    "NTUSER.INI",
     "desktop.ini",
-    "Application Data",
-    "Local Settings",
-    "Cookies",
-    "History",
-    "Recent",
-    "SendTo",
-    "Start Menu",
-    "Templates",
-    "PrintHood",
-    "NetHood",
+    "application data",
+    "local settings",
+    "cookies",
+    "history",
+    "recent",
+    "sendto",
+    "start menu",
+    "templates",
+    "printhood",
+    "nethood",
 }
 
 
