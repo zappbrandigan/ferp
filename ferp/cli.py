@@ -13,7 +13,7 @@ from ferp.app import main as run_app
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ferp",
-        description="FERP — File Engine for Routine Processing",
+        description="FERP — For Executing Repetitive Processes",
     )
 
     parser.add_argument(
