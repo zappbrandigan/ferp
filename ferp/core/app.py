@@ -138,6 +138,9 @@ class Ferp(App):
         self._task_status_indicator: TaskStatusIndicator | None = None
         self._pending_task_totals: tuple[int, int] = (0, 0)
         self._directory_listing_token = 0
+        self._task_list_screen: TaskListScreen | None = None
+        self._process_list_screen: ProcessListScreen | None = None
+        self._readme_screen: ReadmeScreen | None = None
         super().__init__()
         self.fs_controller = FileSystemController()
         self._file_tree_watcher = FileTreeWatcher(
@@ -246,7 +249,11 @@ class Ferp(App):
             yield Horizontal(
                 FileTree(id="file_list"),
                 Vertical(
-                    ScriptManager(self._paths.config_file, id="scripts_panel"),
+                    ScriptManager(
+                        self._paths.config_file,
+                        scripts_root=self._paths.scripts_dir,
+                        id="scripts_panel",
+                    ),
                     scroll_container,
                     id="details_pane",
                 ),
@@ -327,11 +334,8 @@ class Ferp(App):
             self.show_error(exc)
 
     def _command_show_processes(self) -> None:
-        screen = ProcessListScreen(
-            self.script_controller.process_registry,
-            self._request_process_abort,
-        )
-        self.push_screen(screen)
+        self._ensure_process_list_screen()
+        self.push_screen("process_list")
 
     def _command_set_startup_directory(self) -> None:
         prompt = "Startup directory"
@@ -521,7 +525,9 @@ class Ferp(App):
         else:
             content = event.readme_path.read_text(encoding="utf-8")
 
-        self.push_screen(ReadmeScreen(event.script.name, content, id="readme_screen"))
+        screen = self._ensure_readme_screen()
+        screen.update_content(event.script.name, content)
+        self.push_screen("readme_screen")
 
     @on(RunScriptRequest)
     def handle_script_run(self, event: RunScriptRequest) -> None:
@@ -666,10 +672,36 @@ class Ferp(App):
             self._task_status_indicator.update_counts(completed, total)
 
     def action_capture_task(self) -> None:
-        TaskListScreen(self.task_store).action_capture_task()
+        screen = self._ensure_task_list_screen()
+        screen.action_capture_task()
 
     def action_show_task_list(self) -> None:
-        self.push_screen(TaskListScreen(self.task_store))
+        self._ensure_task_list_screen()
+        self.push_screen("task_list")
+
+    def _ensure_task_list_screen(self) -> TaskListScreen:
+        if self._task_list_screen is None:
+            screen = TaskListScreen(self.task_store)
+            self.install_screen(screen, name="task_list")
+            self._task_list_screen = screen
+        return self._task_list_screen
+
+    def _ensure_process_list_screen(self) -> ProcessListScreen:
+        if self._process_list_screen is None:
+            screen = ProcessListScreen(
+                self.script_controller.process_registry,
+                self._request_process_abort,
+            )
+            self.install_screen(screen, name="process_list")
+            self._process_list_screen = screen
+        return self._process_list_screen
+
+    def _ensure_readme_screen(self) -> ReadmeScreen:
+        if self._readme_screen is None:
+            screen = ReadmeScreen("", "", id="readme_screen")
+            self.install_screen(screen, name="readme_screen")
+            self._readme_screen = screen
+        return self._readme_screen
 
     def action_toggle_help(self) -> None:
         try:

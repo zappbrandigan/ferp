@@ -1,5 +1,5 @@
 from textual.screen import ModalScreen
-from textual.widgets import MarkdownViewer, Footer
+from textual.widgets import MarkdownViewer, Footer, Label
 from textual.containers import Vertical, VerticalScroll
 from textual.binding import Binding
 
@@ -17,12 +17,15 @@ class ReadmeScreen(ModalScreen):
     def __init__(self, title: str, content: str, id: str) -> None:
         super().__init__(id=id)
         self.heading = title
-        self.content = content or "*No README available for this script.*"
+        self._content = content or "*No README available for this script.*"
+        self._markdown: MarkdownViewer | None = None
 
     def compose(self):
-        markdown = MarkdownViewer(self.content, id="readme_content")
+        markdown = MarkdownViewer(self._content, id="readme_content")
+        self._markdown = markdown
         scroll = VerticalScroll(markdown, id="readme_scroll")
         yield Vertical(
+            Label(self.heading, id="readme_title"),
             scroll,
             Footer(id="readme_footer"),
             id="readme_modal",
@@ -41,3 +44,19 @@ class ReadmeScreen(ModalScreen):
     def action_scroll_up(self) -> None:
         scroll = self.query_one("#readme_scroll", VerticalScroll)
         scroll.scroll_up()
+
+    def update_content(self, title: str, content: str) -> None:
+        self.heading = title
+        self._content = content or "*No README available for this script.*"
+        if self._markdown is not None:
+            setter = getattr(self._markdown, "set_markdown", None)
+            if callable(setter):
+                setter(self._content)
+            else:
+                updater = getattr(self._markdown, "update", None)
+                if callable(updater):
+                    updater(self._content)
+        try:
+            self.query_one("#readme_title", Label).update(self.heading)
+        except Exception:
+            pass

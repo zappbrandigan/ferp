@@ -79,7 +79,7 @@ class ChunkNavigatorItem(ListItem):
 
 
 class FileTree(ListView):
-    CHUNK_SIZE = 250
+    CHUNK_SIZE = 50
     BINDINGS = [
         Binding("enter", "select_cursor", "Select directory", show=False),
         Binding("g", "cursor_top", "To top", show=False),

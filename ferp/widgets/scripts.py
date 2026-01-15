@@ -64,8 +64,9 @@ class ScriptManager(ListView):
         Binding("enter", "show_readme", "Show readme", show=True),
     ]
 
-    def __init__(self, config_path: Path, id: str) -> None:
+    def __init__(self, config_path: Path, *, scripts_root: Path, id: str) -> None:
         self.config_path = config_path
+        self.scripts_root = scripts_root
         super().__init__(id=id)
 
     def _get_selected_script(self) -> Script | None:
@@ -123,8 +124,7 @@ class ScriptManager(ListView):
         self.post_message(ShowReadmeRequest(script, readme_path))
 
     def resolve_readme(self, script: Script) -> Path | None:
-        base = self.config_path.parent.parent
-        candidate = base / "scripts" / script.id / "readme.md"
+        candidate = self.scripts_root / script.id / "readme.md"
         return candidate if candidate.exists() else None
     
     def action_cursor_down_fast(self) -> None:

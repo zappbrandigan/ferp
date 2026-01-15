@@ -76,6 +76,8 @@ class ProcessListScreen(ModalScreen[None]):
         self._refresh()
         list_view = self.query_one(ListView)
         list_view.focus()
+    def on_show(self) -> None:
+        self._refresh()
 
     @on(ListView.Highlighted, "#process_list_view")
     def _clear_status_on_move(self, _: ListView.Highlighted) -> None:

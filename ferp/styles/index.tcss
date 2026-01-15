@@ -286,6 +286,11 @@ ScriptItem.-highlight .script_category {
     max-height: 50;
 }
 
+#readme_title {
+    padding: 0 1;
+    text-style: bold;
+}
+
 #readme_scroll {
     max-width: 150;
 }
@@ -382,16 +387,7 @@ TaskListScreen {
 .task_item_text {
     width: 1fr;
     layout: horizontal;
-}
-
-.task_item_text--completed .task_token {
-    color: $text-muted;
-    text-style: strike;
-}
-
-.task_item_text--priority .task_token {
     color: $text;
-    text-style: bold;
 }
 
 .task_item_meta {
@@ -400,26 +396,6 @@ TaskListScreen {
     text-align: right;
     color: $text-muted;
     padding-left: 1;
-}
-
-.task_token {
-    color: $text;
-    margin-right: 1;
-    width: auto;
-}
-
-.task_token--tag {
-    color: $primary;
-    text-style: italic;
-}
-
-ListItem.-highlight .task_token--tag {
-    color: $text;
-}
-
-.task_token--empty {
-    color: $text-muted;
-    text-style: italic;
 }
 
 /* ============================================================================
