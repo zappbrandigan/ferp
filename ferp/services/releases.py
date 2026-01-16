@@ -1,11 +1,28 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import shutil
 import tempfile
 import zipfile
 
 import requests
+
+
+def _resolve_ssl_verify() -> bool | str:
+    ca_bundle = (
+        os.getenv("FERP_CA_BUNDLE")
+        or os.getenv("REQUESTS_CA_BUNDLE")
+        or os.getenv("SSL_CERT_FILE")
+    )
+    if not ca_bundle:
+        return True
+    path = Path(ca_bundle).expanduser()
+    if not path.exists():
+        raise FileNotFoundError(
+            f"SSL CA bundle not found: {path}. Set FERP_CA_BUNDLE to a valid PEM file."
+        )
+    return str(path)
 
 
 def update_scripts_from_release(repo_url: str, scripts_dir: Path) -> str:
@@ -16,7 +33,9 @@ def update_scripts_from_release(repo_url: str, scripts_dir: Path) -> str:
         "User-Agent": "ferp",
     }
 
-    response = requests.get(api_url, headers=headers, timeout=30)
+    verify = _resolve_ssl_verify()
+
+    response = requests.get(api_url, headers=headers, timeout=30, verify=verify)
     response.raise_for_status()
     payload = response.json()
 
@@ -29,7 +48,7 @@ def update_scripts_from_release(repo_url: str, scripts_dir: Path) -> str:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         archive_path = tmp_path / "scripts.zip"
-        response = requests.get(zip_url, headers=headers, timeout=60)
+        response = requests.get(zip_url, headers=headers, timeout=60, verify=verify)
         response.raise_for_status()
         archive_path.write_bytes(response.content)
 
