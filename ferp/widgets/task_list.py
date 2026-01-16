@@ -171,12 +171,12 @@ class TaskListScreen(ModalScreen[None]):
         Binding("escape", "close", "Close", show=True),
         Binding("q", "close", "Close", show=False),
         Binding("space", "toggle_task", "Toggle completion", show=True),
-        Binding("d,delete,backspace", "delete_task", "Delete task", show=True),
+        Binding("delete", "delete_task", "Delete task", show=True),
         Binding("e", "edit_task", "Edit task", show=True),
         Binding("t", "capture_task", "Add task", show=True),
         Binding("j", "cursor_down", "Next", show=False),
         Binding("k", "cursor_up", "Previous", show=False),
-        Binding("f", "focus_filter", "Filter tags", show=True),
+        Binding("/", "focus_filter", "Filter tags", show=True),
         Binding("C", "clear_completed", "Clear completed", show=True),
     ]
 

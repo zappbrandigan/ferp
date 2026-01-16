@@ -47,15 +47,3 @@ class RenamePathRequest(Message):
     def __init__(self, target: Path) -> None:
         super().__init__()
         self.target = target
-
-
-class ShowTerminalRequest(Message):
-    def __init__(self) -> None:
-        super().__init__()
-
-
-class TerminalCommandRequest(Message):
-    def __init__(self, command: str, cwd: Path) -> None:
-        super().__init__()
-        self.command = command
-        self.cwd = cwd

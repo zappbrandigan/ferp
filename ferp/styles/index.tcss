@@ -180,16 +180,16 @@ ScriptItem.-highlight .script_category {
 }
 
 /* ============================================================================
-   Terminal Bar
+   Filter Bar
 ============================================================================ */
-#terminal_widget {
+#file_tree_filter {
     display: none;
     padding: 0 1;
     background: $panel;
     height: 3;
 }
 
-#terminal_widget Input {
+#file_tree_filter Input {
     width: 100%;
     border: round $secondary;
 }

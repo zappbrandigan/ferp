@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+import os
 from pathlib import Path
 import sys
 
@@ -18,13 +18,15 @@ class DirectoryListingResult:
 
 def collect_directory_listing(directory: Path, token: int) -> DirectoryListingResult:
     try:
-        entries = sorted(directory.iterdir())
+        with os.scandir(directory) as scan:
+            entries = sorted(scan, key=lambda entry: entry.name.casefold())
     except OSError as exc:
         return DirectoryListingResult(directory, token, [], str(exc))
 
     rows: list[FileListingEntry] = []
     for entry in entries:
-        if _should_skip_entry(entry, directory):
+        entry_path = Path(entry.path)
+        if _should_skip_entry(entry_path, directory):
             continue
         listing_entry = _build_listing_entry(entry)
         if listing_entry is not None:
@@ -35,39 +37,41 @@ def collect_directory_listing(directory: Path, token: int) -> DirectoryListingRe
 
 def snapshot_directory(path: Path) -> tuple[str, ...]:
     try:
-        entries = sorted(
-            entry.name
-            for entry in path.iterdir()
-            if not _should_skip_entry(entry, path)
-        )
+        with os.scandir(path) as scan:
+            entries = sorted(
+                entry.name
+                for entry in scan
+                if not _should_skip_entry(Path(entry.path), path)
+            )
     except OSError:
         entries = []
     return tuple(entries)
 
 
-def _build_listing_entry(path: Path) -> FileListingEntry | None:
+def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
     try:
-        stat = path.stat()
+        stat = entry.stat()
     except OSError:
         return None
 
-    created = datetime.strftime(datetime.fromtimestamp(stat.st_ctime), "%x %I:%S %p")
-    modified = datetime.strftime(datetime.fromtimestamp(stat.st_mtime), "%x %I:%S %p")
+    entry_path = Path(entry.path)
+    is_dir = entry.is_dir()
+    stem = Path(entry.name).stem
 
-    display_name = path.stem if not path.is_dir() else f"{path.stem}/"
+    display_name = stem if not is_dir else f"{stem}/"
 
-    type_label = "dir" if path.is_dir() else path.suffix.lstrip(".").lower()
+    type_label = "dir" if is_dir else entry_path.suffix.lstrip(".").lower()
     if not type_label:
         type_label = "file"
 
     return FileListingEntry(
-        path=path,
+        path=entry_path,
         display_name=display_name,
-        char_count=len(path.stem),
+        char_count=len(stem),
         type_label=type_label,
-        modified_label=modified,
-        created_label=created,
-        is_dir=path.is_dir(),
+        modified_ts=stat.st_mtime,
+        created_ts=stat.st_ctime,
+        is_dir=is_dir,
     )
 
 

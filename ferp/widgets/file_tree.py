@@ -1,11 +1,17 @@
 from dataclasses import dataclass
+from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Sequence, cast
+import shutil
 import sys
 import subprocess
 
 from textual.containers import Horizontal
-from textual.widgets import ListView, Label, ListItem, LoadingIndicator
+from textual.app import ComposeResult
+from textual.timer import Timer
+from textual.widget import Widget
+from textual.widgets import Input, ListView, Label, ListItem, LoadingIndicator
 from textual.binding import Binding
 from textual import on
 
@@ -16,7 +22,6 @@ from ferp.core.messages import (
     HighlightRequest,
     NavigateRequest,
     RenamePathRequest,
-    ShowTerminalRequest,
 )
 from ferp.core.protocols import AppWithPath
 
@@ -27,9 +32,15 @@ class FileListingEntry:
     display_name: str
     char_count: int
     type_label: str
-    modified_label: str
-    created_label: str
+    modified_ts: float
+    created_ts: float
     is_dir: bool
+
+
+@lru_cache(maxsize=2048)
+def _format_timestamp(timestamp: float) -> str:
+    return datetime.strftime(datetime.fromtimestamp(timestamp), "%x %I:%S %p")
+
 
 class FileItem(ListItem):
     def __init__(
@@ -61,8 +72,8 @@ class FileItem(ListItem):
                 Label(metadata.display_name, classes="file_tree_cell file_tree_name"),
                 Label(str(metadata.char_count), classes="file_tree_cell file_tree_chars"),
                 Label(metadata.type_label, classes="file_tree_cell file_tree_type"),
-                Label(metadata.modified_label, classes="file_tree_cell file_tree_modified"),
-                Label(metadata.created_label, classes="file_tree_cell file_tree_created"),
+                Label(_format_timestamp(metadata.modified_ts), classes="file_tree_cell file_tree_modified"),
+                Label(_format_timestamp(metadata.created_ts), classes="file_tree_cell file_tree_created"),
                 classes=f"file_tree_row {'file_tree_type_dir' if metadata.is_dir else 'file_tree_type_file'}",
             )
 
@@ -78,30 +89,107 @@ class ChunkNavigatorItem(ListItem):
         self.direction = direction
 
 
+class FileTreeFilterWidget(Widget):
+    """Hidden input bar for filtering file tree entries."""
+
+    DEBOUNCE_DELAY = 0.3
+    BINDINGS = [
+        Binding("escape", "hide", "Hide filter", show=True),
+    ]
+
+    def __init__(self, id: str | None = None) -> None:
+        super().__init__(id=id)
+        self.display = "none"
+        self._input: Input | None = None
+        self._debounce_timer: Timer | None = None
+        self._pending_value = ""
+
+    def compose(self) -> ComposeResult:
+        yield Input(placeholder="Filter entries (type to refine)…", id="file_tree_filter_input")
+
+    def on_mount(self) -> None:
+        self._input = self.query_one(Input)
+
+    def show(self, value: str) -> None:
+        self.display = "block"
+        if self._input:
+            self._input.value = value
+            self._input.focus()
+        self._pending_value = value
+
+    def hide(self) -> None:
+        self.display = "none"
+        if self._debounce_timer is not None:
+            self._debounce_timer.stop()
+            self._debounce_timer = None
+        file_tree = self.app.query_one("#file_list")
+        file_tree.focus()
+
+    def action_hide(self) -> None:
+        self.hide()
+
+    @on(Input.Changed)
+    def handle_changed(self, event: Input.Changed) -> None:
+        if self._input is None or event.input is not self._input:
+            return
+        self._pending_value = event.value
+        self._schedule_filter_apply()
+
+    @on(Input.Submitted)
+    def handle_submit(self, event: Input.Submitted) -> None:
+        if self._input is None or event.input is not self._input:
+            return
+        self._apply_pending_filter()
+        self.hide()
+
+    def _schedule_filter_apply(self) -> None:
+        if self._debounce_timer is not None:
+            self._debounce_timer.stop()
+            self._debounce_timer = None
+        self._debounce_timer = self.set_timer(
+            self.DEBOUNCE_DELAY,
+            self._apply_pending_filter,
+            name="file-tree-filter-debounce",
+        )
+
+    def _apply_pending_filter(self) -> None:
+        if self._debounce_timer is not None:
+            self._debounce_timer.stop()
+            self._debounce_timer = None
+        file_tree = self.app.query_one("#file_list", FileTree)
+        file_tree._set_filter(self._pending_value)
+
+
 class FileTree(ListView):
-    CHUNK_SIZE = 50
+    CHUNK_SIZE = 100
+    FILTER_TITLE_MAX = 24
     BINDINGS = [
         Binding("enter", "select_cursor", "Select directory", show=False),
         Binding("g", "cursor_top", "To top", show=False),
         Binding("G", "cursor_bottom", "To bottom", key_display="G", show=False),
         Binding("k", "cursor_up", "Cursor up", show=False),
-        Binding("K", "cursor_up_fast", "Cursor up (fast)", key_display="K", show=False),
+        Binding("K", "cursor_up_fast", "Cursor up (half-page)", key_display="K", show=False),
         Binding("j", "cursor_down", "Cursor down", show=False),
-        Binding("J", "cursor_down_fast", "Cursor down (fast)", key_display="J", show=False),
+        Binding("J", "cursor_down_fast", "Cursor down (half-page)", key_display="J", show=False),
         Binding("ctrl+t", "open_terminal", "Terminal", show=False),
         Binding("u", "go_parent", "Go to parent", show=True, tooltip="Go to parent directory"),
         Binding("h", "go_home", "Go to start", show=True, tooltip="Go to default startup path"),
         Binding("r", "rename_entry", "Rename", show=False, tooltip="Rename selected file or directory"),
         Binding("n", "new_file", "New File", show=False, tooltip="Create new file in current directory"),
         Binding("N", "new_directory", "New Directory", key_display="N", show=False, tooltip="Create new directory in current directory"),
-        Binding("d,delete,backspace", "delete_entry", "Delete", show=False, tooltip="Delete selected file or directory"),
+        Binding("delete", "delete_entry", "Delete", show=False, tooltip="Delete selected file or directory"),
         Binding("ctrl+f", "open_finder", "Open in FS", show=True, tooltip="Open current directory in system file explorer"),
         Binding("ctrl+o", "open_selected_file", "Open file", show=True, tooltip="Open selected file with default application"),
+        Binding("[", "prev_chunk", "Prev chunk", show=False, tooltip="Load previous chunk"),
+        Binding("]", "next_chunk", "Next chunk", show=False, tooltip="Load next chunk"),
+        Binding("/", "filter_entries", "Filter", show=True, tooltip="Filter entries"),
     ]
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._all_entries: list[FileListingEntry] = []
+        self._filtered_entries: list[FileListingEntry] = []
+        self._filter_query = ""
         self._chunk_start = 0
         self._current_listing_path: Path | None = None
         self._last_selected_path: Path | None = None
@@ -109,7 +197,7 @@ class FileTree(ListView):
         self._last_chunk_direction: str | None = None
 
     def on_mount(self) -> None:
-        self.border_title = "File Navigator"
+        self._update_border_title()
 
     def action_go_parent(self) -> None:
         app = cast(AppWithPath, self.app)
@@ -143,13 +231,37 @@ class FileTree(ListView):
         else:
             subprocess.run(["xdg-open", target])
 
+    def _open_terminal_window(self, path: Path) -> None:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", "-a", "Terminal", str(path)])
+            return
+        if sys.platform == "win32":
+            subprocess.Popen(["cmd", "/c", "start", "", "cmd"], cwd=path)
+            return
+
+        candidates = (
+            "x-terminal-emulator",
+            "gnome-terminal",
+            "konsole",
+            "xfce4-terminal",
+            "xterm",
+            "alacritty",
+            "kitty",
+        )
+        for candidate in candidates:
+            if shutil.which(candidate):
+                subprocess.Popen([candidate], cwd=path)
+                return
+
     def _restore_selection(self) -> None:
+        should_focus = self._should_focus_after_render()
         target = self._last_selected_path
         if target:
             for idx, child in enumerate(self.children):
                 if isinstance(child, FileItem) and not child.is_header and child.path == target:
                     self.index = idx
-                    self.focus()
+                    if should_focus:
+                        self.focus()
                     return
 
         current_dir = self._current_listing_path
@@ -161,7 +273,8 @@ class FileTree(ListView):
             for idx, child in enumerate(self.children):
                 if isinstance(child, FileItem) and child.path == history_target:
                     self.index = idx
-                    self.focus()
+                    if should_focus:
+                        self.focus()
                     return
 
         if target:
@@ -169,26 +282,37 @@ class FileTree(ListView):
             for idx, child in enumerate(self.children):
                 if isinstance(child, FileItem) and not child.is_header and child.path == target:
                     self.index = idx
-                    self.focus()
+                    if should_focus:
+                        self.focus()
                     return
 
         direction = self._last_chunk_direction
-        if direction == "prev":
-            self.index=1
-            self.focus()
-            return
-        elif direction == "next":
-            self.index = len(self.children) - 1
-            self.focus()
-            return
+        if direction in {"prev", "next"}:
+            for idx, child in enumerate(self.children):
+                if isinstance(child, FileItem) and not child.is_header:
+                    self.index = idx
+                    if should_focus:
+                        self.focus()
+                    return
         else:
             for idx, child in enumerate(self.children):
                 if isinstance(child, FileItem) and not child.is_header:
                     self.index = idx
-                    self.focus()
+                    if should_focus:
+                        self.focus()
                     return
 
         self.index = None
+
+    def _should_focus_after_render(self) -> bool:
+        focused = getattr(self.app, "focused", None)
+        if isinstance(focused, Input) and focused.id == "file_tree_filter_input":
+            return False
+        try:
+            filter_widget = self.app.query_one("#file_tree_filter", FileTreeFilterWidget)
+        except Exception:
+            return True
+        return filter_widget.display != "block"
 
     def show_loading(self, path: Path) -> None:
         self.clear()
@@ -207,17 +331,57 @@ class FileTree(ListView):
         self.append(notice)
 
     def show_listing(self, path: Path, entries: Sequence[FileListingEntry]) -> None:
+        previous_path = self._current_listing_path
         self._current_listing_path = path
-        self._all_entries = sorted(
-            entries,
-            key=lambda entry: (
-                not entry.is_dir,
-                entry.type_label.casefold(),
-                entry.display_name.casefold(),
-            ),
-        )
+        self._all_entries = list(entries)
+        if previous_path != path:
+            self._filter_query = ""
+        self._apply_filter()
+        self._update_border_title()
         self._chunk_start = 0
+        self._last_chunk_direction = None
         self._render_current_chunk()
+
+    def _apply_filter(self) -> None:
+        if not self._filter_query:
+            self._filtered_entries = self._all_entries
+            return
+
+        query = self._filter_query.casefold()
+        self._filtered_entries = [
+            entry
+            for entry in self._all_entries
+            if query in entry.display_name.casefold()
+            or query in entry.type_label.casefold()
+            or query in entry.path.name.casefold()
+        ]
+
+    def _set_filter(self, value: str) -> None:
+        query = value.strip()
+        if query == self._filter_query:
+            return
+        self._filter_query = query
+        self._apply_filter()
+        self._update_border_title()
+        self._chunk_start = 0
+        self._last_chunk_direction = None
+        self._render_current_chunk()
+
+    def _update_border_title(self) -> None:
+        title = "File Navigator"
+        if self._filter_query:
+            truncated = self._filter_query
+            if len(truncated) > self.FILTER_TITLE_MAX:
+                truncated = f"{truncated[: self.FILTER_TITLE_MAX - 3]}..."
+            title = f'{title} (filter: "{truncated}")'
+        self.border_title = title
+
+    def action_filter_entries(self) -> None:
+        try:
+            filter_widget = self.app.query_one("#file_tree_filter", FileTreeFilterWidget)
+        except Exception:
+            return
+        filter_widget.show(self._filter_query)
 
     def _append_header(self, path: Path) -> None:
         parent = path.parent
@@ -232,7 +396,7 @@ class FileTree(ListView):
         self.clear()
         self._append_header(path)
 
-        total = len(self._all_entries)
+        total = len(self._filtered_entries)
         if total == 0:
             self.call_after_refresh(self._restore_selection)
             return
@@ -249,7 +413,7 @@ class FileTree(ListView):
             )
             self.append(ChunkNavigatorItem(prev_label, direction="prev"))
 
-        for entry in self._all_entries[start:end]:
+        for entry in self._filtered_entries[start:end]:
             classes = "item_dir" if entry.is_dir else "item_file"
             self.append(FileItem(entry.path, metadata=entry, classes=classes))
 
@@ -281,17 +445,47 @@ class FileTree(ListView):
                 self._selection_history[self._current_listing_path] = item.path
             self.post_message(DirectorySelectRequest(item.path))
         elif isinstance(item, ChunkNavigatorItem):
-            total = len(self._all_entries)
+            total = len(self._filtered_entries)
             if total == 0:
                 return
             if item.direction == "prev":
                 self._chunk_start = max(0, self._chunk_start - self.CHUNK_SIZE)
                 self._last_chunk_direction = "prev"
             else:
-                self._chunk_start = min(self._chunk_start + self.CHUNK_SIZE, max(0, total - self.CHUNK_SIZE))
+                self._chunk_start = min(
+                    self._chunk_start + self.CHUNK_SIZE,
+                    max(0, total - self.CHUNK_SIZE),
+                )
                 self._last_chunk_direction = "next"
             self._render_current_chunk()
             self._last_selected_path = None
+
+    def _move_chunk(self, direction: str) -> None:
+        total = len(self._filtered_entries)
+        if total == 0:
+            return
+
+        if direction == "prev":
+            next_start = max(0, self._chunk_start - self.CHUNK_SIZE)
+        else:
+            next_start = min(
+                self._chunk_start + self.CHUNK_SIZE,
+                max(0, total - self.CHUNK_SIZE),
+            )
+
+        if next_start == self._chunk_start:
+            return
+
+        self._chunk_start = next_start
+        self._last_chunk_direction = direction
+        self._last_selected_path = None
+        self._render_current_chunk()
+
+    def action_prev_chunk(self) -> None:
+        self._move_chunk("prev")
+
+    def action_next_chunk(self) -> None:
+        self._move_chunk("next")
 
     def action_cursor_down(self) -> None:
         super().action_cursor_down()
@@ -304,13 +498,15 @@ class FileTree(ListView):
             self.index = 1
 
     def action_cursor_down_fast(self) -> None:
-        for _ in range(self._visible_item_count()):  
+        step = max(1, self._visible_item_count() // 2)
+        for _ in range(step):
             super().action_cursor_down()
         if self.index == 0 and len(self.children) > 1:
             self.index = 1
 
     def action_cursor_up_fast(self) -> None:
-        for _ in range(self._visible_item_count()):  
+        step = max(1, self._visible_item_count() // 2)
+        for _ in range(step):
             super().action_cursor_up()
         if self.index == 0 and len(self.children) > 1:
             self.index = 1
@@ -366,4 +562,5 @@ class FileTree(ListView):
         self.post_message(RenamePathRequest(path))
 
     def action_open_terminal(self) -> None:
-        self.post_message(ShowTerminalRequest())
+        app = cast(AppWithPath, self.app)
+        self._open_terminal_window(app.current_path)

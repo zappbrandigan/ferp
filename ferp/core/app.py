@@ -29,14 +29,11 @@ from ferp.core.messages import (
     RenamePathRequest,
     RunScriptRequest,
     ShowReadmeRequest,
-    ShowTerminalRequest,
-    TerminalCommandRequest,
 )
-from ferp.widgets.file_tree import FileTree
+from ferp.widgets.file_tree import FileTree, FileTreeFilterWidget
 from ferp.widgets.output_panel import ScriptOutputPanel
 from ferp.widgets.scripts import ScriptManager
 from ferp.widgets.readme_modal import ReadmeScreen
-from ferp.widgets.terminal import TerminalWidget
 from ferp.core.script_runner import ScriptResult
 from ferp.core.fs_controller import FileSystemController
 from ferp.core.fs_watcher import FileTreeWatcher
@@ -50,7 +47,6 @@ from ferp.services.file_listing import (
 )
 from ferp.services.monday_sync import sync_monday_board
 from ferp.services.releases import update_scripts_from_release
-from ferp.services.terminal_runner import format_terminal_output, run_terminal_command
 from ferp.core.settings_store import SettingsStore
 from ferp.core.transcript_logger import TranscriptLogger
 from ferp.core.path_actions import PathActionController
@@ -104,19 +100,6 @@ class Ferp(App):
     TITLE = "FERP"
     CSS_PATH = Path(__file__).parent.parent / "styles" / "index.tcss"
     COMMANDS = App.COMMANDS | {FerpCommandProvider}
-
-    _INTERACTIVE_DENYLIST = {
-        "vi",
-        "vim",
-        "nvim",
-        "nano",
-        "less",
-        "more",
-        "top",
-        "htop",
-        "man",
-        "watch",
-    }
 
     BINDINGS = [
         Binding("l", "show_task_list", "Show tasks", show=True, tooltip="Show task list"),
@@ -260,7 +243,7 @@ class Ferp(App):
                 id="main_pane",
             )
             yield TaskStatusIndicator()
-            yield TerminalWidget(id="terminal_widget")
+            yield FileTreeFilterWidget(id="file_tree_filter")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -458,20 +441,6 @@ class Ferp(App):
             return False
         return self.script_controller.abort_active("Termination requested from process list.")
 
-    @on(ShowTerminalRequest)
-    def show_terminal(self, _: ShowTerminalRequest) -> None:
-        terminal = self.query_one(TerminalWidget)
-        terminal.show(self.current_path)
-
-    @on(TerminalCommandRequest)
-    def handle_terminal_command(self, event: TerminalCommandRequest) -> None:
-        self.run_worker(
-            lambda: self._execute_terminal_command(event.command, event.cwd),
-            group="terminal",
-            exclusive=False,
-            thread=True,
-        )
-
     def _present_input_dialog(
         self,
         dialog: InputDialog,
@@ -568,13 +537,6 @@ class Ferp(App):
     def show_error(self, error: BaseException) -> None:
         panel = self.query_one(ScriptOutputPanel)
         panel.show_error(error)
-
-    def _execute_terminal_command(self, command: str, cwd: Path) -> dict[str, object]:
-        return run_terminal_command(command, cwd, self._INTERACTIVE_DENYLIST)
-
-    def _render_terminal_output(self, payload: dict[str, Any]) -> None:
-        panel = self.query_one(ScriptOutputPanel)
-        panel.update_content(format_terminal_output(payload))
 
     def _render_default_scripts_update(self, payload: dict[str, Any]) -> None:
         panel = self.query_one(ScriptOutputPanel)
@@ -733,15 +695,6 @@ class Ferp(App):
     @on(Worker.StateChanged)
     def _on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         worker = event.worker
-        if worker.group == "terminal":
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if isinstance(result, dict):
-                    self._render_terminal_output(result)
-            elif event.state is WorkerState.ERROR:
-                error = worker.error or RuntimeError("Terminal command failed.")
-                self.show_error(error)
-            return
         if worker.group == "directory_listing":
             if event.state is WorkerState.SUCCESS:
                 result = worker.result
