@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import shutil
 import tempfile
 import zipfile
-from urllib.request import Request, urlopen
+
+import requests
 
 
 def update_scripts_from_release(repo_url: str, scripts_dir: Path) -> str:
@@ -16,8 +16,9 @@ def update_scripts_from_release(repo_url: str, scripts_dir: Path) -> str:
         "User-Agent": "ferp",
     }
 
-    with urlopen(Request(api_url, headers=headers), timeout=30) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    response = requests.get(api_url, headers=headers, timeout=30)
+    response.raise_for_status()
+    payload = response.json()
 
     zip_url = payload.get("zipball_url")
     if not zip_url:
@@ -28,8 +29,9 @@ def update_scripts_from_release(repo_url: str, scripts_dir: Path) -> str:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         archive_path = tmp_path / "scripts.zip"
-        with urlopen(Request(zip_url, headers=headers), timeout=60) as response:
-            archive_path.write_bytes(response.read())
+        response = requests.get(zip_url, headers=headers, timeout=60)
+        response.raise_for_status()
+        archive_path.write_bytes(response.content)
 
         extract_dir = tmp_path / "extract"
         with zipfile.ZipFile(archive_path) as archive:

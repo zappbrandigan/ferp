@@ -7,7 +7,11 @@ class ScriptPathMap(TypedDict):
     windows: str
     other: str
 
-TargetType = Literal["current_directory", "highlighted_file"]
+TargetType = Literal[
+    "current_directory",
+    "highlighted_file",
+    "highlighted_directory",
+]
 
 class ScriptConfig(TypedDict):
     id: str
@@ -19,6 +23,7 @@ class ScriptConfig(TypedDict):
     requires_input: bool
     input_prompt: NotRequired[str]
     target: TargetType
+    file_extensions: NotRequired[List[str]]
 
 
 @dataclass(frozen=True)
@@ -31,3 +36,4 @@ class Script:
     requires_input: bool
     input_prompt: Optional[str]
     target: TargetType
+    file_extensions: Optional[List[str]]

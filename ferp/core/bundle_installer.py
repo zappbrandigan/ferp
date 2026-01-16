@@ -32,6 +32,7 @@ class ScriptBundleManifest:
     entrypoint: str
     readme: str | None
     dependencies: list[str]
+    file_extensions: list[str]
 
 
 @dataclass(frozen=True)
@@ -190,9 +191,14 @@ class ScriptBundleInstaller:
                 raise ValueError(f"Manifest missing required field '{key}'.")
 
         target = str(payload["target"])
-        if target not in {"current_directory", "highlighted"}:
+        if target not in {
+            "current_directory",
+            "highlighted_file",
+            "highlighted_directory",
+        }:
             raise ValueError(
-                "Manifest 'target' must be either 'current_directory' or 'highlighted'."
+                "Manifest 'target' must be 'current_directory', "
+                "'highlighted_file', or 'highlighted_directory'."
             )
 
         requires_input = bool(payload.get("requires_input", False))
@@ -217,7 +223,19 @@ class ScriptBundleInstaller:
         elif isinstance(deps_raw, list):
             dependencies = [str(dep).strip() for dep in deps_raw if str(dep).strip()]
         else:
-            raise ValueError("Manifest 'dependencies' must be an array of requirement strings.")
+            raise ValueError(
+                "Manifest 'dependencies' must be an array of requirement strings."
+            )
+
+        file_ext_raw = payload.get("file_extensions", [])
+        if file_ext_raw is None:
+            file_extensions: list[str] = []
+        elif isinstance(file_ext_raw, list):
+            file_extensions = [
+                str(ext).strip() for ext in file_ext_raw if str(ext).strip()
+            ]
+        else:
+            raise ValueError("Manifest 'file_extensions' must be an array of strings.")
 
         return ScriptBundleManifest(
             id=str(payload["id"]),
@@ -231,6 +249,7 @@ class ScriptBundleInstaller:
             entrypoint=str(payload["entrypoint"]),
             readme=readme,
             dependencies=dependencies,
+            file_extensions=file_extensions,
         )
 
     def _update_scripts_config(
@@ -262,6 +281,8 @@ class ScriptBundleInstaller:
 
         if manifest.input_prompt:
             entry["input_prompt"] = manifest.input_prompt
+        if manifest.file_extensions:
+            entry["file_extensions"] = manifest.file_extensions
 
         for index, existing in enumerate(scripts):
             if existing.get("id") == manifest.id:

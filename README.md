@@ -39,7 +39,8 @@ Scripts are declared in your user config `config.json` (created on first script 
 
 - `script.script["other"/"windows"]`: path to the executable (e.g. `scripts/ferp.zip_dir/script.py`).
 - `args`: command-line args (supports `{target}` substitution).
-- `target`: `current_directory` or `highlighted_file`.
+- `target`: `current_directory`, `highlighted_file`, or `highlighted_directory`.
+- `file_extensions`: optional list of suffixes (for `highlighted_file` targets).
 - Optional README at `scripts/<id>/readme.md`.
 
 Each script lives under `scripts/<id>/` (the directory name matches the fully-qualified ID, such as `ferp.zip_dir`). Inside the directory:
@@ -81,7 +82,7 @@ When you’re ready to distribute a script, bundle everything FER​P needs into
 ferp bundle path/to/script.py path/to/README.md \
   --id "acme.extractor" \
   --name "My Script" \
-  --target highlighted_file \
+  --target highlighted_directory \
   --dependency requests \
   --dependency "rich>=13" \
   --requires-input \

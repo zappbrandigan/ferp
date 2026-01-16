@@ -62,7 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bundle_parser.add_argument(
         "--target",
-        choices=["current_directory", "highlighted_file"],
+        choices=["current_directory", "highlighted_file", "highlighted_directory"],
         default="current_directory",
         help="Which path FER​P should send to the script (default: current_directory).",
     )
