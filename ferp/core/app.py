@@ -121,6 +121,9 @@ class Ferp(App):
         self._task_status_indicator: TaskStatusIndicator | None = None
         self._pending_task_totals: tuple[int, int] = (0, 0)
         self._directory_listing_token = 0
+        self._listing_in_progress = False
+        self._pending_navigation_path: Path | None = None
+        self._pending_refresh = False
         self._task_list_screen: TaskListScreen | None = None
         self._process_list_screen: ProcessListScreen | None = None
         self._readme_screen: ReadmeScreen | None = None
@@ -259,7 +262,6 @@ class Ferp(App):
         self.refresh_listing()
         file_tree = self.query_one("#file_list", FileTree)
         file_tree.index = 1
-        self._start_file_tree_watch()
         self._task_status_indicator = self.query_one(TaskStatusIndicator)
         self.task_store.subscribe(self._handle_task_update)
 
@@ -457,18 +459,11 @@ class Ferp(App):
 
     @on(NavigateRequest)
     def handle_navigation(self, event: NavigateRequest) -> None:
-        if event.path.exists() and event.path.is_dir():
-            self.current_path = event.path
-            self.refresh_listing()
-            self._start_file_tree_watch()
+        self._request_navigation(event.path)
 
     @on(DirectorySelectRequest)
     def handle_directory_selection(self, event: DirectorySelectRequest) -> None:
-        path = event.path
-        if path.exists() and path.is_dir():
-            self.current_path = path
-            self.refresh_listing()
-            self._start_file_tree_watch()
+        self._request_navigation(event.path)
 
     @on(HighlightRequest)
     def handle_highlight(self, event: HighlightRequest) -> None:
@@ -587,6 +582,11 @@ class Ferp(App):
         self.update_cache_timestamp()
 
     def refresh_listing(self) -> None:
+        if self._listing_in_progress:
+            self._pending_refresh = True
+            return
+
+        self._listing_in_progress = True
         topbar = self.query_one(TopBar)
         topbar.current_path = str(self.current_path)
 
@@ -611,12 +611,41 @@ class Ferp(App):
         file_tree = self.query_one(FileTree)
         if result.error:
             file_tree.show_error(result.path, f"Unable to load directory: {result.error}")
+            self._finalize_directory_listing()
             return
 
         file_tree.show_listing(result.path, result.entries)
 
         if self._file_tree_watcher is not None:
             self._file_tree_watcher.update_snapshot(result.path)
+            self._start_file_tree_watch()
+        self._finalize_directory_listing()
+
+    def _finalize_directory_listing(self) -> None:
+        self._listing_in_progress = False
+        pending_path = self._pending_navigation_path
+        if pending_path is not None:
+            self._pending_navigation_path = None
+            self._begin_navigation(pending_path)
+            return
+        if self._pending_refresh:
+            self._pending_refresh = False
+            self.refresh_listing()
+
+    def _request_navigation(self, path: Path) -> None:
+        if not path.exists() or not path.is_dir():
+            return
+        if self._listing_in_progress:
+            self._pending_navigation_path = path
+            return
+        self._begin_navigation(path)
+
+    def _begin_navigation(self, path: Path) -> None:
+        self._pending_navigation_path = None
+        self._pending_refresh = False
+        self.current_path = path
+        self._stop_file_tree_watch()
+        self.refresh_listing()
 
     def _start_file_tree_watch(self) -> None:
         if self._file_tree_watcher is not None:
@@ -704,6 +733,7 @@ class Ferp(App):
                 error = worker.error or RuntimeError("Directory listing failed.")
                 file_tree = self.query_one(FileTree)
                 file_tree.show_error(self.current_path, str(error))
+                self._finalize_directory_listing()
             return
         if self.bundle_installer.handle_worker_state(event):
             return
