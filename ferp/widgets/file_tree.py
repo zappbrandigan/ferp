@@ -105,7 +105,7 @@ class FileTreeFilterWidget(Widget):
         self._pending_value = ""
 
     def compose(self) -> ComposeResult:
-        yield Input(placeholder="Filter entries (type to refine)…", id="file_tree_filter_input")
+        yield Input(placeholder="Filter entries (type to refine)...", id="file_tree_filter_input")
 
     def on_mount(self) -> None:
         self._input = self.query_one(Input)
@@ -236,6 +236,10 @@ class FileTree(ListView):
             subprocess.Popen(["open", "-a", "Terminal", str(path)])
             return
         if sys.platform == "win32":
+            for candidate in ("pwsh", "powershell"):
+                if shutil.which(candidate):
+                    subprocess.Popen(["cmd", "/c", "start", "", candidate], cwd=path)
+                    return
             subprocess.Popen(["cmd", "/c", "start", "", "cmd"], cwd=path)
             return
 
