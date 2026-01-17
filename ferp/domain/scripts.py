@@ -36,4 +36,4 @@ class Script:
     requires_input: bool
     input_prompt: Optional[str]
     target: TargetType
-    file_extensions: Optional[List[str]]
+    file_extensions: Optional[List[str]] = None
