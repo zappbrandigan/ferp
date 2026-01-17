@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from textual.command import CommandListItem, SimpleCommand, SimpleProvider
 from textual.screen import Screen
@@ -28,7 +28,7 @@ class FerpCommandProvider(SimpleProvider):
             "Refresh File Tree",
             "Reload the current directory listing.",
             "_command_refresh_file_tree",
-            ),
+        ),
         (
             "Reload Script Catalog",
             "Re-read script metadata from config/config.json.",

@@ -1,19 +1,19 @@
+import shutil
+import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Sequence, cast
-import shutil
-import sys
-import subprocess
 
-from textual.containers import Horizontal
+from textual import on
 from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal
 from textual.timer import Timer
 from textual.widget import Widget
-from textual.widgets import Input, ListView, Label, ListItem, LoadingIndicator
-from textual.binding import Binding
-from textual import on
+from textual.widgets import Input, Label, ListItem, ListView, LoadingIndicator
 
 from ferp.core.messages import (
     CreatePathRequest,
@@ -59,10 +59,18 @@ class FileItem(ListItem):
         if is_header:
             row = Horizontal(
                 Label("Name", classes="file_tree_cell file_tree_name file_tree_header"),
-                Label("Chars", classes="file_tree_cell file_tree_chars file_tree_header"),
+                Label(
+                    "Chars", classes="file_tree_cell file_tree_chars file_tree_header"
+                ),
                 Label("Type", classes="file_tree_cell file_tree_type file_tree_header"),
-                Label("Modified", classes="file_tree_cell file_tree_modified file_tree_header"),
-                Label("Created", classes="file_tree_cell file_tree_created file_tree_header"),
+                Label(
+                    "Modified",
+                    classes="file_tree_cell file_tree_modified file_tree_header",
+                ),
+                Label(
+                    "Created",
+                    classes="file_tree_cell file_tree_created file_tree_header",
+                ),
                 classes="file_tree_row",
             )
         else:
@@ -70,10 +78,18 @@ class FileItem(ListItem):
                 raise ValueError("metadata required for non-header FileItems")
             row = Horizontal(
                 Label(metadata.display_name, classes="file_tree_cell file_tree_name"),
-                Label(str(metadata.char_count), classes="file_tree_cell file_tree_chars"),
+                Label(
+                    str(metadata.char_count), classes="file_tree_cell file_tree_chars"
+                ),
                 Label(metadata.type_label, classes="file_tree_cell file_tree_type"),
-                Label(_format_timestamp(metadata.modified_ts), classes="file_tree_cell file_tree_modified"),
-                Label(_format_timestamp(metadata.created_ts), classes="file_tree_cell file_tree_created"),
+                Label(
+                    _format_timestamp(metadata.modified_ts),
+                    classes="file_tree_cell file_tree_modified",
+                ),
+                Label(
+                    _format_timestamp(metadata.created_ts),
+                    classes="file_tree_cell file_tree_created",
+                ),
                 classes=f"file_tree_row {'file_tree_type_dir' if metadata.is_dir else 'file_tree_type_file'}",
             )
 
@@ -85,7 +101,9 @@ class ChunkNavigatorItem(ListItem):
     """Interactive row to navigate between file list chunks."""
 
     def __init__(self, label: str, *, direction: str) -> None:
-        super().__init__(Label(label, classes="file_tree_notice"), classes="item_notice")
+        super().__init__(
+            Label(label, classes="file_tree_notice"), classes="item_notice"
+        )
         self.direction = direction
 
 
@@ -105,7 +123,10 @@ class FileTreeFilterWidget(Widget):
         self._pending_value = ""
 
     def compose(self) -> ComposeResult:
-        yield Input(placeholder="Filter entries (type to refine)...", id="file_tree_filter_input")
+        yield Input(
+            placeholder="Filter entries (type to refine)...",
+            id="file_tree_filter_input",
+        )
 
     def on_mount(self) -> None:
         self._input = self.query_one(Input)
@@ -168,19 +189,78 @@ class FileTree(ListView):
         Binding("g", "cursor_top", "To top", show=False),
         Binding("G", "cursor_bottom", "To bottom", key_display="G", show=False),
         Binding("k", "cursor_up", "Cursor up", show=False),
-        Binding("K", "cursor_up_fast", "Cursor up (half-page)", key_display="K", show=False),
+        Binding(
+            "K", "cursor_up_fast", "Cursor up (half-page)", key_display="K", show=False
+        ),
         Binding("j", "cursor_down", "Cursor down", show=False),
-        Binding("J", "cursor_down_fast", "Cursor down (half-page)", key_display="J", show=False),
+        Binding(
+            "J",
+            "cursor_down_fast",
+            "Cursor down (half-page)",
+            key_display="J",
+            show=False,
+        ),
         Binding("ctrl+t", "open_terminal", "Terminal", show=False),
-        Binding("u", "go_parent", "Go to parent", show=True, tooltip="Go to parent directory"),
-        Binding("h", "go_home", "Go to start", show=True, tooltip="Go to default startup path"),
-        Binding("r", "rename_entry", "Rename", show=False, tooltip="Rename selected file or directory"),
-        Binding("n", "new_file", "New File", show=False, tooltip="Create new file in current directory"),
-        Binding("N", "new_directory", "New Directory", key_display="N", show=False, tooltip="Create new directory in current directory"),
-        Binding("delete", "delete_entry", "Delete", show=False, tooltip="Delete selected file or directory"),
-        Binding("ctrl+f", "open_finder", "Open in FS", show=True, tooltip="Open current directory in system file explorer"),
-        Binding("ctrl+o", "open_selected_file", "Open file", show=True, tooltip="Open selected file with default application"),
-        Binding("[", "prev_chunk", "Prev chunk", show=False, tooltip="Load previous chunk"),
+        Binding(
+            "u",
+            "go_parent",
+            "Go to parent",
+            show=True,
+            tooltip="Go to parent directory",
+        ),
+        Binding(
+            "h",
+            "go_home",
+            "Go to start",
+            show=True,
+            tooltip="Go to default startup path",
+        ),
+        Binding(
+            "r",
+            "rename_entry",
+            "Rename",
+            show=False,
+            tooltip="Rename selected file or directory",
+        ),
+        Binding(
+            "n",
+            "new_file",
+            "New File",
+            show=False,
+            tooltip="Create new file in current directory",
+        ),
+        Binding(
+            "N",
+            "new_directory",
+            "New Directory",
+            key_display="N",
+            show=False,
+            tooltip="Create new directory in current directory",
+        ),
+        Binding(
+            "delete",
+            "delete_entry",
+            "Delete",
+            show=False,
+            tooltip="Delete selected file or directory",
+        ),
+        Binding(
+            "ctrl+f",
+            "open_finder",
+            "Open in FS",
+            show=True,
+            tooltip="Open current directory in system file explorer",
+        ),
+        Binding(
+            "ctrl+o",
+            "open_selected_file",
+            "Open file",
+            show=True,
+            tooltip="Open selected file with default application",
+        ),
+        Binding(
+            "[", "prev_chunk", "Prev chunk", show=False, tooltip="Load previous chunk"
+        ),
         Binding("]", "next_chunk", "Next chunk", show=False, tooltip="Load next chunk"),
         Binding("/", "filter_entries", "Filter", show=True, tooltip="Filter entries"),
     ]
@@ -262,7 +342,11 @@ class FileTree(ListView):
         target = self._last_selected_path
         if target:
             for idx, child in enumerate(self.children):
-                if isinstance(child, FileItem) and not child.is_header and child.path == target:
+                if (
+                    isinstance(child, FileItem)
+                    and not child.is_header
+                    and child.path == target
+                ):
                     self.index = idx
                     if should_focus:
                         self.focus()
@@ -284,7 +368,11 @@ class FileTree(ListView):
         if target:
             # fall back to target again if it was removed from history, but still present
             for idx, child in enumerate(self.children):
-                if isinstance(child, FileItem) and not child.is_header and child.path == target:
+                if (
+                    isinstance(child, FileItem)
+                    and not child.is_header
+                    and child.path == target
+                ):
                     self.index = idx
                     if should_focus:
                         self.focus()
@@ -313,7 +401,9 @@ class FileTree(ListView):
         if isinstance(focused, Input) and focused.id == "file_tree_filter_input":
             return False
         try:
-            filter_widget = self.app.query_one("#file_tree_filter", FileTreeFilterWidget)
+            filter_widget = self.app.query_one(
+                "#file_tree_filter", FileTreeFilterWidget
+            )
         except Exception:
             return True
         return filter_widget.display != "block"
@@ -330,7 +420,9 @@ class FileTree(ListView):
     def show_error(self, path: Path, message: str) -> None:
         self.clear()
         self._append_header(path)
-        notice = ListItem(Label(message, classes="file_tree_error"), classes="item_error")
+        notice = ListItem(
+            Label(message, classes="file_tree_error"), classes="item_error"
+        )
         notice.can_focus = False
         self.append(notice)
 
@@ -382,7 +474,9 @@ class FileTree(ListView):
 
     def action_filter_entries(self) -> None:
         try:
-            filter_widget = self.app.query_one("#file_tree_filter", FileTreeFilterWidget)
+            filter_widget = self.app.query_one(
+                "#file_tree_filter", FileTreeFilterWidget
+            )
         except Exception:
             return
         filter_widget.show(self._filter_query)
@@ -514,7 +608,7 @@ class FileTree(ListView):
             super().action_cursor_up()
         if self.index == 0 and len(self.children) > 1:
             self.index = 1
-    
+
     def action_cursor_top(self) -> None:
         if len(self.children) > 1:
             self.index = 1

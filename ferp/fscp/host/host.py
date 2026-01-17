@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-from typing import Optional
-import time
 import json
+import time
+from typing import Optional
 
 from ferp.fscp.host.managed_process import ManagedProcess, WorkerFn
 from ferp.fscp.host.process_registry import (
     ProcessMetadata,
-    ProcessRecord,
     ProcessRegistry,
 )
+from ferp.fscp.protocol.messages import Message, MessageDirection, MessageType
 from ferp.fscp.protocol.state import HostState
-from ferp.fscp.protocol.messages import Message, MessageType, MessageDirection
-from ferp.fscp.protocol.validator import ProtocolValidator, Endpoint
+from ferp.fscp.protocol.validator import Endpoint, ProtocolValidator
 from ferp.fscp.transcript.events import TranscriptEvent
 
 
@@ -116,7 +115,6 @@ class Host:
                     return
 
                 self.receive(msg, raw=raw)
-
 
         # -------------------------
         # Process exit detection
@@ -273,9 +271,11 @@ class Host:
                 if self.state is HostState.AWAITING_INPUT:
                     self._protocol_violation("Multiple outstanding input requests")
                     return
-                
+
                 if self.state is not HostState.RUNNING:
-                    self._protocol_violation(f"'request_input' not allowed in state {self.state.name}")
+                    self._protocol_violation(
+                        f"'request_input' not allowed in state {self.state.name}"
+                    )
                     return
 
                 self._transition(HostState.AWAITING_INPUT)

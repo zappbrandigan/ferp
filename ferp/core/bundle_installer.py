@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
-import shutil
+from typing import TYPE_CHECKING, Any
 
 from rich.markup import escape
 from textual.worker import Worker, WorkerState
@@ -141,7 +141,9 @@ class ScriptBundleInstaller:
 
         if result.readme_path:
             rel_readme = result.readme_path.relative_to(self._app_root)
-            lines.append(f"[bold $primary]README:[/bold $primary] {escape(str(rel_readme))}")
+            lines.append(
+                f"[bold $primary]README:[/bold $primary] {escape(str(rel_readme))}"
+            )
 
         if result.manifest.dependencies:
             deps = ", ".join(result.manifest.dependencies)

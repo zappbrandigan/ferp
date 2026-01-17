@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-from textual.widgets import ListView, Label, ListItem
-from textual.containers import Horizontal
 from textual.binding import Binding
+from textual.containers import Horizontal
+from textual.widgets import Label, ListItem, ListView
 
 from ferp.core.messages import RunScriptRequest, ShowReadmeRequest
 from ferp.domain.scripts import Script, ScriptConfig
@@ -37,10 +37,13 @@ def load_scripts_config(path: Path) -> list[Script]:
     return sorted(scripts, key=lambda script: script.name.lower())
 
 
-
 class ScriptItem(ListItem):
     def __init__(self, script: Script) -> None:
-        category, name = script.name.split(":", 1) if ":" in script.name else ("General", script.name)
+        category, name = (
+            script.name.split(":", 1)
+            if ":" in script.name
+            else ("General", script.name)
+        )
         super().__init__(
             Horizontal(
                 Label(f"{category}:", classes="script_category"),
@@ -53,14 +56,15 @@ class ScriptItem(ListItem):
 
 
 class ScriptManager(ListView):
-
     BINDINGS = [
         Binding("g", "cursor_top", "To top", show=False),
         Binding("G", "cursor_bottom", "To bottom", key_display="G", show=False),
         Binding("k", "cursor_up", "Move cursor up", show=False),
         Binding("K", "cursor_up_fast", "Cursor up (fast)", key_display="K", show=False),
         Binding("j", "cursor_down", "Move cursor down", show=False),
-        Binding("J", "cursor_down_fast", "Cursor down (fast)", key_display="J", show=False),
+        Binding(
+            "J", "cursor_down_fast", "Cursor down (fast)", key_display="J", show=False
+        ),
         Binding("R", "run_script", "Run selected script", show=True),
         Binding("enter", "show_readme", "Show readme", show=True),
     ]
@@ -127,15 +131,15 @@ class ScriptManager(ListView):
     def resolve_readme(self, script: Script) -> Path | None:
         candidate = self.scripts_root / script.id / "readme.md"
         return candidate if candidate.exists() else None
-    
+
     def action_cursor_down_fast(self) -> None:
-        for _ in range(self._visible_item_count()):  
+        for _ in range(self._visible_item_count()):
             super().action_cursor_down()
 
     def action_cursor_up_fast(self) -> None:
-        for _ in range(self._visible_item_count()):  
+        for _ in range(self._visible_item_count()):
             super().action_cursor_up()
-    
+
     def action_cursor_top(self) -> None:
         if len(self.children) > 1:
             self.index = 0
@@ -156,4 +160,3 @@ class ScriptManager(ListView):
             return 0
 
         return (self.size.height // row_height) - 1
-    

@@ -103,23 +103,17 @@ slate_copper = Theme(
 
 petal_sky = Theme(
     name="petal-sky",
-
-    primary="#CDB4DB",      # thistle
-    secondary="#a2d2ff",    # sky-blue
-    accent="#ffafcc",       # baby-pink
-
-    foreground="#3A2F3F",   # derived: muted plum for legibility
-    background="#F7F3FA",   # derived: off-white lavender
-
-    surface="#EFE7F3",      # derived pastel surface
-    panel="#E6DCEF",        # derived panel tone
-
-    success="#7FB8A8",      # derived soft teal
-    warning="#FFC8DD",      # pastel-petal
-    error="#E89BB3",        # derived muted rose
-
+    primary="#CDB4DB",  # thistle
+    secondary="#a2d2ff",  # sky-blue
+    accent="#ffafcc",  # baby-pink
+    foreground="#3A2F3F",  # derived: muted plum for legibility
+    background="#F7F3FA",  # derived: off-white lavender
+    surface="#EFE7F3",  # derived pastel surface
+    panel="#E6DCEF",  # derived panel tone
+    success="#7FB8A8",  # derived soft teal
+    warning="#FFC8DD",  # pastel-petal
+    error="#E89BB3",  # derived muted rose
     dark=False,
-
     variables={
         # Text hierarchy
         "text-muted": "#7A6F85",
@@ -151,16 +145,16 @@ tokyo_night = Theme(
 
 burgundy = Theme(
     name="ron-burgundy",
-    primary="#7A1E2B",      # deep burgundy
-    secondary="#A63A4A",    # lighter wine
-    accent="#C94C5C",       # rose accent
-    foreground="#E6DCDC",   # warm off-white
-    background="#121012",   # near-black, warm
-    success="#4FAF8F",      # muted teal-green (contrasts burgundy well)
-    warning="#D4A017",      # antique gold
-    error="#C83A3A",        # restrained red
-    surface="#1C171A",      # panels / cards
-    panel="#241C20",        # raised panels
+    primary="#7A1E2B",  # deep burgundy
+    secondary="#A63A4A",  # lighter wine
+    accent="#C94C5C",  # rose accent
+    foreground="#E6DCDC",  # warm off-white
+    background="#121012",  # near-black, warm
+    success="#4FAF8F",  # muted teal-green (contrasts burgundy well)
+    warning="#D4A017",  # antique gold
+    error="#C83A3A",  # restrained red
+    surface="#1C171A",  # panels / cards
+    panel="#241C20",  # raised panels
     dark=True,
     variables={
         "footer-key-foreground": "#C94C5C",
@@ -171,21 +165,17 @@ burgundy = Theme(
 
 olive_grove = Theme(
     name="olive-grove",
-    primary="#606C38",      # olive-leaf
-    secondary="#DDA15E",    # sunlit-clay
-    accent="#BC6C25",       # copperwood
-    foreground="#FEFAE0",   # cornsilk
-    background="#283618",   # black-forest
-
-    surface="#3A4422",      # derived: lighter black-forest
-    panel="#2F3C1E",        # derived: muted forest panel
-
-    success="#8FB573",      # derived green (olive-shifted)
-    warning="#DDA15E",      # sunlit-clay
-    error="#BC6C25",        # copperwood
-
+    primary="#606C38",  # olive-leaf
+    secondary="#DDA15E",  # sunlit-clay
+    accent="#BC6C25",  # copperwood
+    foreground="#FEFAE0",  # cornsilk
+    background="#283618",  # black-forest
+    surface="#3A4422",  # derived: lighter black-forest
+    panel="#2F3C1E",  # derived: muted forest panel
+    success="#8FB573",  # derived green (olive-shifted)
+    warning="#DDA15E",  # sunlit-clay
+    error="#BC6C25",  # copperwood
     dark=True,
-
     variables={
         # Text & emphasis
         "text-muted": "#CFC9A6",
@@ -202,5 +192,5 @@ ALL_THEMES: list[Theme] = [
     tokyo_night,
     burgundy,
     olive_grove,
-    petal_sky
+    petal_sky,
 ]

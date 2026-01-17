@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import json
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable, Sequence
-import json
-import uuid
 
 
 def _utcnow() -> datetime:
@@ -26,7 +26,9 @@ class Task:
             "text": self.text,
             "completed": self.completed,
             "created_at": self.created_at.isoformat(),
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": self.completed_at.isoformat()
+            if self.completed_at
+            else None,
         }
 
     @classmethod
@@ -37,8 +39,12 @@ class Task:
             id=str(payload.get("id") or uuid.uuid4()),
             text=str(payload.get("text") or "").strip(),
             completed=bool(payload.get("completed", False)),
-            created_at=datetime.fromisoformat(created_at) if isinstance(created_at, str) else _utcnow(),
-            completed_at=datetime.fromisoformat(completed_at) if isinstance(completed_at, str) else None,
+            created_at=datetime.fromisoformat(created_at)
+            if isinstance(created_at, str)
+            else _utcnow(),
+            completed_at=datetime.fromisoformat(completed_at)
+            if isinstance(completed_at, str)
+            else None,
         )
 
 

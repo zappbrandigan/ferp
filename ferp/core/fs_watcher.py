@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from textual.timer import Timer
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
@@ -41,7 +41,7 @@ class FileTreeWatcher:
         self._timer_factory = timer_factory
         self._debounce_seconds = debounce_seconds
 
-        self._observer: WatchdogObserver | None = None #type: ignore
+        self._observer: WatchdogObserver | None = None  # type: ignore
         self._watch: ObservedWatch | None = None
         self._handler: DirectoryChangeHandler | None = None
         self._current_directory: Path | None = None
@@ -120,7 +120,9 @@ class FileTreeWatcher:
     def _queue_refresh(self) -> None:
         if self._refresh_timer is not None:
             return
-        self._refresh_timer = self._timer_factory(self._debounce_seconds, self._complete_refresh)
+        self._refresh_timer = self._timer_factory(
+            self._debounce_seconds, self._complete_refresh
+        )
 
     def _complete_refresh(self) -> None:
         self._refresh_timer = None

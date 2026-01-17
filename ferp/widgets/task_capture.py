@@ -5,8 +5,8 @@ from typing import Callable
 from textual.binding import Binding
 from textual.containers import Container, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Input, Static
 from textual.timer import Timer
+from textual.widgets import Footer, Input, Static
 
 
 class CaptureInput(Input):
@@ -40,11 +40,7 @@ class TaskCaptureModal(ModalScreen[None]):
         self._area = CaptureInput(self.action_submit)
         self._status = Static("", classes="task_capture_status")
         yield Container(
-            Vertical(
-                self._area,
-                self._status,
-                Footer()
-            ),
+            Vertical(self._area, self._status, Footer()),
             id="task_capture_modal",
         )
 

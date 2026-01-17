@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from textual.app import ComposeResult
-from textual.containers import Vertical, Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Label
 
@@ -33,7 +33,9 @@ class PromptDialog(ModalScreen[dict[str, str | bool] | None]):
         self._show_text_input = show_text_input
 
     def compose(self) -> ComposeResult:
-        contents: list[Label | Input | Horizontal] = [Label(self._message, id="dialog_message")]
+        contents: list[Label | Input | Horizontal] = [
+            Label(self._message, id="dialog_message")
+        ]
         if self._show_text_input:
             contents.append(Input(value=self._default, id="prompt_input"))
         contents.append(

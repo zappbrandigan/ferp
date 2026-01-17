@@ -1,13 +1,13 @@
 from typing import Optional
 
 from ferp.fscp.protocol.messages import Message, MessageType
-from ferp.fscp.protocol.validator import ProtocolValidator, Endpoint
-from ferp.fscp.scripts.runtime.state import ScriptState
-from ferp.fscp.scripts.runtime.io import read_message, write_message
+from ferp.fscp.protocol.validator import Endpoint, ProtocolValidator
 from ferp.fscp.scripts.runtime.errors import (
-    ProtocolViolation,
     InvalidStateTransition,
+    ProtocolViolation,
 )
+from ferp.fscp.scripts.runtime.io import read_message, write_message
+from ferp.fscp.scripts.runtime.state import ScriptState
 
 
 class ScriptRuntime:
@@ -123,7 +123,6 @@ class ScriptRuntime:
         )
         write_message(msg.to_dict())
 
-
     def _emit_request_input(self, *, id: str, prompt: str) -> None:
         msg = Message(
             type=MessageType.REQUEST_INPUT,
@@ -145,7 +144,6 @@ class ScriptRuntime:
             payload={"code": code},
         )
         write_message(msg.to_dict())
-
 
     def _emit_fatal_error(self, exc: Exception) -> None:
         self._emit_log("error", str(exc))

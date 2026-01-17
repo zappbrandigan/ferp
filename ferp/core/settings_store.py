@@ -40,8 +40,12 @@ class SettingsStore:
     def log_preferences(self, settings: dict[str, Any]) -> tuple[int, int]:
         """Return (max_files, max_age_days) for transcript pruning."""
         logs = settings.setdefault("logs", {})
-        max_files = self._coerce_positive_int(logs.get("maxFiles"), default=50, min_value=1)
-        max_age_days = self._coerce_positive_int(logs.get("maxAgeDays"), default=14, min_value=0)
+        max_files = self._coerce_positive_int(
+            logs.get("maxFiles"), default=50, min_value=1
+        )
+        max_age_days = self._coerce_positive_int(
+            logs.get("maxAgeDays"), default=14, min_value=0
+        )
         return max_files, max_age_days
 
     def _with_defaults(self, data: dict[str, Any]) -> dict[str, Any]:

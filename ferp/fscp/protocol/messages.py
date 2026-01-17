@@ -1,6 +1,7 @@
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Mapping
+
 
 class MessageDirection(Enum):
     SEND = "send"
@@ -21,7 +22,9 @@ class MessageType(Enum):
     RESULT = "result"
     EXIT = "exit"
 
+
 PROTOCOL = "ferp/1.0"
+
 
 @dataclass(frozen=True, slots=True)
 class Message:

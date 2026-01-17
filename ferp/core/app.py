@@ -1,26 +1,31 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import os
-from pathlib import Path
-from datetime import datetime, timezone
-import subprocess
-from typing import Any, Callable, Sequence
-import sys
 import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, Sequence
 
 from platformdirs import user_cache_path, user_config_path, user_data_path
-from textual.app import App, ComposeResult
-from textual.containers import Vertical, Horizontal, VerticalScroll
-from textual.theme import Theme
-from textual import on
-from textual.binding import Binding
-from textual.widgets import Footer
-from textual.css.query import NoMatches
-
 from rich.markup import escape
+from textual import on
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
+from textual.theme import Theme
+from textual.widgets import Footer
+from textual.worker import Worker, WorkerState
 
+from ferp import __version__
+from ferp.core.bundle_installer import ScriptBundleInstaller
+from ferp.core.command_provider import FerpCommandProvider
+from ferp.core.fs_controller import FileSystemController
+from ferp.core.fs_watcher import FileTreeWatcher
 from ferp.core.messages import (
     CreatePathRequest,
     DeletePathRequest,
@@ -31,16 +36,14 @@ from ferp.core.messages import (
     RunScriptRequest,
     ShowReadmeRequest,
 )
-from ferp.widgets.file_tree import FileTree, FileTreeFilterWidget
-from ferp.widgets.output_panel import ScriptOutputPanel
-from ferp.widgets.scripts import ScriptManager
-from ferp.widgets.readme_modal import ReadmeScreen
-from ferp.core.script_runner import ScriptResult
-from ferp.core.fs_controller import FileSystemController
-from ferp.core.fs_watcher import FileTreeWatcher
+from ferp.core.path_actions import PathActionController
+from ferp.core.paths import APP_AUTHOR, APP_NAME, SCRIPTS_REPO_URL
 from ferp.core.script_controller import ScriptLifecycleController
-from ferp.core.bundle_installer import ScriptBundleInstaller
-from ferp.services.scripts import build_execution_context
+from ferp.core.script_runner import ScriptResult
+from ferp.core.settings_store import SettingsStore
+from ferp.core.task_store import Task, TaskStore
+from ferp.core.transcript_logger import TranscriptLogger
+from ferp.fscp.host.process_registry import ProcessRecord
 from ferp.services.file_listing import (
     DirectoryListingResult,
     collect_directory_listing,
@@ -48,22 +51,17 @@ from ferp.services.file_listing import (
 )
 from ferp.services.monday_sync import sync_monday_board
 from ferp.services.releases import update_scripts_from_release
-from ferp.core.settings_store import SettingsStore
-from ferp.core.transcript_logger import TranscriptLogger
-from ferp.core.path_actions import PathActionController
-from ferp.widgets.top_bar import TopBar
-from ferp.widgets.dialogs import InputDialog, ConfirmDialog
+from ferp.services.scripts import build_execution_context
 from ferp.themes.themes import ALL_THEMES
-from ferp import __version__
+from ferp.widgets.dialogs import ConfirmDialog, InputDialog
+from ferp.widgets.file_tree import FileTree, FileTreeFilterWidget
+from ferp.widgets.output_panel import ScriptOutputPanel
 from ferp.widgets.process_list import ProcessListScreen
-
-from textual.worker import Worker, WorkerState
-from ferp.core.command_provider import FerpCommandProvider
-from ferp.core.task_store import TaskStore, Task
-from ferp.core.paths import APP_AUTHOR, APP_NAME, SCRIPTS_REPO_URL
+from ferp.widgets.readme_modal import ReadmeScreen
+from ferp.widgets.scripts import ScriptManager
 from ferp.widgets.task_list import TaskListScreen
 from ferp.widgets.task_status import TaskStatusIndicator
-from ferp.fscp.host.process_registry import ProcessRecord
+from ferp.widgets.top_bar import TopBar
 
 
 @dataclass(frozen=True)
@@ -80,14 +78,8 @@ class AppPaths:
 
 
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "userPreferences": {
-        "theme": "slate-copper",
-        "startupPath": str(Path().home())
-    },
-    "logs": {
-        "maxFiles": 50,
-        "maxAgeDays": 14
-    },
+    "userPreferences": {"theme": "slate-copper", "startupPath": str(Path().home())},
+    "logs": {"maxFiles": 50, "maxAgeDays": 14},
     "integrations": {
         "monday": {
             "apiToken": "",
@@ -103,10 +95,24 @@ class Ferp(App):
     COMMANDS = App.COMMANDS | {FerpCommandProvider}
 
     BINDINGS = [
-        Binding("l", "show_task_list", "Show tasks", show=True, tooltip="Show task list"),
+        Binding(
+            "l", "show_task_list", "Show tasks", show=True, tooltip="Show task list"
+        ),
         Binding("t", "capture_task", "Add task", show=True, tooltip="Capture new task"),
-        Binding("m", "toggle_maximize", "Maximize", show=True, tooltip="Maximize/minimize the focused widget"),
-        Binding("?", "toggle_help", "Toggle all keys", show=True, tooltip="Show/hide help panel"),
+        Binding(
+            "m",
+            "toggle_maximize",
+            "Maximize",
+            show=True,
+            tooltip="Maximize/minimize the focused widget",
+        ),
+        Binding(
+            "?",
+            "toggle_help",
+            "Toggle all keys",
+            show=True,
+            tooltip="Show/hide help panel",
+        ),
         # Binding("ctrl+q", "quit", "Quit the application", show=True),
     ]
 
@@ -154,7 +160,11 @@ class Ferp(App):
         app_root = Path(__file__).parent.parent
         config_dir = Path(user_config_path(APP_NAME, APP_AUTHOR))
         dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
-        config_file = app_root / "scripts" / "config.json" if dev_config_enabled else config_dir / "config.json"
+        config_file = (
+            app_root / "scripts" / "config.json"
+            if dev_config_enabled
+            else config_dir / "config.json"
+        )
         settings_file = config_dir / "settings.json"
         data_dir = Path(user_data_path(APP_NAME, APP_AUTHOR))
         cache_dir = Path(user_cache_path(APP_NAME, APP_AUTHOR))
@@ -226,10 +236,7 @@ class Ferp(App):
     def compose(self) -> ComposeResult:
         output_panel = ScriptOutputPanel()
         scroll_container = VerticalScroll(
-            output_panel,
-            can_focus=True,
-            id="output_panel_container",
-            can_maximize=True
+            output_panel, can_focus=True, id="output_panel_container", can_maximize=True
         )
         scroll_container.border_title = "Process Output"
         with Vertical(id="app_main_container"):
@@ -256,7 +263,9 @@ class Ferp(App):
             self.register_theme(theme)
         self.console.set_window_title("FERP")
         self.theme_changed_signal.subscribe(self, self.on_theme_changed)
-        self.theme = self.settings.get("userPreferences", {}).get("theme", "textual-dark")
+        self.theme = self.settings.get("userPreferences", {}).get(
+            "theme", "textual-dark"
+        )
         topbar = self.query_one(TopBar)
         topbar.current_path = str(self.current_path)
         topbar.status = "Idle"
@@ -382,7 +391,9 @@ class Ferp(App):
             board_id_value = int(board_id)
         except (TypeError, ValueError):
             self.show_error(
-                ValueError("Monday board id missing. Set integrations.monday.boardId in settings.json.")
+                ValueError(
+                    "Monday board id missing. Set integrations.monday.boardId in settings.json."
+                )
             )
             return
 
@@ -390,7 +401,9 @@ class Ferp(App):
             panel = self.query_one(ScriptOutputPanel)
             panel.update_content("[bold $primary]Syncing Monday board…[/bold $primary]")
             self.run_worker(
-                lambda token=api_token, board=board_id_value: self._sync_monday_board(token, board),
+                lambda token=api_token, board=board_id_value: self._sync_monday_board(
+                    token, board
+                ),
                 group="monday_sync",
                 exclusive=True,
                 thread=True,
@@ -418,7 +431,9 @@ class Ferp(App):
 
     def _install_default_scripts(self) -> dict[str, str | bool]:
         try:
-            release_version = update_scripts_from_release(SCRIPTS_REPO_URL, self.scripts_dir)
+            release_version = update_scripts_from_release(
+                SCRIPTS_REPO_URL, self.scripts_dir
+            )
 
             scripts_config_file = self.scripts_dir / "config.json"
             if not scripts_config_file.exists():
@@ -449,7 +464,9 @@ class Ferp(App):
         active_handle = self.script_controller.active_process_handle
         if not active_handle or record.handle != active_handle:
             return False
-        return self.script_controller.abort_active("Termination requested from process list.")
+        return self.script_controller.abort_active(
+            "Termination requested from process list."
+        )
 
     def _present_input_dialog(
         self,
@@ -516,6 +533,7 @@ class Ferp(App):
             self.script_controller.run_script(event.script, context)
         except Exception as e:
             self.show_error(e)
+
     def render_script_output(
         self,
         script_name: str,
@@ -565,7 +583,9 @@ class Ferp(App):
                 f"[bold $primary]Release:[/bold $primary] {escape(str(release_status))}"
             )
         if release_version:
-            lines.append(f"[bold $primary]Version:[/bold $primary] {escape(release_version)}")
+            lines.append(
+                f"[bold $primary]Version:[/bold $primary] {escape(release_version)}"
+            )
         if release_detail:
             lines.append("[dim]" + escape(str(release_detail)) + "[/dim]")
 
@@ -588,7 +608,9 @@ class Ferp(App):
         ]
 
         if board_name:
-            lines.append(f"[bold $primary]Board:[/bold $primary] {escape(str(board_name))}")
+            lines.append(
+                f"[bold $primary]Board:[/bold $primary] {escape(str(board_name))}"
+            )
         lines.append(f"[bold $primary]Groups:[/bold $primary] {group_count}")
         lines.append(f"[bold $primary]Publishers:[/bold $primary] {publisher_count}")
         lines.append(f"[bold $primary]Skipped:[/bold $primary] {skipped}")
@@ -613,7 +635,9 @@ class Ferp(App):
         path = self.current_path
 
         self.run_worker(
-            lambda directory=path, token=token: collect_directory_listing(directory, token),
+            lambda directory=path, token=token: collect_directory_listing(
+                directory, token
+            ),
             group="directory_listing",
             exclusive=True,
             thread=True,
@@ -625,7 +649,9 @@ class Ferp(App):
 
         file_tree = self.query_one(FileTree)
         if result.error:
-            file_tree.show_error(result.path, f"Unable to load directory: {result.error}")
+            file_tree.show_error(
+                result.path, f"Unable to load directory: {result.error}"
+            )
             self._finalize_directory_listing()
             return
 
@@ -730,7 +756,9 @@ class Ferp(App):
         cache_path = self._paths.cache_dir / "publishers_cache.json"
 
         if cache_path.exists():
-            updated_at = datetime.fromtimestamp(cache_path.stat().st_mtime, tz=timezone.utc)
+            updated_at = datetime.fromtimestamp(
+                cache_path.stat().st_mtime, tz=timezone.utc
+            )
         else:
             updated_at = datetime(1970, 1, 1, tzinfo=timezone.utc)
 

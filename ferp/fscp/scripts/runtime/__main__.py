@@ -13,8 +13,8 @@ It exists only to bootstrap ScriptRuntime and exit cleanly.
 import sys
 import traceback
 
-from ferp.scripts.runtime.script import ScriptRuntime
-from ferp.scripts.runtime.errors import ScriptError
+from ferp.fscp.scripts.runtime.errors import ScriptError
+from ferp.fscp.scripts.runtime.script import ScriptRuntime
 
 
 def main() -> int:

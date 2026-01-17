@@ -14,15 +14,15 @@ from typing import Any, Callable, Literal
 
 from ferp.fscp.host import Host
 from ferp.fscp.host.managed_process import WorkerFn
+from ferp.fscp.host.process_registry import (
+    ProcessMetadata,
+    ProcessRegistry,
+)
 from ferp.fscp.protocol.messages import Message, MessageDirection, MessageType
 from ferp.fscp.protocol.state import HostState
 from ferp.fscp.scripts.runtime.io import configure_connection
 from ferp.fscp.transcript.events import TranscriptEvent
 from ferp.services.scripts import ScriptExecutionContext
-from ferp.fscp.host.process_registry import (
-    ProcessMetadata,
-    ProcessRegistry,
-)
 
 
 def _patch_spawnv_passfds() -> None:
@@ -294,7 +294,7 @@ class ScriptRunner:
                     prompt=str(payload.get("prompt", "")),
                     default=payload.get("default"),
                     secret=bool(payload.get("secret", False)),
-                    mode=mode, # type: ignore
+                    mode=mode,  # type: ignore
                     fields=fields,
                     show_text_input=show_text_input,
                 )

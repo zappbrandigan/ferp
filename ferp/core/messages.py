@@ -1,5 +1,7 @@
 from pathlib import Path
+
 from textual.message import Message
+
 from ferp.domain.scripts import Script
 
 
@@ -8,20 +10,24 @@ class NavigateRequest(Message):
         self.path = path
         super().__init__()
 
+
 class HighlightRequest(Message):
     def __init__(self, path: Path | None) -> None:
         self.path = path
         super().__init__()
+
 
 class RunScriptRequest(Message):
     def __init__(self, script: Script) -> None:
         self.script = script
         super().__init__()
 
+
 class DirectorySelectRequest(Message):
     def __init__(self, path: Path) -> None:
         self.path = path
         super().__init__()
+
 
 class ShowReadmeRequest(Message):
     def __init__(self, script: Script, readme_path: Path | None) -> None:

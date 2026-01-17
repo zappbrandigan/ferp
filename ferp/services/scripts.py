@@ -28,9 +28,7 @@ def build_execution_context(
 
     system = platform.system().lower()
     script_path = (
-        script.script["windows"]
-        if system == "windows"
-        else script.script["other"]
+        script.script["windows"] if system == "windows" else script.script["other"]
     )
     full_path = (app_root / script_path).resolve()
 

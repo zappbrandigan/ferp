@@ -11,7 +11,7 @@ from ferp.widgets.panels import ContentPanel
 
 class ScriptOutputPanel(ContentPanel):
     """Specialized panel responsible for rendering script status and errors."""
-    
+
     def __init__(
         self,
         *,
@@ -23,9 +23,7 @@ class ScriptOutputPanel(ContentPanel):
 
     def show_error(self, error: BaseException) -> None:
         self.remove_children()
-        self.update_content(
-            "[bold $error]Error:[/bold $error]\n" + escape(str(error))
-        )
+        self.update_content("[bold $error]Error:[/bold $error]\n" + escape(str(error)))
 
     def show_result(
         self,
@@ -56,9 +54,7 @@ class ScriptOutputPanel(ContentPanel):
                     lines.append(self._format_pair(key, value))
 
         if result.error:
-            lines.append(
-                "\n[bold $error]Error:[/bold $error]\n" + escape(result.error)
-            )
+            lines.append("\n[bold $error]Error:[/bold $error]\n" + escape(result.error))
 
         if transcript_path:
             lines.append(

@@ -172,5 +172,6 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     run_app()
 
+
 if __name__ == "__main__":
     main()

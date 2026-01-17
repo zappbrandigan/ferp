@@ -1,10 +1,10 @@
-from typing import Set, Dict
-from enum import Enum, auto
 import json
-
+from enum import Enum, auto
 from importlib.resources import files
-from referencing import Registry, Resource
+from typing import Dict, Set
+
 from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
 from ferp.fscp.protocol.messages import Message, MessageType
 
@@ -63,7 +63,6 @@ class ProtocolValidator:
 
         return registry
 
-
     def _load_validators(self) -> Dict[MessageType, Draft202012Validator]:
         validators: Dict[MessageType, Draft202012Validator] = {}
 
@@ -101,15 +100,11 @@ class ProtocolValidator:
         # Directionality
         if sender is Endpoint.HOST:
             if msg.type not in self.HOST_TO_SCRIPT:
-                raise ProtocolError(
-                    f"Host is not allowed to send '{msg.type.value}'"
-                )
+                raise ProtocolError(f"Host is not allowed to send '{msg.type.value}'")
 
         elif sender is Endpoint.SCRIPT:
             if msg.type not in self.SCRIPT_TO_HOST:
-                raise ProtocolError(
-                    f"Script is not allowed to send '{msg.type.value}'"
-                )
+                raise ProtocolError(f"Script is not allowed to send '{msg.type.value}'")
 
         else:
             raise ProtocolError("Unknown sender endpoint")
@@ -118,15 +113,11 @@ class ProtocolValidator:
         try:
             validator = self._validators[msg.type]
         except KeyError:
-            raise ProtocolError(
-                f"No schema registered for '{msg.type.value}'"
-            )
+            raise ProtocolError(f"No schema registered for '{msg.type.value}'")
 
         instance = msg.to_dict()
 
         errors = sorted(validator.iter_errors(instance), key=str)
         if errors:
             err = errors[0]
-            raise ProtocolError(
-                f"Invalid {msg.type.value} message: {err.message}"
-            )
+            raise ProtocolError(f"Invalid {msg.type.value} message: {err.message}")

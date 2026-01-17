@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
 from typing import Callable, Optional
-import time
-
 
 WorkerFn = Callable[[Connection], None]
 

@@ -3,15 +3,24 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Sequence
 
+from rich.markup import escape
 from textual import on
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Label, ListItem, ListView, Input, Footer, Static, LoadingIndicator
 from textual.timer import Timer
-from rich.markup import escape
+from textual.widgets import (
+    Footer,
+    Input,
+    Label,
+    ListItem,
+    ListView,
+    LoadingIndicator,
+    Static,
+)
 
-from ferp.core.task_store import Task as TodoTask, TaskStore
+from ferp.core.task_store import Task as TodoTask
+from ferp.core.task_store import TaskStore
 from ferp.widgets.dialogs import ConfirmDialog
 from ferp.widgets.task_capture import TaskCaptureModal
 
@@ -35,12 +44,7 @@ class TaskEditModal(ModalScreen[str | None]):
         self._area = Input(id="task_edit_input", placeholder="Edit task")
         self._status = Static("", classes="task_edit_status")
         yield Container(
-            Vertical(
-                self._area,
-                self._status,
-                Footer()
-            ),
-            id="task_edit_modal"
+            Vertical(self._area, self._status, Footer()), id="task_edit_modal"
         )
 
     def on_mount(self) -> None:
@@ -110,7 +114,9 @@ class TaskListItem(ListItem):
         )
 
     def on_mount(self) -> None:
-        self._text_widget.update(self._render_text_markup(self._task_model, highlighted=False))
+        self._text_widget.update(
+            self._render_text_markup(self._task_model, highlighted=False)
+        )
         self._meta_widget.update(self._render_meta(self._task_model))
 
     def set_highlighted(self, highlighted: bool) -> None:
@@ -206,7 +212,7 @@ class TaskListScreen(ModalScreen[None]):
             Vertical(
                 Container(filter_input, id="task_filter_container"),
                 ListView(placeholder, id="task_list_view"),
-                Footer()
+                Footer(),
             ),
             id="task_list_modal",
         )
@@ -238,12 +244,16 @@ class TaskListScreen(ModalScreen[None]):
     def _handle_store_update(self, _: Sequence[TodoTask]) -> None:
         self._schedule_refresh()
 
-    def _schedule_refresh(self, *, focus_list: bool = True, delay: float = 0.05) -> None:
+    def _schedule_refresh(
+        self, *, focus_list: bool = True, delay: float = 0.05
+    ) -> None:
         if self._refresh_timer is not None:
             self._refresh_timer.stop()
             self._refresh_timer = None
         self._pending_focus_list = focus_list
-        self._refresh_timer = self.set_timer(delay, self._run_scheduled_refresh, name="task-list-refresh")
+        self._refresh_timer = self.set_timer(
+            delay, self._run_scheduled_refresh, name="task-list-refresh"
+        )
 
     def _run_scheduled_refresh(self) -> None:
         self._refresh_timer = None
@@ -291,7 +301,9 @@ class TaskListScreen(ModalScreen[None]):
             self._highlighted_item = item
             item.set_highlighted(True)
 
-    def _queue_index_assignment(self, list_view: ListView, target: int | None, *, focus_list: bool = True) -> None:
+    def _queue_index_assignment(
+        self, list_view: ListView, target: int | None, *, focus_list: bool = True
+    ) -> None:
         self._index_assignment_token += 1
         token = self._index_assignment_token
 
@@ -332,7 +344,9 @@ class TaskListScreen(ModalScreen[None]):
         list_view.index = clamped
 
     def _has_selectable_items(self, list_view: ListView) -> bool:
-        return any(not getattr(child, "disabled", False) for child in list_view.children)
+        return any(
+            not getattr(child, "disabled", False) for child in list_view.children
+        )
 
     def action_capture_task(self) -> None:
         def handle_submit(text: str) -> None:

@@ -1,10 +1,10 @@
+from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Label, Input
-from textual.containers import Horizontal, Vertical, Container
+from textual.widgets import Button, Input, Label
 
 
 class ConfirmDialog(ModalScreen[bool | None]):
-    def __init__(self, message: str, id = "confirm_dialog"):
+    def __init__(self, message: str, id="confirm_dialog"):
         super().__init__(id=id)
         self.message = message
 
@@ -27,7 +27,9 @@ class ConfirmDialog(ModalScreen[bool | None]):
 
 
 class InputDialog(ModalScreen[str | None]):
-    def __init__(self, message: str, id: str = "input_dialog", default: str | None = None) -> None:
+    def __init__(
+        self, message: str, id: str = "input_dialog", default: str | None = None
+    ) -> None:
         super().__init__(id=id)
         self._message = message
         self._default = default

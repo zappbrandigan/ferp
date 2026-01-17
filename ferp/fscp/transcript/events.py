@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Optional
 from dataclasses import dataclass
+from typing import Optional
 
 from ferp.fscp.protocol.messages import Message, MessageDirection
+
 
 @dataclass
 class TranscriptEvent:

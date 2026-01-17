@@ -5,10 +5,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
-from typing import Iterable
 
 from ferp.fscp.protocol.state import HostState
-
 
 _TERMINAL_STATES = {
     HostState.TERMINATED,
@@ -48,7 +46,9 @@ class ProcessRegistry:
         self._lock = Lock()
         self._counter = itertools.count(1)
 
-    def register(self, metadata: ProcessMetadata, *, pid: int | None, state: HostState) -> ProcessRecord:
+    def register(
+        self, metadata: ProcessMetadata, *, pid: int | None, state: HostState
+    ) -> ProcessRecord:
         handle = f"proc-{next(self._counter)}"
         record = ProcessRecord(
             handle=handle,
@@ -70,7 +70,9 @@ class ProcessRegistry:
             if state in _TERMINAL_STATES:
                 record.end_time = record.end_time or time.time()
 
-    def record_exit(self, handle: str, exit_code: int | None, *, termination_mode: str | None) -> None:
+    def record_exit(
+        self, handle: str, exit_code: int | None, *, termination_mode: str | None
+    ) -> None:
         with self._lock:
             record = self._records.get(handle)
             if record is None:
@@ -88,11 +90,17 @@ class ProcessRegistry:
 
     def list_active(self) -> list[ProcessRecord]:
         with self._lock:
-            return [self._clone(record) for record in self._records.values() if not record.is_terminal]
+            return [
+                self._clone(record)
+                for record in self._records.values()
+                if not record.is_terminal
+            ]
 
     def prune_finished(self) -> list[ProcessRecord]:
         with self._lock:
-            finished = [handle for handle, record in self._records.items() if record.is_terminal]
+            finished = [
+                handle for handle, record in self._records.items() if record.is_terminal
+            ]
             removed = [self._records.pop(handle) for handle in finished]
         return [self._clone(record) for record in removed]
 
@@ -107,6 +115,7 @@ class ProcessRegistry:
             end_time=record.end_time,
             termination_mode=record.termination_mode,
         )
+
 
 __all__ = [
     "ProcessMetadata",

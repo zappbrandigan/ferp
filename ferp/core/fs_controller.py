@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 
 class FileSystemController:
@@ -39,7 +39,9 @@ class FileSystemController:
         else:
             target.unlink()
 
-    def rename_path(self, source: Path, destination: Path, *, overwrite: bool = False) -> Path:
+    def rename_path(
+        self, source: Path, destination: Path, *, overwrite: bool = False
+    ) -> Path:
         if not source.exists():
             raise FileNotFoundError(f"{source} does not exist")
 

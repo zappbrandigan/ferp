@@ -1,10 +1,10 @@
-from textual.screen import ModalScreen
-from textual.widgets import MarkdownViewer, Footer, Label
-from textual.containers import Vertical, VerticalScroll
 from textual.binding import Binding
+from textual.containers import Vertical, VerticalScroll
+from textual.screen import ModalScreen
+from textual.widgets import Footer, Label, MarkdownViewer
+
 
 class ReadmeScreen(ModalScreen):
-
     BINDINGS = [
         Binding("j", "scroll_down", "Scroll down", show=False),
         Binding("down", "scroll_down", "Scroll down", show=False),

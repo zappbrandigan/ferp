@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 from rich.markup import escape
 from textual.containers import Vertical
@@ -159,7 +159,9 @@ class ScriptLifecycleController:
             ),
             id="progress_header",
         )
-        self._progress_bar_widget = ProgressBar(total=None, show_eta=False, id="script_progress_bar")
+        self._progress_bar_widget = ProgressBar(
+            total=None, show_eta=False, id="script_progress_bar"
+        )
         self._progress_status_widget = Static(
             "[dim]Waiting for progress…[/dim]", id="progress_status"
         )
@@ -198,7 +200,16 @@ class ScriptLifecycleController:
 
         normalized_default = (request.default or "").strip().lower()
         is_confirm = request.mode == "confirm"
-        if not is_confirm and normalized_default in {"true", "1", "yes", "y", "false", "0", "no", "n"}:
+        if not is_confirm and normalized_default in {
+            "true",
+            "1",
+            "yes",
+            "y",
+            "false",
+            "0",
+            "no",
+            "n",
+        }:
             is_confirm = True
 
         if is_confirm:
@@ -241,7 +252,9 @@ class ScriptLifecycleController:
     def _handle_user_cancelled(self) -> None:
         self.abort_active("Operation cancelled by user.")
 
-    def _boolean_fields_for_request(self, request: ScriptInputRequest) -> list[BooleanField]:
+    def _boolean_fields_for_request(
+        self, request: ScriptInputRequest
+    ) -> list[BooleanField]:
         fields: list[BooleanField] = []
         for field in request.fields:
             if field.get("type") != "bool":

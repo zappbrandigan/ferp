@@ -27,10 +27,12 @@ class TranscriptLogger:
         result: ScriptResult,
     ) -> Path:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        slug = "".join(
-            ch.lower() if ch.isalnum() else "_"
-            for ch in script_name.strip()
-        ).strip("_") or "script"
+        slug = (
+            "".join(
+                ch.lower() if ch.isalnum() else "_" for ch in script_name.strip()
+            ).strip("_")
+            or "script"
+        )
         filename = f"{timestamp}_{slug}.log"
         path = self._logs_dir / filename
 

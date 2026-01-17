@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
-
 MONDAY_REQUIRED_COLUMNS = (
     "Publisher",
     "Territory",
@@ -16,7 +15,9 @@ MONDAY_REQUIRED_COLUMNS = (
 )
 
 
-def sync_monday_board(api_token: str, board_id: int, cache_path: Path) -> dict[str, object]:
+def sync_monday_board(
+    api_token: str, board_id: int, cache_path: Path
+) -> dict[str, object]:
     query = """
     query ($boardId: [ID!], $cursor: String) {
       boards(ids: $boardId) {
@@ -50,7 +51,9 @@ def sync_monday_board(api_token: str, board_id: int, cache_path: Path) -> dict[s
         with urlopen(request, timeout=30) as response:
             body = json.loads(response.read().decode("utf-8"))
         if "errors" in body:
-            messages = "; ".join(error.get("message", "Unknown error") for error in body["errors"])
+            messages = "; ".join(
+                error.get("message", "Unknown error") for error in body["errors"]
+            )
             raise RuntimeError(f"Monday API error: {messages}")
         return body.get("data", {})
 
@@ -95,8 +98,7 @@ def sync_monday_board(api_token: str, board_id: int, cache_path: Path) -> dict[s
             group_key = group_name.lower()
             group_bucket = result.setdefault(group_key, [])
             row = {
-                name.lower(): col_map.get(name, "")
-                for name in MONDAY_REQUIRED_COLUMNS
+                name.lower(): col_map.get(name, "") for name in MONDAY_REQUIRED_COLUMNS
             }
             group_bucket.append(row)
             publisher_count += 1

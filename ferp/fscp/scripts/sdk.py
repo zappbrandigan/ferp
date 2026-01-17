@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Literal, Mapping, cast
 
 from ferp.fscp.protocol.messages import Message, MessageType
-from ferp.fscp.protocol.validator import ProtocolValidator, Endpoint
+from ferp.fscp.protocol.validator import Endpoint, ProtocolValidator
 from ferp.fscp.scripts.runtime.errors import FatalScriptError, ProtocolViolation
 from ferp.fscp.scripts.runtime.io import read_message, write_message
 
@@ -160,7 +160,9 @@ class _Transport:
             return msg
         if msg.type is MessageType.CANCEL:
             raise ScriptCancelled("Host cancelled script before it started.")
-        raise ProtocolViolation(f"Expected '{expected.value}', received '{msg.type.value}'.")
+        raise ProtocolViolation(
+            f"Expected '{expected.value}', received '{msg.type.value}'."
+        )
 
     def receive(self) -> Message:
         raw = read_message()
@@ -183,7 +185,9 @@ class _Transport:
             if msg.type is MessageType.CANCEL:
                 raise ScriptCancelled("Host cancelled script while awaiting input.")
 
-            raise ProtocolViolation(f"Unexpected message '{msg.type.value}' while awaiting input.")
+            raise ProtocolViolation(
+                f"Unexpected message '{msg.type.value}' while awaiting input."
+            )
 
 
 class _ScriptSession:

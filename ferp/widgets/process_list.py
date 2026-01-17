@@ -31,9 +31,13 @@ class ProcessListItem(ListItem):
 
     @staticmethod
     def _render_meta(record: ProcessRecord) -> str:
-        started = datetime.fromtimestamp(record.start_time).strftime("%Y-%m-%d %H:%M:%S")
+        started = datetime.fromtimestamp(record.start_time).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
         target = record.metadata.target_path
-        exit_code = f" · exit {record.exit_code}" if record.exit_code is not None else ""
+        exit_code = (
+            f" · exit {record.exit_code}" if record.exit_code is not None else ""
+        )
         mode = f" · {record.termination_mode}" if record.termination_mode else ""
         return f"{target} · started {started}{exit_code}{mode}"
 
@@ -76,6 +80,7 @@ class ProcessListScreen(ModalScreen[None]):
         self._refresh()
         list_view = self.query_one(ListView)
         list_view.focus()
+
     def on_show(self) -> None:
         self._refresh()
 
@@ -121,9 +126,14 @@ class ProcessListScreen(ModalScreen[None]):
     def _refresh(self) -> None:
         list_view = self.query_one(ListView)
         list_view.clear()
-        records = sorted(self._registry.list_all(), key=lambda rec: rec.start_time, reverse=True)
+        records = sorted(
+            self._registry.list_all(), key=lambda rec: rec.start_time, reverse=True
+        )
         if not records:
-            placeholder = ListItem(Static("No tracked processes."), classes="process_row process_row--empty")
+            placeholder = ListItem(
+                Static("No tracked processes."),
+                classes="process_row process_row--empty",
+            )
             placeholder.disabled = True
             list_view.append(placeholder)
             return

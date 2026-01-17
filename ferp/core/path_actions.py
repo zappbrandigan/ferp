@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from ferp.widgets.dialogs import ConfirmDialog, InputDialog
 from ferp.core.fs_controller import FileSystemController
+from ferp.widgets.dialogs import ConfirmDialog, InputDialog
 
 
 class PathActionController:
