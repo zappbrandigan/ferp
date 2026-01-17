@@ -48,6 +48,16 @@ Each script lives under `scripts/<id>/` (the directory name matches the fully-qu
 - `script.py` contains the executable FSCP script.
 - `readme.md` provides the optional documentation shown inside FER​P.
 
+### Dev toggle for script config
+
+During development you can point FER​P at the repo copy of `ferp/scripts/config.json` instead of the user config file:
+
+```bash
+FERP_DEV_CONFIG=1 python -m ferp
+```
+
+When enabled, FER​P reads the config directly from the repository and skips the one-time copy into the user config directory.
+
 ## Authoring FSCP Scripts
 
 Python scripts executed from FER​P speak the [FSCP](./ferp/fscp) protocol. Use the bundled SDK to avoid boilerplate:

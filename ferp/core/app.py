@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 from datetime import datetime, timezone
 import subprocess
@@ -152,7 +153,8 @@ class Ferp(App):
     def _prepare_paths(self) -> AppPaths:
         app_root = Path(__file__).parent.parent
         config_dir = Path(user_config_path(APP_NAME, APP_AUTHOR))
-        config_file = config_dir / "config.json"
+        dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
+        config_file = app_root / "scripts" / "config.json" if dev_config_enabled else config_dir / "config.json"
         settings_file = config_dir / "settings.json"
         data_dir = Path(user_data_path(APP_NAME, APP_AUTHOR))
         cache_dir = Path(user_cache_path(APP_NAME, APP_AUTHOR))
@@ -165,7 +167,7 @@ class Ferp(App):
 
         default_config_file = app_root / "scripts" / "config.json"
 
-        if not config_file.exists():
+        if not config_file.exists() and not dev_config_enabled:
             if default_config_file.exists():
                 config_file.write_text(
                     default_config_file.read_text(encoding="utf-8"),
