@@ -1,0 +1,49 @@
+# <type>(<scope>): <short summary>
+#
+# Examples:
+#   feat(fscp): add request_input message handling
+#   fix(tui): prevent crash on empty selection
+#   refactor(validation): centralize schema loading
+#
+# Types:
+#   feat      | user-facing capability or workflow expansion
+#   fix       | bug fix or correctness repair
+#   refactor  | structural change without behavior change
+#   perf      | performance or resource usage improvement
+#   docs      | documentation or in-repo guidance updates
+#   chore     | maintenance, tooling, or cleanup
+#   test      | tests or fixtures
+#   build     | build system, packaging, release wiring
+#   ci        | automation pipelines or checks
+#   deps      | dependency updates
+#
+# Suggested scopes:
+#   fscp       | FSCP protocol integration and message handling
+#   protocol   | schemas, envelopes, and protocol contracts
+#   host       | host process management and orchestration
+#   tui        | Textual UI widgets, layout, and interactions
+#   lifecycle  | startup, shutdown, and app state transitions
+#   validation | config/schema validation logic
+#   logging    | transcript logging and output formatting
+#   io         | filesystem and path operations
+#   config     | settings and config.json handling
+#   build      | build/release metadata and packaging hooks
+#
+# Body (what/why/impact):
+# - What changed?
+# - Why was it necessary?
+# - User-visible impact (if any)?
+#
+# FSCP / Protocol Notes (if applicable):
+# - Message types added/changed:
+# - Schema / validator updates:
+# - Backwards compatibility considerations:
+#
+# Breaking Changes (if any):
+# - What breaks and why?
+# - Upgrade / migration notes:
+#
+# References:
+# - Issue/Ticket:
+# - Spec/Doc:
+# - Related commits:

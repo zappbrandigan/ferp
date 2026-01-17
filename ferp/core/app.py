@@ -415,16 +415,22 @@ class Ferp(App):
         start_sync(token)
 
     def _install_default_scripts(self) -> dict[str, str | bool]:
-        release_version = update_scripts_from_release(SCRIPTS_REPO_URL, self.scripts_dir)
+        try:
+            release_version = update_scripts_from_release(SCRIPTS_REPO_URL, self.scripts_dir)
 
-        scripts_config_file = self.scripts_dir / "config.json"
-        if not scripts_config_file.exists():
-            raise FileNotFoundError(
-                f"No default config found at {scripts_config_file}"
-            )
+            scripts_config_file = self.scripts_dir / "config.json"
+            if not scripts_config_file.exists():
+                raise FileNotFoundError(
+                    f"No default config found at {scripts_config_file}"
+                )
 
-        self._paths.config_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(scripts_config_file, self._paths.config_file)
+            self._paths.config_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(scripts_config_file, self._paths.config_file)
+        except Exception as exc:
+            return {
+                "error": str(exc),
+                "release_status": "Default scripts update failed.",
+            }
 
         return {
             "config_path": str(self._paths.config_file),
@@ -535,6 +541,13 @@ class Ferp(App):
 
     def _render_default_scripts_update(self, payload: dict[str, Any]) -> None:
         panel = self.query_one(ScriptOutputPanel)
+        error = payload.get("error")
+        if error:
+            panel.update_content(
+                "[bold $error]Default scripts update failed.[/bold $error]\n"
+                + escape(str(error))
+            )
+            return
         config_path = payload.get("config_path", "")
         release_status = payload.get("release_status", "")
         release_detail = payload.get("release_detail", "")

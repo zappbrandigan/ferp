@@ -16,9 +16,12 @@ def update_scripts_from_release(repo_url: str, scripts_dir: Path) -> str:
         "User-Agent": "ferp",
     }
 
-    response = requests.get(api_url, headers=headers, timeout=30)
-    response.raise_for_status()
-    payload = response.json()
+    try:
+        response = requests.get(api_url, headers=headers, timeout=30)
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        raise RuntimeError("Failed to fetch latest release metadata.") from exc
 
     zip_url = payload.get("zipball_url")
     if not zip_url:
@@ -29,13 +32,19 @@ def update_scripts_from_release(repo_url: str, scripts_dir: Path) -> str:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         archive_path = tmp_path / "scripts.zip"
-        response = requests.get(zip_url, headers=headers, timeout=60)
-        response.raise_for_status()
-        archive_path.write_bytes(response.content)
+        try:
+            response = requests.get(zip_url, headers=headers, timeout=60)
+            response.raise_for_status()
+            archive_path.write_bytes(response.content)
+        except requests.RequestException as exc:
+            raise RuntimeError("Failed to download release archive.") from exc
 
         extract_dir = tmp_path / "extract"
-        with zipfile.ZipFile(archive_path) as archive:
-            archive.extractall(extract_dir)
+        try:
+            with zipfile.ZipFile(archive_path) as archive:
+                archive.extractall(extract_dir)
+        except zipfile.BadZipFile as exc:
+            raise RuntimeError("Release archive is not a valid zip file.") from exc
 
         source_dir = _find_release_payload_dir(extract_dir)
         _replace_scripts_payload(source_dir, scripts_dir)
