@@ -24,6 +24,7 @@ from textual.worker import Worker, WorkerState
 from ferp import __version__
 from ferp.core.bundle_installer import ScriptBundleInstaller
 from ferp.core.command_provider import FerpCommandProvider
+from ferp.core.dependency_manager import ScriptDependencyManager
 from ferp.core.fs_controller import FileSystemController
 from ferp.core.fs_watcher import FileTreeWatcher
 from ferp.core.messages import (
@@ -288,8 +289,19 @@ class Ferp(App):
                 return
             try:
                 bundle_path = Path(value).expanduser()
+                if not bundle_path.is_absolute():
+                    bundle_path = (self.current_path / bundle_path).resolve()
             except Exception as exc:
                 self.show_error(exc)
+                return
+            if not bundle_path.exists():
+                self.show_error(FileNotFoundError(f"No bundle found at {bundle_path}"))
+                return
+            if not bundle_path.is_file():
+                self.show_error(ValueError(f"Bundle path must point to a file: {bundle_path}"))
+                return
+            if bundle_path.suffix.lower() != ".ferp":
+                self.show_error(ValueError("Bundles must be supplied as .ferp archives."))
                 return
             self.bundle_installer.start_install(bundle_path)
 
@@ -441,8 +453,17 @@ class Ferp(App):
                     f"No default config found at {scripts_config_file}"
                 )
 
-            self._paths.config_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(scripts_config_file, self._paths.config_file)
+            if scripts_config_file.resolve() != self._paths.config_file.resolve():
+                self._paths.config_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(scripts_config_file, self._paths.config_file)
+                config_status = "Updated user config from bundled defaults."
+            else:
+                config_status = "Default config already in use; skipping copy."
+
+            dependency_manager = ScriptDependencyManager(
+                self._paths.config_file, python_executable=sys.executable
+            )
+            dependency_manager.install_for_scripts()
         except Exception as exc:
             return {
                 "error": str(exc),
@@ -452,7 +473,7 @@ class Ferp(App):
         return {
             "config_path": str(self._paths.config_file),
             "release_status": "Scripts updated to latest release.",
-            "release_detail": "",
+            "release_detail": config_status,
             "release_version": release_version,
         }
 

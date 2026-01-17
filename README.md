@@ -107,6 +107,8 @@ The `bundle` command writes `my_script.ferp` containing:
 
 Users can install bundles by opening the command palette (`Ctrl+P`) and choosing **Install Script Bundle…**—FERP copies the script into `scripts/`, updates your user `config.json`, and stores the README automatically.
 
+Dependency installs run through the same Python interpreter that launched FERP. When you install FERP via `pipx`, that means bundle dependencies land in the pipx-managed virtual environment alongside the app.
+
 ## Terminal Commands
 
 FERP includes an integrated terminal panel for quick shell commands.

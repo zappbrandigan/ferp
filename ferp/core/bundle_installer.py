@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 import sys
 import zipfile
 from dataclasses import dataclass
@@ -14,6 +13,7 @@ from textual.worker import Worker, WorkerState
 
 from ferp.widgets.output_panel import ScriptOutputPanel
 from ferp.widgets.scripts import ScriptManager
+from ferp.core.dependency_manager import ScriptDependencyManager
 
 if TYPE_CHECKING:
     from ferp.core.app import Ferp
@@ -118,8 +118,10 @@ class ScriptBundleInstaller:
                 readme_path.write_text(readme_text, encoding="utf-8")
 
         self._update_scripts_config(manifest, script_target)
-        if manifest.dependencies:
-            self._install_dependencies(manifest.dependencies)
+        dependency_manager = ScriptDependencyManager(
+            self._config_file, python_executable=sys.executable
+        )
+        dependency_manager.install_for_scripts([manifest.id])
 
         return InstalledBundleResult(
             manifest=manifest,
@@ -285,6 +287,8 @@ class ScriptBundleInstaller:
             entry["input_prompt"] = manifest.input_prompt
         if manifest.file_extensions:
             entry["file_extensions"] = manifest.file_extensions
+        if manifest.dependencies:
+            entry["dependencies"] = manifest.dependencies
 
         for index, existing in enumerate(scripts):
             if existing.get("id") == manifest.id:
@@ -294,18 +298,3 @@ class ScriptBundleInstaller:
             scripts.append(entry)
 
         config_path.write_text(json.dumps(data, indent=2) + "\n")
-
-    def _install_dependencies(self, dependencies: list[str]) -> None:
-        pip_cmd = [sys.executable, "-m", "pip", "install", *dependencies]
-        try:
-            subprocess.run(
-                pip_cmd,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-        except subprocess.CalledProcessError as exc:
-            stderr = exc.stderr.strip() if exc.stderr else ""
-            raise RuntimeError(
-                f"Failed to install dependencies ({', '.join(dependencies)}).\n{stderr}"
-            ) from exc
