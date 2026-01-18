@@ -37,8 +37,7 @@ pipx install git+https://github.com/zappbrandigan/ferp.git
 
 Scripts are declared in your user config `config.json` (created on first script install). Each entry defines:
 
-- `script.script["other"/"windows"]`: path to the executable (e.g. `scripts/ferp.zip_dir/script.py`).
-- `args`: command-line args (supports `{target}` substitution).
+- `script`: path to the executable (e.g. `scripts/ferp.zip_dir/script.py`).
 - `target`: `current_directory`, `highlighted_file`, or `highlighted_directory`.
 - `file_extensions`: optional list of suffixes (for `highlighted_file` targets).
 - Optional README at `scripts/<id>/readme.md`.
@@ -69,7 +68,7 @@ from ferp.fscp.scripts import sdk
 def main(ctx: sdk.ScriptContext, api: sdk.ScriptAPI) -> None:
     api.log("info", f"Current target: {ctx.target_path}")
     choice = api.request_input("Enter a label", default="example")
-    api.emit_result({"label": choice, "args": ctx.args})
+    api.emit_result({"label": choice})
 
 if __name__ == "__main__":
     main()
@@ -95,12 +94,11 @@ ferp bundle path/to/script.py path/to/README.md \
   --target highlighted_directory \
   --dependency requests \
   --dependency "rich>=13" \
-  --requires-input \
 ```
 
 The `bundle` command writes `my_script.ferp` containing:
 
-- `manifest.json` – metadata (`id` such as `vendor.script`, `name`, `version`, `target`, args, etc.).
+- `manifest.json` – metadata (`id` such as `vendor.script`, `name`, `version`, `target`, etc.).
 - Your Python script (the manifest `entrypoint`).
 - Optional README rendered inside FER​P.
 - Dependency list (pip specifiers) installed automatically when users import the bundle.

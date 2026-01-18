@@ -15,9 +15,6 @@ def script_from_config(cfg: ScriptConfig) -> Script:
         name=cfg["name"],
         version=cfg["version"],
         script=cfg["script"],
-        args=cfg.get("args", []),
-        requires_input=cfg["requires_input"],
-        input_prompt=cfg.get("input_prompt"),
         target=cfg["target"],
         file_extensions=cfg.get("file_extensions"),
     )

@@ -67,18 +67,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Which path FER​P should send to the script (default: current_directory).",
     )
     bundle_parser.add_argument(
-        "--requires-input",
-        action="store_true",
-        help="Indicate that the script prompts for user input.",
-    )
-    bundle_parser.add_argument(
-        "--arg",
-        dest="args",
-        action="append",
-        default=[],
-        help="Additional script argument (repeat for multiple). Defaults to '{target}'.",
-    )
-    bundle_parser.add_argument(
         "--dependency",
         dest="dependencies",
         action="append",
@@ -122,17 +110,12 @@ def handle_bundle(args: argparse.Namespace) -> None:
     if bundle_path.suffix.lower() != ".ferp":
         bundle_path = bundle_path.with_suffix(".ferp")
 
-    args_list = args.args or ["{target}"]
-
     manifest: dict[str, object] = {
         "id": script_id,
         "name": script_name,
         "version": args.script_version,
-        "type": "python",
         "entrypoint": script_path.name,
         "target": args.target,
-        "requires_input": bool(args.requires_input),
-        "args": args_list,
     }
 
     if readme_path:

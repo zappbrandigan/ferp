@@ -26,13 +26,6 @@ class ScriptContext:
     params: Dict[str, Any]
     environment: Dict[str, Any]
 
-    @property
-    def args(self) -> list[str]:
-        raw = self.params.get("args")
-        if isinstance(raw, list):
-            return [str(item) for item in raw]
-        return []
-
 
 class ScriptAPI:
     """High-level helpers for authoring FSCP scripts."""

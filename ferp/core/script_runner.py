@@ -148,7 +148,6 @@ class ScriptRunner:
                     "kind": context.target_kind,
                 },
                 "params": {
-                    "args": list(context.args),
                     "script": {
                         "id": context.script.id,
                         "name": context.script.name,

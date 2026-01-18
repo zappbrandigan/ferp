@@ -11,9 +11,9 @@ from typing import TYPE_CHECKING, Any
 from rich.markup import escape
 from textual.worker import Worker, WorkerState
 
+from ferp.core.dependency_manager import ScriptDependencyManager
 from ferp.widgets.output_panel import ScriptOutputPanel
 from ferp.widgets.scripts import ScriptManager
-from ferp.core.dependency_manager import ScriptDependencyManager
 
 if TYPE_CHECKING:
     from ferp.core.app import Ferp
@@ -24,10 +24,6 @@ class ScriptBundleManifest:
     id: str
     name: str
     version: str
-    script_type: str
-    args: list[str]
-    requires_input: bool
-    input_prompt: str | None
     target: str
     entrypoint: str
     readme: str | None
@@ -205,16 +201,6 @@ class ScriptBundleInstaller:
                 "'highlighted_file', or 'highlighted_directory'."
             )
 
-        requires_input = bool(payload.get("requires_input", False))
-        args_raw = payload.get("args", [])
-        if not isinstance(args_raw, list):
-            raise ValueError("Manifest 'args' must be a list.")
-        args = [str(arg) for arg in args_raw]
-
-        input_prompt = payload.get("input_prompt")
-        if input_prompt is not None:
-            input_prompt = str(input_prompt)
-
         readme = payload.get("readme")
         if readme is not None:
             readme = str(readme).strip()
@@ -245,10 +231,6 @@ class ScriptBundleInstaller:
             id=str(payload["id"]),
             name=str(payload["name"]),
             version=str(payload["version"]),
-            script_type="python",
-            args=args,
-            requires_input=requires_input,
-            input_prompt=input_prompt,
             target=target,
             entrypoint=str(payload["entrypoint"]),
             readme=readme,
@@ -273,18 +255,9 @@ class ScriptBundleInstaller:
             "id": manifest.id,
             "name": manifest.name,
             "version": manifest.version,
-            "type": manifest.script_type,
-            "script": {
-                "windows": rel_path,
-                "other": rel_path,
-            },
-            "args": manifest.args,
-            "requires_input": manifest.requires_input,
+            "script": rel_path,
             "target": manifest.target,
         }
-
-        if manifest.input_prompt:
-            entry["input_prompt"] = manifest.input_prompt
         if manifest.file_extensions:
             entry["file_extensions"] = manifest.file_extensions
         if manifest.dependencies:
