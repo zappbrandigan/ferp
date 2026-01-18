@@ -298,10 +298,14 @@ class Ferp(App):
                 self.show_error(FileNotFoundError(f"No bundle found at {bundle_path}"))
                 return
             if not bundle_path.is_file():
-                self.show_error(ValueError(f"Bundle path must point to a file: {bundle_path}"))
+                self.show_error(
+                    ValueError(f"Bundle path must point to a file: {bundle_path}")
+                )
                 return
             if bundle_path.suffix.lower() != ".ferp":
-                self.show_error(ValueError("Bundles must be supplied as .ferp archives."))
+                self.show_error(
+                    ValueError("Bundles must be supplied as .ferp archives.")
+                )
                 return
             self.bundle_installer.start_install(bundle_path)
 
@@ -375,16 +379,22 @@ class Ferp(App):
     def _command_install_default_scripts(self) -> None:
         prompt = (
             "Replace your script catalog with the default Ferp scripts?\n"
-            "This will overwrite config.json and replace scripts/ from the latest release."
+            "This will overwrite config.json and fully replace scripts/ from the latest release."
         )
 
         def after(value: bool | None) -> None:
             if not value:
                 return
             panel = self.query_one(ScriptOutputPanel)
+            dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
+            detail_line = (
+                "[dim]FERP_DEV_CONFIG=1; dry run (no files will be modified).[/dim]"
+                if dev_config_enabled
+                else "[dim]Overwriting config.json in your user config directory and fully replacing scripts/.[/dim]"
+            )
             panel.update_content(
                 "[bold $primary]Updating default scripts…[/bold $primary]\n"
-                "[dim]Overwriting config.json in your user config directory.[/dim]"
+                f"{detail_line}"
             )
             self.run_worker(
                 self._install_default_scripts,
@@ -443,9 +453,17 @@ class Ferp(App):
 
     def _install_default_scripts(self) -> dict[str, str | bool]:
         try:
+            dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
             release_version = update_scripts_from_release(
-                SCRIPTS_REPO_URL, self.scripts_dir
+                SCRIPTS_REPO_URL, self.scripts_dir, dry_run=dev_config_enabled
             )
+
+            if dev_config_enabled:
+                return {
+                    "release_status": "Default scripts update skipped (dry run).",
+                    "release_detail": "FERP_DEV_CONFIG=1; no files were modified.",
+                    "release_version": release_version,
+                }
 
             scripts_config_file = self.scripts_dir / "config.json"
             if not scripts_config_file.exists():

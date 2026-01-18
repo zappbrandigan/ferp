@@ -8,7 +8,9 @@ from pathlib import Path
 import requests
 
 
-def update_scripts_from_release(repo_url: str, scripts_dir: Path) -> str:
+def update_scripts_from_release(
+    repo_url: str, scripts_dir: Path, *, dry_run: bool = False
+) -> str:
     owner, repo = _parse_github_repo(repo_url)
     api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
     headers = {
@@ -47,7 +49,8 @@ def update_scripts_from_release(repo_url: str, scripts_dir: Path) -> str:
             raise RuntimeError("Release archive is not a valid zip file.") from exc
 
         source_dir = _find_release_payload_dir(extract_dir)
-        _replace_scripts_payload(source_dir, scripts_dir)
+        if not dry_run:
+            _replace_scripts_payload(source_dir, scripts_dir)
 
     return tag_name
 
@@ -95,15 +98,5 @@ def _parse_github_repo(repo_url: str) -> tuple[str, str]:
 
 def _replace_scripts_payload(source_dir: Path, scripts_dir: Path) -> None:
     if scripts_dir.exists():
-        git_dir = scripts_dir / ".git"
-        if git_dir.exists():
-            for entry in scripts_dir.iterdir():
-                if entry.name == ".git":
-                    continue
-                if entry.is_dir():
-                    shutil.rmtree(entry)
-                else:
-                    entry.unlink()
-        else:
-            shutil.rmtree(scripts_dir)
+        shutil.rmtree(scripts_dir)
     shutil.copytree(source_dir, scripts_dir, dirs_exist_ok=True)
