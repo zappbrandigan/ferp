@@ -1,49 +1,97 @@
-# <type>(<scope>): <short summary>
+# Commit format (Conventional Commits):
+#   <type>(<scope>): <description>
+#   <type>: <description>              # scope is optional
+#   <type>(<scope>)!: <description>    # use ! for breaking changes
 #
-# Examples:
-#   feat(fscp): add request_input message handling
-#   fix(tui): prevent crash on empty selection
-#   refactor(validation): centralize schema loading
+# The description SHOULD be in the imperative mood (command form) and
+# describe the outcome of the change (not the implementation steps).
 #
-# Types:
+# Good descriptions:
+#   feat(fscp): add request_input handling for interactive scripts
+#   fix(tui): prevent crash when no row is selected
+#   refactor(validation): centralize schema loading and caching
+#   feat(protocol)!: require envelope version v2 for all messages
+#
+# Bad descriptions:
+#   feat: stuff
+#   fix(tui): bug fix
+#   refactor(validation): refactor code
+#
+# --------------------------------------------------------------------
+# Commit Types (custom types are allowed; keep these consistent):
+#
 #   feat      | user-facing capability or workflow expansion
 #   fix       | bug fix or correctness repair
-#   refactor  | structural change without behavior change
+#   refactor  | structural change with no user-visible behavior change
 #   perf      | performance or resource usage improvement
 #   docs      | documentation or in-repo guidance updates
-#   chore     | maintenance, tooling, or cleanup
-#   test      | tests or fixtures
-#   build     | build system, packaging, release wiring
-#   ci        | automation pipelines or checks
-#   deps      | dependency updates
+#   chore     | maintenance, cleanup, or non-user-facing changes
+#   test      | tests, fixtures, or test infrastructure
+#   build     | build system, packaging, or release tooling
+#   ci        | automation pipelines, checks, or CI configuration
+#   deps      | dependency updates (ensure tooling recognizes this type)
 #
-# Suggested scopes:
-#   fscp       | FSCP protocol integration and message handling
-#   protocol   | schemas, envelopes, and protocol contracts
-#   host       | host process management and orchestration
-#   tui        | Textual UI widgets, layout, and interactions
-#   lifecycle  | startup, shutdown, and app state transitions
-#   validation | config/schema validation logic
-#   logging    | transcript logging and output formatting
-#   io         | filesystem and path operations
-#   config     | settings and config.json handling
-#   build      | build/release metadata and packaging hooks
+# Note: If your release tooling does not recognize `deps`, prefer:
+#   chore(deps): bump <package> to <version>
 #
-# Body (what/why/impact):
-# - What changed?
-# - Why was it necessary?
-# - User-visible impact (if any)?
+# --------------------------------------------------------------------
+# Suggested Scopes (be specific and consistent):
 #
-# FSCP / Protocol Notes (if applicable):
+#   fscp        | FSCP message handling and integration
+#   protocol    | schemas, envelopes, and protocol contracts
+#   host        | host process management and orchestration
+#   tui         | Textual UI widgets, layout, and interactions
+#   lifecycle   | startup, shutdown, and app state transitions
+#   validation  | config and schema validation logic
+#   logging     | transcript logging and output formatting
+#   io          | filesystem, paths, and file operations
+#   config      | config.json and settings management
+#   scripts     | bundled scripts and script tooling
+#   build       | build/release metadata and packaging hooks
+#
+# --------------------------------------------------------------------
+# Body and Footers
+#
+# Prefer full sentences in the body. Keep paragraphs short and readable.
+# Omit sections that are not applicable.
+#
+# Summary:
+# Brief restatement of the change in prose, expanding on the subject line.
+#
+# Details:
+# Explain what changed and how it works at a high level. Focus on behavior
+# and structure, not line-by-line implementation.
+#
+# Impact:
+# Describe user-visible effects, workflow improvements, or maintenance
+# benefits. If none, explicitly state: "No user-visible impact."
+#
+# FSCP / Protocol (if applicable):
 # - Message types added/changed:
 # - Schema / validator updates:
-# - Backwards compatibility considerations:
+# - Backwards compatibility notes:
 #
-# Breaking Changes (if any):
-# - What breaks and why?
-# - Upgrade / migration notes:
+# Breaking Changes:
+# If there are breaking changes, do BOTH of the following:
+#   1) add `!` after <type>(<scope>) in the subject line, and
+#   2) add a footer starting with `BREAKING CHANGE:` describing the break
+#      and the migration path.
 #
-# References:
-# - Issue/Ticket:
-# - Spec/Doc:
-# - Related commits:
+# Example footer:
+#   BREAKING CHANGE: v1 envelopes are rejected; migrate to v2 by updating
+#   the sender to emit `envelope_version=2`.
+#
+# References (skip if none):
+# Use footer tokens when possible (tooling may parse these):
+#   Refs: ABC-123
+#   Closes #123
+#   Relates-to: <link-or-id>
+#
+# --------------------------------------------------------------------
+# Style Rules:
+# - Use the imperative mood in the subject line (e.g., "add", "fix", "remove").
+# - Use complete sentences in the body.
+# - Prefer intent and outcome over implementation detail.
+# - Assume the reader has not read the diff.
+# - Write so the commit message can stand alone in release notes.
+#
