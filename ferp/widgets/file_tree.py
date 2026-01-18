@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 import sys
@@ -110,7 +111,7 @@ class ChunkNavigatorItem(ListItem):
 class FileTreeFilterWidget(Widget):
     """Hidden input bar for filtering file tree entries."""
 
-    DEBOUNCE_DELAY = 0.3
+    DEBOUNCE_DELAY = 0.4
     BINDINGS = [
         Binding("escape", "hide", "Hide filter", show=True),
     ]
@@ -270,6 +271,7 @@ class FileTree(ListView):
         self._all_entries: list[FileListingEntry] = []
         self._filtered_entries: list[FileListingEntry] = []
         self._filter_query = ""
+        self._filter_error = False
         self._chunk_start = 0
         self._current_listing_path: Path | None = None
         self._last_selected_path: Path | None = None
@@ -439,8 +441,25 @@ class FileTree(ListView):
         self._render_current_chunk()
 
     def _apply_filter(self) -> None:
+        self._filter_error = False
         if not self._filter_query:
             self._filtered_entries = self._all_entries
+            return
+
+        if self._filter_query.startswith("/"):
+            pattern = self._filter_query[1:]
+            if not pattern:
+                self._filtered_entries = self._all_entries
+                return
+            try:
+                matcher = re.compile(pattern, re.IGNORECASE)
+            except re.error:
+                self._filter_error = True
+                self._filtered_entries = []
+                return
+            self._filtered_entries = [
+                entry for entry in self._all_entries if matcher.search(entry.path.name)
+            ]
             return
 
         query = self._filter_query.casefold()
@@ -469,7 +488,10 @@ class FileTree(ListView):
             truncated = self._filter_query
             if len(truncated) > self.FILTER_TITLE_MAX:
                 truncated = f"{truncated[: self.FILTER_TITLE_MAX - 3]}..."
-            title = f'{title} (filter: "{truncated}")'
+            if self._filter_error:
+                title = f'{title} (filter: "{truncated}" - invalid regex)'
+            else:
+                title = f'{title} (filter: "{truncated}")'
         self.border_title = title
 
     def action_filter_entries(self) -> None:

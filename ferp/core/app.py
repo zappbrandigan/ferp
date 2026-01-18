@@ -134,7 +134,6 @@ class Ferp(App):
         self._pending_refresh = False
         self._task_list_screen: TaskListScreen | None = None
         self._process_list_screen: ProcessListScreen | None = None
-        self._readme_screen: ReadmeScreen | None = None
         super().__init__()
         self.fs_controller = FileSystemController()
         self._file_tree_watcher = FileTreeWatcher(
@@ -553,9 +552,8 @@ class Ferp(App):
         else:
             content = event.readme_path.read_text(encoding="utf-8")
 
-        screen = self._ensure_readme_screen()
-        screen.update_content(event.script.name, content)
-        self.push_screen("readme_screen")
+        screen = ReadmeScreen(event.script.name, content, id="readme_screen")
+        self.push_screen(screen)
 
     @on(RunScriptRequest)
     def handle_script_run(self, event: RunScriptRequest) -> None:
@@ -766,13 +764,6 @@ class Ferp(App):
             self.install_screen(screen, name="process_list")
             self._process_list_screen = screen
         return self._process_list_screen
-
-    def _ensure_readme_screen(self) -> ReadmeScreen:
-        if self._readme_screen is None:
-            screen = ReadmeScreen("", "", id="readme_screen")
-            self.install_screen(screen, name="readme_screen")
-            self._readme_screen = screen
-        return self._readme_screen
 
     def action_toggle_help(self) -> None:
         try:
