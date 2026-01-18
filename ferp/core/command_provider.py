@@ -15,12 +15,12 @@ class FerpCommandProvider(SimpleProvider):
 
     _COMMAND_DEFS: tuple[tuple[str, str, str], ...] = (
         (
-            "Install Script Bundle…",
+            "Install Script Bundle",
             "Install a zipped FSCP script bundle into Ferp.",
             "_command_install_script_bundle",
         ),
         (
-            "Install/Update Default Scripts…",
+            "Install/Update Default Scripts",
             "Update scripts from the bundled defaults and overwrite config.json.",
             "_command_install_default_scripts",
         ),
@@ -45,12 +45,12 @@ class FerpCommandProvider(SimpleProvider):
             "_command_show_processes",
         ),
         (
-            "Set Startup Directory…",
+            "Set Startup Directory",
             "Update the startup directory stored in settings.json.",
             "_command_set_startup_directory",
         ),
         (
-            "Sync Monday Board Cache…",
+            "Sync Monday Board Cache",
             "Fetch the Monday board and refresh publishers_cache.json.",
             "_command_sync_monday_board",
         ),
