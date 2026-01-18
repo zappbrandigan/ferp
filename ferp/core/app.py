@@ -496,7 +496,10 @@ class Ferp(App):
 
     def _sync_monday_board(self, api_token: str, board_id: int) -> dict[str, object]:
         cache_path = self._paths.cache_dir / "publishers_cache.json"
-        return sync_monday_board(api_token, board_id, cache_path)
+        try:
+            return sync_monday_board(api_token, board_id, cache_path)
+        except Exception as exc:
+            return {"error": str(exc)}
 
     def _request_process_abort(self, record: ProcessRecord) -> bool:
         active_handle = self.script_controller.active_process_handle
@@ -633,6 +636,13 @@ class Ferp(App):
 
     def _render_monday_sync(self, payload: dict[str, Any]) -> None:
         panel = self.query_one(ScriptOutputPanel)
+        error = payload.get("error")
+        if error:
+            panel.update_content(
+                "[bold $error]Monday sync failed.[/bold $error]\n"
+                + escape(str(error))
+            )
+            return
         cache_path = payload.get("cache_path", "")
         board_name = payload.get("board_name", "")
         group_count = payload.get("group_count", 0)
