@@ -11,12 +11,12 @@ if TYPE_CHECKING:
 
 
 class FerpCommandProvider(SimpleProvider):
-    """Command palette provider for Ferp-specific actions."""
+    """Command palette provider for FERP-specific actions."""
 
     _COMMAND_DEFS: tuple[tuple[str, str, str], ...] = (
         (
             "Install Script Bundle",
-            "Install a zipped FSCP script bundle into Ferp.",
+            "Install a zipped FSCP script bundle into FERP.",
             "_command_install_script_bundle",
         ),
         (

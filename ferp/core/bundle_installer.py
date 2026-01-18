@@ -50,7 +50,7 @@ class ScriptBundleInstaller:
     def start_install(self, bundle_path: Path) -> None:
         panel = self._app.query_one(ScriptOutputPanel)
         panel.update_content(
-            "[bold $primary]Installing bundle…[/bold $primary]\n"
+            "[bold $primary]Installing bundle...[/bold $primary]\n"
             + escape(str(bundle_path))
             + "\n[dim]Preparing package...[/dim]"
         )

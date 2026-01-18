@@ -377,7 +377,7 @@ class Ferp(App):
 
     def _command_install_default_scripts(self) -> None:
         prompt = (
-            "Replace your script catalog with the default Ferp scripts?\n"
+            "Replace your script catalog with the default FERP scripts?\n"
             "This will overwrite config.json and fully replace scripts/ from the latest release."
         )
 
