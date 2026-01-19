@@ -44,6 +44,7 @@ dev = [
   "pywin32>=306; platform_system == \"Windows\"",
   "pdfplumber>=0.11.8",
   "reportlab>=4.4.9",
+  "py7zr>=1.1.2",
   "pytest>=8.2",
 ]
 
