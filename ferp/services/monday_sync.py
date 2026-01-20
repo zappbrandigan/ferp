@@ -13,6 +13,11 @@ MONDAY_REQUIRED_COLUMNS = (
     "Expiration Date",
     "Status",
 )
+MONDAY_SUBITEM_COLUMNS = (
+    "Effective Date",
+    "Territory",
+    "Status",
+)
 
 
 def sync_monday_board(
@@ -30,6 +35,9 @@ def sync_monday_board(
             name
             group { id }
             column_values { text column { title } }
+            subitems {
+              column_values { text column { title } }
+            }
           }
         }
       }
@@ -69,22 +77,26 @@ def sync_monday_board(
         if group.get("id")
     }
 
-    result: dict[str, list[dict[str, str]]] = {}
+    result: dict[str, list[dict[str, object]]] = {}
     publisher_count = 0
     skipped = 0
+
+    def build_col_map(column_values: list[dict[str, Any]]) -> dict[str, str]:
+        col_map: dict[str, str] = {}
+        for col in column_values:
+            column = col.get("column") or {}
+            title = column.get("title")
+            if not title:
+                continue
+            col_map[title] = col.get("text") or ""
+        return col_map
 
     while True:
         items_page = board.get("items_page") or {}
         items = items_page.get("items") or []
         for item in items:
             column_values = item.get("column_values") or []
-            col_map: dict[str, str] = {}
-            for col in column_values:
-                column = col.get("column") or {}
-                title = column.get("title")
-                if not title:
-                    continue
-                col_map[title] = col.get("text") or ""
+            col_map = build_col_map(column_values)
 
             if "Publisher" not in col_map:
                 col_map["Publisher"] = item.get("name") or ""
@@ -93,13 +105,27 @@ def sync_monday_board(
                 skipped += 1
                 continue
 
+            subitems = item.get("subitems") or []
+            multi_territory = []
+            for subitem in subitems:
+                subitem_values = subitem.get("column_values") or []
+                sub_map = build_col_map(subitem_values)
+                multi_territory.append(
+                    {
+                        name.lower(): sub_map.get(name, "")
+                        for name in MONDAY_SUBITEM_COLUMNS
+                    }
+                )
+
             group_info = item.get("group") or {}
             group_name = group_map.get(group_info.get("id"), "Ungrouped")
             group_key = group_name.lower()
             group_bucket = result.setdefault(group_key, [])
-            row = {
+            row: dict[str, object] = {
                 name.lower(): col_map.get(name, "") for name in MONDAY_REQUIRED_COLUMNS
             }
+            if multi_territory:
+                row["multi_territory"] = multi_territory
             group_bucket.append(row)
             publisher_count += 1
 
