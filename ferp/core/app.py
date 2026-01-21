@@ -639,8 +639,7 @@ class Ferp(App):
         error = payload.get("error")
         if error:
             panel.update_content(
-                "[bold $error]Monday sync failed.[/bold $error]\n"
-                + escape(str(error))
+                "[bold $error]Monday sync failed.[/bold $error]\n" + escape(str(error))
             )
             return
         cache_path = payload.get("cache_path", "")

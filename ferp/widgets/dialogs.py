@@ -21,9 +21,9 @@ class ConfirmDialog(ModalScreen[bool | None]):
 
     def on_button_pressed(self, event):
         if event.button.id == "cancel":
-            self.dismiss(None)
-        else:
-            self.dismiss(event.button.id == "yes")
+            self.dismiss(False)
+            return
+        self.dismiss(event.button.id == "yes")
 
 
 class InputDialog(ModalScreen[str | None]):

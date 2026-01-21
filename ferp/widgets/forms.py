@@ -68,7 +68,10 @@ class PromptDialog(ModalScreen[dict[str, str | bool] | None]):
 
     def _collect_state(self) -> dict[str, str | bool]:
         state: dict[str, str | bool] = {}
-        state["value"] = self.query_one(Input).value if self._show_text_input else ""
+        if self._show_text_input:
+            state["value"] = self.query_one(Input).value.strip()
+        else:
+            state["value"] = ""
         for field in self._bool_fields:
             checkbox = self.query_one(f"#{field.id}", Checkbox)
             state[field.id] = bool(checkbox.value)

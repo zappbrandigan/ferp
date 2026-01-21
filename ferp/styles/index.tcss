@@ -425,6 +425,11 @@ TaskListScreen {
     width: 90%;
 }
 
+#script_progress_bar #bar > .bar--bar, Bar > .bar--indeterminate {
+    color: $secondary;
+    background: $panel;
+}
+
 #progress_status {
     text-align: center;
 }

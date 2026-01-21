@@ -180,6 +180,10 @@ class Host:
         self._transition(HostState.RUNNING)
         self.send(msg)
 
+    def record_system(self, note: str) -> None:
+        """Add a system note to the transcript."""
+        self._record_system(note)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

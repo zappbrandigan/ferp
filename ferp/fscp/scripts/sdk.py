@@ -1,11 +1,23 @@
 from __future__ import annotations
 
 import itertools
+import json
 import traceback
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Dict, Literal, Mapping, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Literal,
+    Mapping,
+    Sequence,
+    TypedDict,
+    TypeVar,
+    cast,
+    overload,
+)
 
 from ferp.fscp.protocol.messages import Message, MessageType
 from ferp.fscp.protocol.validator import Endpoint, ProtocolValidator
@@ -24,7 +36,42 @@ class ScriptContext:
     target_path: Path
     target_kind: Literal["file", "directory"]
     params: Dict[str, Any]
-    environment: Dict[str, Any]
+    environment: "ScriptEnvironment"
+
+
+class ScriptEnvironmentApp(TypedDict):
+    name: str
+    version: str
+    build: str
+
+
+class ScriptEnvironmentHost(TypedDict):
+    platform: str
+    os: str
+    os_version: str
+    arch: str
+    python: str
+
+
+class ScriptEnvironmentPaths(TypedDict):
+    app_root: str
+    cwd: str
+
+
+class ScriptEnvironment(TypedDict):
+    app: ScriptEnvironmentApp
+    host: ScriptEnvironmentHost
+    paths: ScriptEnvironmentPaths
+
+
+class BoolField(TypedDict):
+    id: str
+    type: Literal["bool"]
+    label: str
+    default: bool
+
+
+_InputPayloadT = TypeVar("_InputPayloadT", bound=Mapping[str, object])
 
 
 class ScriptAPI:
@@ -50,8 +97,18 @@ class ScriptAPI:
         current: float,
         total: float | None = None,
         unit: str | None = None,
+        every: int | None = None,
     ) -> None:
         self._ensure_running()
+        if every is not None:
+            if every <= 0:
+                every = 1
+            if not (
+                current == 1
+                or (total is not None and current == total)
+                or current % every == 0
+            ):
+                return
         payload: Dict[str, Any] = {"current": current}
         if total is not None:
             payload["total"] = total
@@ -71,7 +128,7 @@ class ScriptAPI:
         secret: bool = False,
         id: str | None = None,
         mode: Literal["input", "confirm"] = "input",
-        fields: list[dict[str, Any]] | None = None,
+        fields: Sequence[Mapping[str, Any]] | None = None,
         show_text_input: bool | None = None,
     ) -> str:
         self._ensure_running()
@@ -93,6 +150,62 @@ class ScriptAPI:
         self._transport.send(MessageType.REQUEST_INPUT, request)
         return self._transport.wait_for_input(request_id)
 
+    @overload
+    def request_input_json(
+        self,
+        prompt: str,
+        *,
+        default: str | None = None,
+        secret: bool = False,
+        id: str | None = None,
+        fields: Sequence[BoolField] | None = None,
+        show_text_input: bool | None = None,
+    ) -> Dict[str, str | bool]: ...
+
+    @overload
+    def request_input_json(
+        self,
+        prompt: str,
+        *,
+        default: str | None = None,
+        secret: bool = False,
+        id: str | None = None,
+        fields: Sequence[BoolField] | None = None,
+        show_text_input: bool | None = None,
+        payload_type: type[_InputPayloadT],
+    ) -> _InputPayloadT: ...
+
+    def request_input_json(
+        self,
+        prompt: str,
+        *,
+        default: str | None = None,
+        secret: bool = False,
+        id: str | None = None,
+        fields: Sequence[BoolField] | None = None,
+        show_text_input: bool | None = None,
+        payload_type: type[_InputPayloadT] | None = None,
+    ) -> Dict[str, str | bool] | _InputPayloadT:
+        if fields:
+            self._validate_bool_fields(fields)
+        raw = self.request_input(
+            prompt,
+            default=default,
+            secret=secret,
+            id=id,
+            mode="input",
+            fields=fields,
+            show_text_input=show_text_input,
+        )
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            raise ValueError("Expected JSON object for request_input_json response.")
+        if fields:
+            self._validate_bool_payload(payload, fields)
+        if payload_type is not None:
+            return cast(_InputPayloadT, payload)
+        return payload
+
     def confirm(
         self,
         prompt: str,
@@ -107,6 +220,46 @@ class ScriptAPI:
             mode="confirm",
         )
         return raw.strip().lower() in {"true", "1", "yes", "y"}
+
+    def _validate_bool_fields(self, fields: Sequence[BoolField]) -> None:
+        for field in fields:
+            field_id = field.get("id")
+            label = field.get("label")
+            default = field.get("default")
+            field_type = field.get("type")
+            if field_type != "bool":
+                raise ValueError(
+                    f"request_input_json only supports bool fields; received {field_type!r}."
+                )
+            if not isinstance(field_id, str) or not field_id:
+                raise ValueError("Boolean fields must define a non-empty 'id'.")
+            if not isinstance(label, str) or not label:
+                raise ValueError(
+                    f"Boolean field '{field_id}' must define a non-empty 'label'."
+                )
+            if not isinstance(default, bool):
+                raise ValueError(
+                    f"Boolean field '{field_id}' must define a boolean 'default'."
+                )
+
+    def _validate_bool_payload(
+        self,
+        payload: Dict[str, Any],
+        fields: Sequence[BoolField],
+    ) -> None:
+        value = payload.get("value")
+        if not isinstance(value, str):
+            raise ValueError("request_input_json payload must include string 'value'.")
+        for field in fields:
+            field_id = field["id"]
+            if field_id not in payload:
+                raise ValueError(
+                    f"request_input_json payload missing field '{field_id}'."
+                )
+            if not isinstance(payload[field_id], bool):
+                raise ValueError(
+                    f"request_input_json field '{field_id}' must be a boolean."
+                )
 
     def exit(self, *, code: int = 0) -> None:
         if self._exited:
@@ -225,7 +378,7 @@ def _build_context(init_msg: Message) -> ScriptContext:
         kind = "file"
 
     params = dict(payload.get("params") or {})
-    environment = dict(payload.get("environment") or {})
+    environment = cast(ScriptEnvironment, payload.get("environment") or {})
 
     return ScriptContext(
         target_path=path,
@@ -236,6 +389,11 @@ def _build_context(init_msg: Message) -> ScriptContext:
 
 
 __all__ = [
+    "BoolField",
+    "ScriptEnvironment",
+    "ScriptEnvironmentApp",
+    "ScriptEnvironmentHost",
+    "ScriptEnvironmentPaths",
     "ScriptAPI",
     "ScriptCallable",
     "ScriptCancelled",

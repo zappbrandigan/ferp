@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
+import platform
+import sys
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -37,6 +40,51 @@ def _patch_spawnv_passfds() -> None:
 
 
 _patch_spawnv_passfds()
+
+
+def _read_app_version() -> str:
+    try:
+        from ferp.__version__ import __version__
+    except Exception:
+        return "unknown"
+    return __version__
+
+
+def _read_build_label() -> str:
+    if os.environ.get("FERP_DEV_CONFIG") == "1":
+        return "dev"
+    return "release"
+
+
+def _read_os_version() -> str:
+    if sys.platform == "darwin":
+        mac_version = platform.mac_ver()[0]
+        return mac_version or platform.release()
+    if sys.platform.startswith("win"):
+        return platform.version()
+    return platform.release()
+
+
+def _build_environment(app_root: Path) -> dict[str, Any]:
+    """Build the SDK environment payload for script initialization."""
+    return {
+        "app": {
+            "name": "ferp",
+            "version": _read_app_version(),
+            "build": _read_build_label(),
+        },
+        "host": {
+            "platform": sys.platform,
+            "os": platform.system(),
+            "os_version": _read_os_version(),
+            "arch": platform.machine(),
+            "python": platform.python_version(),
+        },
+        "paths": {
+            "app_root": str(app_root),
+            "cwd": str(Path.cwd()),
+        },
+    }
 
 
 class ScriptStatus(Enum):
@@ -142,6 +190,10 @@ class ScriptRunner:
 
         try:
             host.start()
+            environment = _build_environment(self.app_root)
+            host.record_system(
+                f"FSCP environment: {json.dumps(environment, separators=(',', ':'))}"
+            )
             init_payload = {
                 "target": {
                     "path": str(context.target_path),
@@ -155,7 +207,7 @@ class ScriptRunner:
                         "path": str(context.script_path),
                     },
                 },
-                "environment": {},
+                "environment": environment,
             }
             host.send(Message(type=MessageType.INIT, payload=init_payload))
             return self._drive_host(session)
@@ -193,7 +245,7 @@ class ScriptRunner:
                 status=ScriptStatus.FAILED,
                 transcript=list(host.transcript),
                 results=list(host.results),
-                error=reason or "Script cancelled.",
+                error=reason or "Script canceled.",
             )
 
     def _publish_progress(self, payload: dict[str, Any]) -> None:

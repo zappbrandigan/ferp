@@ -38,6 +38,7 @@ class ScriptLifecycleController:
         self._progress_lines: list[str] = []
         self._progress_bar_widget: ProgressBar | None = None
         self._progress_status_widget: Static | None = None
+        self._progress_started_at: datetime | None = None
         self._script_running = False
         self._active_script_name: str | None = None
         self._active_target: Path | None = None
@@ -69,7 +70,7 @@ class ScriptLifecycleController:
         self._active_target = context.target_path
         self._start_worker(lambda: self._runner.start(context))
 
-    def abort_active(self, reason: str = "Operation cancelled by user.") -> bool:
+    def abort_active(self, reason: str = "Operation canceled by user.") -> bool:
         if not self._script_running:
             return False
         cancelled = self._runner.abort(reason)
@@ -136,6 +137,7 @@ class ScriptLifecycleController:
         self._progress_bar_widget = None
         self._progress_status_widget = None
         self._progress_lines = []
+        self._progress_started_at = None
         self._set_controls_disabled(False)
         self._app.query_one(TopBar).status = "Idle"
 
@@ -149,6 +151,7 @@ class ScriptLifecycleController:
         output_panel = app.query_one(ScriptOutputPanel)
         self._progress_lines = []
         output_panel.remove_children()
+        self._progress_started_at = datetime.now()
 
         script_name = self._active_script_name or "Script"
         target = self._active_target or app.current_path
@@ -160,10 +163,10 @@ class ScriptLifecycleController:
             id="progress_header",
         )
         self._progress_bar_widget = ProgressBar(
-            total=None, show_eta=False, id="script_progress_bar"
+            total=None, show_eta=False, id="script_progress_bar", show_percentage=False
         )
         self._progress_status_widget = Static(
-            "[dim]Waiting for progress…[/dim]", id="progress_status"
+            "[dim]Working, please wait...[/dim]", id="progress_status"
         )
 
         output_panel.mount(
@@ -250,7 +253,7 @@ class ScriptLifecycleController:
         self._app.push_screen(dialog, on_close)
 
     def _handle_user_cancelled(self) -> None:
-        self.abort_active("Operation cancelled by user.")
+        self.abort_active("Operation canceled by user.")
 
     def _boolean_fields_for_request(
         self, request: ScriptInputRequest
@@ -330,8 +333,18 @@ class ScriptLifecycleController:
         else:
             progress = f"{fmt(current)}" + (f" {unit}" if unit else "")
 
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        return f"[dim]{timestamp}[/dim] {progress}"
+        elapsed = self._format_elapsed()
+        return f"[dim]{elapsed}[/dim] {progress}"
+
+    def _format_elapsed(self) -> str:
+        started_at = self._progress_started_at
+        if started_at is None:
+            total_seconds = 0
+        else:
+            total_seconds = int((datetime.now() - started_at).total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
     def _reset_after_script(self) -> None:
         self._script_running = False
@@ -340,6 +353,7 @@ class ScriptLifecycleController:
         self._progress_bar_widget = None
         self._progress_status_widget = None
         self._progress_lines = []
+        self._progress_started_at = None
         self._set_controls_disabled(False)
         self._app.query_one(TopBar).status = "Idle"
 
