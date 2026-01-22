@@ -61,6 +61,7 @@ class ProcessListScreen(ModalScreen[None]):
         self._registry = registry
         self._request_abort = request_abort
         self._status: Static | None = None
+        self._status_locked = False
 
     def compose(self):
         list_view = ListView(id="process_list_view")
@@ -81,11 +82,13 @@ class ProcessListScreen(ModalScreen[None]):
         list_view = self.query_one(ListView)
         list_view.focus()
 
-    def on_show(self) -> None:
+    def on_screen_resume(self) -> None:
         self._refresh()
 
     @on(ListView.Highlighted, "#process_list_view")
     def _clear_status_on_move(self, _: ListView.Highlighted) -> None:
+        if self._status_locked:
+            return
         self._set_status("")
 
     def action_close(self) -> None:
@@ -118,8 +121,12 @@ class ProcessListScreen(ModalScreen[None]):
             return
         killed = self._request_abort(record)
         if killed:
-            self._set_status("Termination requested.")
+            self._status_locked = True
             self._refresh()
+            self._set_status("Termination requested.")
+            self.set_timer(0.2, self._refresh)
+            self.set_timer(0.8, self._refresh)
+            self.set_timer(1.2, self._unlock_status)
         else:
             self._set_status("Unable to terminate this process.")
 
@@ -145,3 +152,7 @@ class ProcessListScreen(ModalScreen[None]):
         if status is None:
             return
         status.update(message)
+
+    def _unlock_status(self) -> None:
+        self._status_locked = False
+        self._set_status("")

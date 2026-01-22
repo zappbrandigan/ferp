@@ -5,9 +5,6 @@ FERP is a terminal-friendly file manager and automation workbench. It combines a
 ## Highlights
 
 - **Keyboard-first navigation**
-  - `j/k` to move, `g/G` jump to top/bottom, `J/K` fast-scroll.
-  - `n` / `Shift+N` create files or folders, `d` / `Delete` removes them.
-  - `Ctrl+F` opens the current directory in the system file manager.
   - A full list of keys are available in the app.
 - **Context panes**
   - Script list reads from the user config `config.json` (platformdirs).
@@ -59,62 +56,17 @@ When enabled, FER​P reads the config directly from the repository and skips th
 
 ## Authoring FSCP Scripts
 
-Python scripts executed from FER​P speak the [FSCP](./ferp/fscp) protocol. Use the bundled SDK to avoid boilerplate:
-
-```python
-from ferp.fscp.scripts import sdk
-
-@sdk.script
-def main(ctx: sdk.ScriptContext, api: sdk.ScriptAPI) -> None:
-    api.log("info", f"Current target: {ctx.target_path}")
-    choice = api.request_input("Enter a label", default="example")
-    api.emit_result({"label": choice})
-
-if __name__ == "__main__":
-    main()
-```
-
-SDK essentials:
-
-- `ctx` exposes `target_path`, `target_kind`, params, and environment overrides.
-- `api.log`, `api.progress`, and `api.emit_result` stream structured messages to FER​P.
-- `api.request_input` suspends execution until the user replies inside FER​P.
-- `api.confirm` displays a Yes/No dialog—use it before running destructive operations.
-
-Add your script to the config file, drop a README if desired, and FER​P will handle transport, prompting, and transcript logging for you.
-
-## Packaging & Sharing Scripts
-
-When you’re ready to distribute a script, bundle everything FER​P needs into a single `.ferp` archive:
-
-```bash
-ferp bundle path/to/script.py path/to/README.md \
-  --id "acme.extractor" \
-  --name "My Script" \
-  --target highlighted_directory \
-  --dependency requests \
-  --dependency "rich>=13" \
-```
-
-The `bundle` command writes `my_script.ferp` containing:
-
-- `manifest.json` – metadata (`id` such as `vendor.script`, `name`, `version`, `target`, etc.).
-- Your Python script (the manifest `entrypoint`).
-- Optional README rendered inside FER​P.
-- Dependency list (pip specifiers) installed automatically when users import the bundle.
-
-Users can install bundles by opening the command palette (`Ctrl+P`) and choosing **Install Script Bundle…**—FERP copies the script into `scripts/`, updates your user `config.json`, and stores the README automatically.
-
-Dependency installs run through the same Python interpreter that launched FERP. When you install FERP via `pipx`, that means bundle dependencies land in the pipx-managed virtual environment alongside the app.
+Python scripts executed from FER​P speak the [FSCP](./ferp/fscp) protocol. See
+`SCRIPT_AUTHORS.md` for the SDK guide, examples, logging, cancellation, cleanup,
+and packaging details.
 
 ## Terminal Commands
 
-FERP includes an integrated terminal panel for quick shell commands.
+FERP opens your system terminal in the current directory (shown in the top bar).
 
-- Open the terminal panel from the command palette.
-- Commands run in the current directory shown in the top bar.
-- Output is captured and shown in the output panel with exit codes.
-- Interactive TUI tools (vim, less, etc.) are blocked; use your system terminal for those.
+- Open a terminal using `Ctrl+t`.
+- The spawned terminal inherits the current working directory.
+- On Windows system, prefers PowerShell and falls back to CommandPrompt.
 
 ## Task List
 

@@ -95,9 +95,35 @@ class Host:
                     if self._exit_seen:
                         self._cleanup_connection()
                         break
+                    if self.state is HostState.CANCELLING:
+                        self._record_system("Script connection closed during cancellation")
+                        self._cleanup_connection()
+                        exit_code = self.process.poll_exit()
+                        if exit_code is None:
+                            self._termination_mode = self._termination_mode or "cancel"
+                            self._record_exit(self.process.exit_code)
+                        else:
+                            if not self._exit_seen:
+                                self._termination_mode = self._termination_mode or "cancel"
+                            self._record_exit(exit_code)
+                        self._transition(HostState.TERMINATED)
+                        return
                     self._fail_transport("Script connection closed unexpectedly")
                     return
                 except Exception as exc:
+                    if self.state is HostState.CANCELLING:
+                        self._record_system(f"Pipe read error during cancellation: {exc}")
+                        self._cleanup_connection()
+                        exit_code = self.process.poll_exit()
+                        if exit_code is None:
+                            self._termination_mode = self._termination_mode or "cancel"
+                            self._record_exit(self.process.exit_code)
+                        else:
+                            if not self._exit_seen:
+                                self._termination_mode = self._termination_mode or "cancel"
+                            self._record_exit(exit_code)
+                        self._transition(HostState.TERMINATED)
+                        return
                     self._fail_transport(f"Pipe read error: {exc}")
                     return
 
@@ -153,6 +179,19 @@ class Host:
         # Ensure the registry sees a terminal state even if we don't poll again.
         self._record_exit(self.process.exit_code)
         self._transition(HostState.TERMINATED)
+
+    def request_cancel(self) -> None:
+        if self.state in {
+            HostState.TERMINATED,
+            HostState.ERR_PROTOCOL,
+            HostState.ERR_TRANSPORT,
+        }:
+            return
+
+        self._record_system("Cancellation requested")
+        self._termination_mode = self._termination_mode or "cancel"
+        msg = Message(type=MessageType.CANCEL, payload={})
+        self.send(msg)
 
     # ------------------------------------------------------------------
     # Protocol IO

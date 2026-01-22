@@ -66,6 +66,10 @@ class PromptDialog(ModalScreen[dict[str, str | bool] | None]):
             return
         self.query_one("#ok", Button).focus()
 
+    def on_screen_resume(self) -> None:
+        if getattr(self, "_dismiss_on_resume", False):
+            self.dismiss(None)
+
     def _collect_state(self) -> dict[str, str | bool]:
         state: dict[str, str | bool] = {}
         if self._show_text_input:

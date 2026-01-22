@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import platform
 import sys
@@ -65,7 +64,7 @@ def _read_os_version() -> str:
     return platform.release()
 
 
-def _build_environment(app_root: Path) -> dict[str, Any]:
+def _build_environment(app_root: Path, cache_dir: Path) -> dict[str, Any]:
     """Build the SDK environment payload for script initialization."""
     return {
         "app": {
@@ -83,6 +82,7 @@ def _build_environment(app_root: Path) -> dict[str, Any]:
         "paths": {
             "app_root": str(app_root),
             "cwd": str(Path.cwd()),
+            "cache_dir": str(cache_dir),
         },
     }
 
@@ -139,10 +139,12 @@ class ScriptRunner:
     def __init__(
         self,
         app_root: Path,
+        cache_dir: Path,
         progress_handler: Callable[[dict[str, Any]], None] | None = None,
         process_registry: ProcessRegistry | None = None,
     ) -> None:
         self.app_root = app_root
+        self.cache_dir = cache_dir
         self._session: HostSession | None = None
         self._lock = Lock()
         self._progress_handler = progress_handler
@@ -190,10 +192,7 @@ class ScriptRunner:
 
         try:
             host.start()
-            environment = _build_environment(self.app_root)
-            host.record_system(
-                f"FSCP environment: {json.dumps(environment, separators=(',', ':'))}"
-            )
+            environment = _build_environment(self.app_root, self.cache_dir)
             init_payload = {
                 "target": {
                     "path": str(context.target_path),
@@ -230,7 +229,12 @@ class ScriptRunner:
         host.provide_input(payload)
         return self._drive_host(session)
 
-    def abort(self, reason: str | None = None) -> ScriptResult | None:
+    def abort(
+        self,
+        reason: str | None = None,
+        *,
+        graceful_timeout: float = 2.0,
+    ) -> ScriptResult | None:
         with self._lock:
             session = self._session
             if session is None:
@@ -239,7 +243,25 @@ class ScriptRunner:
 
         host = session.host
         try:
-            host.shutdown(force=True)
+            if graceful_timeout > 0:
+                try:
+                    host.request_cancel()
+                except Exception:
+                    pass
+
+                deadline = time.time() + graceful_timeout
+                while time.time() < deadline:
+                    host.poll()
+                    updates = host.drain_progress_updates()
+                    if updates:
+                        for payload in updates:
+                            self._publish_progress(payload)
+                    if host.state in self._TERMINAL_STATES:
+                        break
+                    time.sleep(0.05)
+
+            if host.state not in self._TERMINAL_STATES:
+                host.shutdown(force=True)
         finally:
             return ScriptResult(
                 status=ScriptStatus.FAILED,

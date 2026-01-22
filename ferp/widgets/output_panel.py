@@ -13,7 +13,7 @@ from ferp.widgets.panels import ContentPanel
 class ScriptOutputPanel(ContentPanel):
     """Specialized panel responsible for rendering script status and errors."""
 
-    _MAX_VALUE_CHARS = 2000
+    _MAX_VALUE_CHARS = 2500
     _TRUNCATION_SUFFIX = "\n... (truncated)"
 
     def __init__(

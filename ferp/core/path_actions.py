@@ -18,12 +18,14 @@ class PathActionController:
         show_error: Callable[[BaseException], None],
         refresh_listing: Callable[[], None],
         fs_controller: FileSystemController,
+        delete_handler: Callable[[Path], None],
     ) -> None:
         self._present_input = present_input
         self._present_confirm = present_confirm
         self._show_error = show_error
         self._refresh_listing = refresh_listing
         self._fs = fs_controller
+        self._delete_handler = delete_handler
 
     def create_path(self, base: Path, *, is_directory: bool) -> None:
         parent = base if base.is_dir() else base.parent
@@ -67,12 +69,7 @@ class PathActionController:
         def after(confirmed: bool | None) -> None:
             if not confirmed:
                 return
-            try:
-                self._fs.delete_path(target)
-            except Exception as exc:
-                self._show_error(exc)
-                return
-            self._refresh_listing()
+            self._delete_handler(target)
 
         self._present_confirm(
             ConfirmDialog(f"Delete '{target.name}'?"),

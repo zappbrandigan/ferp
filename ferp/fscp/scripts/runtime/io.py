@@ -35,6 +35,25 @@ def read_message() -> Dict[str, Any]:
         raise ValueError(f"Invalid JSON from host: {exc}") from exc
 
 
+def try_read_message() -> Dict[str, Any] | None:
+    """Attempt to read a single message without blocking."""
+    if _connection is None:
+        return None
+
+    if not _connection.poll(0):
+        return None
+
+    try:
+        payload = _connection.recv()
+    except EOFError as exc:
+        raise EOFError("Host closed pipe") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid payload received from host")
+
+    return payload
+
+
 def write_message(msg: Dict[str, Any]) -> None:
     """Write a single FSCP message to the configured transport."""
     if _connection is not None:

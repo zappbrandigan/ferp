@@ -25,6 +25,10 @@ class ConfirmDialog(ModalScreen[bool | None]):
             return
         self.dismiss(event.button.id == "yes")
 
+    def on_screen_resume(self) -> None:
+        if getattr(self, "_dismiss_on_resume", False):
+            self.dismiss(None)
+
 
 class InputDialog(ModalScreen[str | None]):
     def __init__(

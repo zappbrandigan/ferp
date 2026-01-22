@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import os
 import traceback
 from dataclasses import dataclass
 from functools import wraps
@@ -22,7 +23,7 @@ from typing import (
 from ferp.fscp.protocol.messages import Message, MessageType
 from ferp.fscp.protocol.validator import Endpoint, ProtocolValidator
 from ferp.fscp.scripts.runtime.errors import FatalScriptError, ProtocolViolation
-from ferp.fscp.scripts.runtime.io import read_message, write_message
+from ferp.fscp.scripts.runtime.io import read_message, try_read_message, write_message
 
 
 class ScriptCancelled(FatalScriptError):
@@ -56,6 +57,7 @@ class ScriptEnvironmentHost(TypedDict):
 class ScriptEnvironmentPaths(TypedDict):
     app_root: str
     cwd: str
+    cache_dir: str
 
 
 class ScriptEnvironment(TypedDict):
@@ -81,6 +83,11 @@ class ScriptAPI:
         self._transport = transport
         self._request_counter = itertools.count(1)
         self._exited = False
+        self._log_level = _normalize_log_level(
+            os.environ.get("FERP_SCRIPT_LOG_LEVEL", "info")
+        )
+        self._cleanup_hooks: list[Callable[[], None]] = []
+        self._cleanup_ran = False
 
     @property
     def exited(self) -> bool:
@@ -88,6 +95,8 @@ class ScriptAPI:
 
     def log(self, level: str, message: str) -> None:
         self._ensure_running()
+        if not _should_emit_log(level, self._log_level):
+            return
         payload = {"level": level, "message": message}
         self._transport.send(MessageType.LOG, payload)
 
@@ -119,6 +128,22 @@ class ScriptAPI:
     def emit_result(self, payload: Mapping[str, Any]) -> None:
         self._ensure_running()
         self._transport.send(MessageType.RESULT, dict(payload))
+
+    def register_cleanup(self, func: Callable[[], None]) -> None:
+        """Register a cleanup callback to run on cancellation or exit."""
+        if not callable(func):
+            raise ValueError("Cleanup hook must be callable.")
+        self._cleanup_hooks.append(func)
+
+    def check_cancel(self) -> None:
+        """Raise ScriptCancelled if the host has requested cancellation."""
+        self._transport.poll_cancel()
+        if self._transport.is_cancelled():
+            raise ScriptCancelled("Host cancelled script.")
+
+    def is_cancelled(self) -> bool:
+        """Return True if a cancellation request has been received."""
+        return self._transport.is_cancelled()
 
     def request_input(
         self,
@@ -271,6 +296,17 @@ class ScriptAPI:
         if self._exited:
             raise RuntimeError("Cannot interact with host after exit has been sent.")
 
+    def _run_cleanup_hooks(self) -> None:
+        if self._cleanup_ran:
+            return
+        self._cleanup_ran = True
+        for hook in self._cleanup_hooks:
+            try:
+                hook()
+            except Exception as exc:
+                if not self._exited:
+                    self.log("error", f"Cleanup hook failed: {exc}")
+
 
 ScriptCallable = Callable[[ScriptContext, ScriptAPI], None]
 
@@ -294,17 +330,33 @@ def script(func: ScriptCallable) -> Callable[[], None]:
 class _Transport:
     def __init__(self) -> None:
         self._validator = ProtocolValidator()
+        self._cancelled = False
+
+    def is_cancelled(self) -> bool:
+        return self._cancelled
 
     def send(self, msg_type: MessageType, payload: Mapping[str, Any]) -> None:
         msg = Message(type=msg_type, payload=dict(payload))
         self._validator.validate(msg, sender=Endpoint.SCRIPT)
         write_message(msg.to_dict())
 
+    def poll_cancel(self) -> None:
+        if self._cancelled:
+            return
+        msg = self._try_receive()
+        if msg is None:
+            return
+        if msg.type is MessageType.CANCEL:
+            self._cancelled = True
+            return
+        # Ignore unexpected non-cancel messages in polling mode.
+
     def expect(self, expected: MessageType) -> Message:
         msg = self.receive()
         if msg.type is expected:
             return msg
         if msg.type is MessageType.CANCEL:
+            self._cancelled = True
             raise ScriptCancelled("Host cancelled script before it started.")
         raise ProtocolViolation(
             f"Expected '{expected.value}', received '{msg.type.value}'."
@@ -312,6 +364,16 @@ class _Transport:
 
     def receive(self) -> Message:
         raw = read_message()
+        msg = Message.from_dict(raw)
+        self._validator.validate(msg, sender=Endpoint.HOST)
+        if msg.type is MessageType.CANCEL:
+            self._cancelled = True
+        return msg
+
+    def _try_receive(self) -> Message | None:
+        raw = try_read_message()
+        if raw is None:
+            return None
         msg = Message.from_dict(raw)
         self._validator.validate(msg, sender=Endpoint.HOST)
         return msg
@@ -329,6 +391,7 @@ class _Transport:
                 return value
 
             if msg.type is MessageType.CANCEL:
+                self._cancelled = True
                 raise ScriptCancelled("Host cancelled script while awaiting input.")
 
             raise ProtocolViolation(
@@ -358,14 +421,17 @@ class _ScriptSession:
             self._script_fn(context, api)
         except ScriptCancelled as exc:
             api.log("warn", str(exc))
+            api._run_cleanup_hooks()
             api.exit(code=1)
             return
         except Exception:
             tb = traceback.format_exc().rstrip()
             api.log("error", tb)
+            api._run_cleanup_hooks()
             api.exit(code=1)
             return
 
+        api._run_cleanup_hooks()
         api.exit(code=0)
 
 
@@ -386,6 +452,24 @@ def _build_context(init_msg: Message) -> ScriptContext:
         params=params,
         environment=environment,
     )
+
+
+_LOG_LEVELS: dict[str, int] = {
+    "debug": 10,
+    "info": 20,
+    "warn": 30,
+    "error": 40,
+}
+
+
+def _normalize_log_level(level: str | None) -> int:
+    if not level:
+        return _LOG_LEVELS["info"]
+    return _LOG_LEVELS.get(str(level).strip().lower(), _LOG_LEVELS["info"])
+
+
+def _should_emit_log(level: str, minimum: int) -> bool:
+    return _normalize_log_level(level) >= minimum
 
 
 __all__ = [

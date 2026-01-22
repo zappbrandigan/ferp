@@ -78,6 +78,11 @@ class AppPaths:
     scripts_dir: Path
 
 
+@dataclass(frozen=True)
+class DeletePathResult:
+    target: Path
+
+
 DEFAULT_SETTINGS: dict[str, Any] = {
     "userPreferences": {"theme": "slate-copper", "startupPath": str(Path().home())},
     "logs": {"maxFiles": 50, "maxAgeDays": 14},
@@ -154,6 +159,7 @@ class Ferp(App):
             show_error=self.show_error,
             refresh_listing=self.refresh_listing,
             fs_controller=self.fs_controller,
+            delete_handler=self._start_delete_path,
         )
 
     def _prepare_paths(self) -> AppPaths:
@@ -505,7 +511,7 @@ class Ferp(App):
         active_handle = self.script_controller.active_process_handle
         if not active_handle or record.handle != active_handle:
             return False
-        return self.script_controller.abort_active(
+        return self.script_controller.request_abort(
             "Termination requested from process list."
         )
 
@@ -598,6 +604,19 @@ class Ferp(App):
     def show_error(self, error: BaseException) -> None:
         panel = self.query_one(ScriptOutputPanel)
         panel.show_error(error)
+
+    def _start_delete_path(self, target: Path) -> None:
+        label = target.name or str(target)
+        self.notify(f"Deleting '{escape(label)}'...")
+        self.run_worker(
+            lambda: self._delete_path_worker(target),
+            group="delete_path",
+            thread=True,
+        )
+
+    def _delete_path_worker(self, target: Path) -> DeletePathResult:
+        self.fs_controller.delete_path(target)
+        return DeletePathResult(target=target)
 
     def _render_default_scripts_update(self, payload: dict[str, Any]) -> None:
         panel = self.query_one(ScriptOutputPanel)
@@ -829,6 +848,18 @@ class Ferp(App):
             elif event.state is WorkerState.ERROR:
                 error = worker.error or RuntimeError("Default script update failed.")
                 self.show_error(error)
+            return
+        if worker.group == "delete_path":
+            if event.state is WorkerState.SUCCESS:
+                result = worker.result
+                if isinstance(result, DeletePathResult):
+                    label = result.target.name or str(result.target)
+                    self.notify(f"Deleted '{escape(label)}'.")
+                    self.refresh_listing()
+            elif event.state is WorkerState.ERROR:
+                error = worker.error or RuntimeError("Delete failed.")
+                self.show_error(error)
+                self.notify("Delete failed. See output panel for details.")
             return
         if worker.group == "monday_sync":
             if event.state is WorkerState.SUCCESS:

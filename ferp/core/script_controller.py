@@ -34,7 +34,11 @@ class ScriptLifecycleController:
 
     def __init__(self, app: "Ferp") -> None:
         self._app = app
-        self._runner = ScriptRunner(app.app_root, self._handle_script_progress)
+        self._runner = ScriptRunner(
+            app.app_root,
+            app._paths.cache_dir,
+            self._handle_script_progress,
+        )
         self._progress_lines: list[str] = []
         self._progress_bar_widget: ProgressBar | None = None
         self._progress_status_widget: Static | None = None
@@ -42,6 +46,9 @@ class ScriptLifecycleController:
         self._script_running = False
         self._active_script_name: str | None = None
         self._active_target: Path | None = None
+        self._active_worker: Worker | None = None
+        self._abort_worker: Worker | None = None
+        self._input_screen: PromptDialog | ConfirmDialog | None = None
 
     @property
     def is_running(self) -> bool:
@@ -73,6 +80,7 @@ class ScriptLifecycleController:
     def abort_active(self, reason: str = "Operation canceled by user.") -> bool:
         if not self._script_running:
             return False
+        self._dismiss_input_screen()
         cancelled = self._runner.abort(reason)
         if cancelled:
             script_name = self._active_script_name or "Script"
@@ -81,13 +89,60 @@ class ScriptLifecycleController:
         self._reset_after_script()
         return cancelled is not None
 
+    def request_abort(self, reason: str = "Operation canceled by user.") -> bool:
+        if not self._script_running:
+            return False
+        if self._abort_worker is not None:
+            return True
+        self._dismiss_input_screen()
+
+        def abort() -> ScriptResult | None:
+            return self._runner.abort(reason)
+
+        try:
+            self._abort_worker = self._app.run_worker(
+                abort,
+                group="script_abort",
+                exclusive=True,
+                thread=True,
+            )
+        except Exception:
+            self._abort_worker = None
+            raise
+        return True
+
     def handle_worker_state(self, event: Worker.StateChanged) -> bool:
         worker = event.worker
-        if worker.group != "scripts":
+        if worker.group not in {"scripts", "script_abort"}:
             return False
+        if worker.group == "scripts":
+            if self._active_worker is None:
+                if not self._script_running:
+                    return True
+            elif worker is not self._active_worker:
+                return True
 
         state = event.state
         if state is WorkerState.RUNNING:
+            return True
+
+        if worker.group == "script_abort":
+            if state is WorkerState.SUCCESS:
+                result = worker.result
+                if isinstance(result, ScriptResult):
+                    self._app.render_script_output(
+                        self._active_script_name or "Script",
+                        result,
+                    )
+                    self._app.refresh_listing()
+                self._reset_after_script()
+            elif state is WorkerState.ERROR:
+                error = worker.error or RuntimeError("Script cancellation failed.")
+                self._app.show_error(error)
+                self._app.refresh_listing()
+                self._reset_after_script()
+            if state in {WorkerState.SUCCESS, WorkerState.ERROR, WorkerState.CANCELLED}:
+                self._abort_worker = None
             return True
 
         if state is WorkerState.SUCCESS:
@@ -134,6 +189,8 @@ class ScriptLifecycleController:
         self._script_running = False
         self._active_script_name = None
         self._active_target = None
+        self._active_worker = None
+        self._abort_worker = None
         self._progress_bar_widget = None
         self._progress_status_widget = None
         self._progress_lines = []
@@ -152,6 +209,7 @@ class ScriptLifecycleController:
         self._progress_lines = []
         output_panel.remove_children()
         self._progress_started_at = datetime.now()
+        app._stop_file_tree_watch()
 
         script_name = self._active_script_name or "Script"
         target = self._active_target or app.current_path
@@ -181,12 +239,13 @@ class ScriptLifecycleController:
         self._set_controls_disabled(True)
 
         try:
-            app.run_worker(
+            worker = app.run_worker(
                 runner_fn,
                 group="scripts",
                 exclusive=True,
                 thread=True,
             )
+            self._active_worker = worker
         except Exception:
             self.handle_launch_failure()
             raise
@@ -222,13 +281,15 @@ class ScriptLifecycleController:
                 if value is None:
                     self._handle_user_cancelled()
                     return
+                if not self._accept_input():
+                    return
+                self._input_screen = None
                 payload = "true" if value else "false"
                 self._start_worker(lambda: self._runner.provide_input(payload))
 
-            self._app.push_screen(
-                ConfirmDialog(prompt, id="confirm_dialog"),
-                handle_confirm,
-            )
+            dialog = ConfirmDialog(prompt, id="confirm_dialog")
+            self._input_screen = dialog
+            self._app.push_screen(dialog, handle_confirm)
             return
 
         self._app.query_one(TopBar).status = "Awaiting input"
@@ -245,15 +306,37 @@ class ScriptLifecycleController:
             if data is None:
                 self._handle_user_cancelled()
                 return
+            if not self._accept_input():
+                return
+            self._input_screen = None
             value = data.get("value", "")
             payload_value = str(value)
             payload = json.dumps(data) if bool_fields else payload_value
             self._start_worker(lambda: self._runner.provide_input(payload))
 
+        self._input_screen = dialog
         self._app.push_screen(dialog, on_close)
 
     def _handle_user_cancelled(self) -> None:
         self.abort_active("Operation canceled by user.")
+
+    def _accept_input(self) -> bool:
+        if not self._script_running:
+            return False
+        return self._runner.active_process_handle is not None
+
+    def _dismiss_input_screen(self) -> None:
+        screen = self._input_screen
+        if screen is None:
+            return
+        if screen.is_active:
+            try:
+                screen.dismiss(None)
+            except Exception:
+                pass
+        else:
+            setattr(screen, "_dismiss_on_resume", True)
+        self._input_screen = None
 
     def _boolean_fields_for_request(
         self, request: ScriptInputRequest
@@ -354,8 +437,12 @@ class ScriptLifecycleController:
         self._progress_status_widget = None
         self._progress_lines = []
         self._progress_started_at = None
+        self._active_worker = None
+        self._abort_worker = None
+        self._input_screen = None
         self._set_controls_disabled(False)
         self._app.query_one(TopBar).status = "Idle"
+        self._app._start_file_tree_watch()
 
     def _set_controls_disabled(self, disabled: bool) -> None:
         script_manager = self._app.query_one(ScriptManager)

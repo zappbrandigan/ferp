@@ -2,9 +2,9 @@ language_articles: dict[str, list[str]] = {
     # English
     "en": ["a", "an", "the"],
     # Spanish
-    "es": ["el", "la", "los", "las", "un", "una", "unos", "unas"],
+    "es": ["el", "la", "lo", "los", "las", "un", "una", "unos", "unas"],
     # French (with elision)
-    "fr": ["le", "la", "les", "un", "une", "des", "l'"],
+    "fr": ["le", "la", "les", "un", "une", "l'"],
     # German (base forms only)
     "de": ["der", "die", "das", "ein", "eine"],
     # Italian (including elision)
