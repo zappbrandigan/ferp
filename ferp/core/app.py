@@ -350,6 +350,19 @@ class Ferp(App):
         except Exception as exc:
             self.show_error(exc)
 
+    def _command_open_user_guide(self) -> None:
+        guide_path = self.app_root / "resources" / "USERS_GUIDE.md"
+        if not guide_path.exists():
+            self.show_error(FileNotFoundError("User guide not found."))
+            return
+        try:
+            content = guide_path.read_text(encoding="utf-8")
+        except Exception as exc:
+            self.show_error(exc)
+            return
+        screen = ReadmeScreen("FERP User Guide", content, id="readme_screen")
+        self.push_screen(screen)
+
     def _command_show_processes(self) -> None:
         self._ensure_process_list_screen()
         self.push_screen("process_list")

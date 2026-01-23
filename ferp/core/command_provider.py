@@ -40,6 +40,11 @@ class FerpCommandProvider(SimpleProvider):
             "_command_open_latest_log",
         ),
         (
+            "Open User Guide",
+            "Open the bundled FERP user guide.",
+            "_command_open_user_guide",
+        ),
+        (
             "Show Processes",
             "View and manage tracked script processes.",
             "_command_show_processes",

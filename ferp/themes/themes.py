@@ -163,26 +163,6 @@ burgundy = Theme(
     },
 )
 
-olive_grove = Theme(
-    name="olive-grove",
-    primary="#606C38",  # olive-leaf
-    secondary="#DDA15E",  # sunlit-clay
-    accent="#BC6C25",  # copperwood
-    foreground="#FEFAE0",  # cornsilk
-    background="#283618",  # black-forest
-    surface="#3A4422",  # derived: lighter black-forest
-    panel="#2F3C1E",  # derived: muted forest panel
-    success="#8FB573",  # derived green (olive-shifted)
-    warning="#DDA15E",  # sunlit-clay
-    error="#BC6C25",  # copperwood
-    dark=True,
-    variables={
-        # Text & emphasis
-        "text-muted": "#CFC9A6",
-        "text-subtle": "#B7B28F",
-    },
-)
-
 ALL_THEMES: list[Theme] = [
     industrial_amber,
     blueprint,
@@ -191,6 +171,5 @@ ALL_THEMES: list[Theme] = [
     slate_copper,
     tokyo_night,
     burgundy,
-    olive_grove,
     petal_sky,
 ]
