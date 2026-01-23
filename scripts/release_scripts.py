@@ -42,6 +42,24 @@ def _run(cmd: list[str], cwd: Path) -> None:
     subprocess.run(cmd, cwd=cwd, check=True)
 
 
+def _tag_exists(tag: str, cwd: Path) -> bool:
+    result = subprocess.run(
+        ["git", "show-ref", "--tags", "--verify", "--quiet", f"refs/tags/{tag}"],
+        cwd=cwd,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _tag_exists_on_remote(tag: str, cwd: Path, remote: str) -> bool:
+    result = subprocess.run(
+        ["git", "ls-remote", "--tags", "--exit-code", remote, f"refs/tags/{tag}"],
+        cwd=cwd,
+        check=False,
+    )
+    return result.returncode == 0
+
+
 def _load_config(path: Path) -> tuple[dict, list[dict]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     scripts = data.get("scripts")
@@ -83,6 +101,17 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Print notes only.")
     parser.add_argument("--no-commit", action="store_true", help="Skip git commit.")
     parser.add_argument("--no-tag", action="store_true", help="Skip git tag.")
+    parser.add_argument(
+        "--force-tag", action="store_true", help="Overwrite existing tag."
+    )
+    parser.add_argument(
+        "--push-tag", action="store_true", help="Push tag before GitHub release."
+    )
+    parser.add_argument(
+        "--remote",
+        default="origin",
+        help="Git remote to use for tag checks/push (default: origin).",
+    )
     parser.add_argument("--no-gh", action="store_true", help="Skip GitHub release.")
 
     args = parser.parse_args()
@@ -126,17 +155,40 @@ def main() -> int:
         print(notes)
         return 0
 
+    if not args.no_tag and _tag_exists(args.tag, submodule_root):
+        if args.force_tag:
+            print(f"Overwriting existing tag {args.tag}.")
+        else:
+            print(
+                f"Tag {args.tag} already exists. Use --force-tag or --no-tag.",
+                file=sys.stderr,
+            )
+            return 2
+
     config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
-    commit_message = args.message or f"Release scripts {args.tag}"
+    commit_message = args.message or f"build(release): bump script versions {args.tag}"
     if not args.no_commit:
         _run(["git", "add", str(config_path)], cwd=submodule_root)
         _run(["git", "commit", "-m", commit_message], cwd=submodule_root)
 
     if not args.no_tag:
-        _run(["git", "tag", "-a", args.tag, "-m", commit_message], cwd=submodule_root)
+        cmd = ["git", "tag", "-a", args.tag, "-m", commit_message]
+        if args.force_tag:
+            cmd.insert(2, "-f")
+        _run(cmd, cwd=submodule_root)
 
     if not args.no_gh:
+        release_title = args.tag
+        if not _tag_exists_on_remote(args.tag, submodule_root, args.remote):
+            if args.push_tag:
+                _run(["git", "push", args.remote, args.tag], cwd=submodule_root)
+            else:
+                print(
+                    f"Tag {args.tag} is not on {args.remote}. Use --push-tag or push it before continuing.",
+                    file=sys.stderr,
+                )
+                return 2
         with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as handle:
             handle.write(notes)
             notes_path = Path(handle.name)
@@ -148,7 +200,7 @@ def main() -> int:
                     "create",
                     args.tag,
                     "--title",
-                    commit_message,
+                    release_title,
                     "--notes-file",
                     str(notes_path),
                 ],
