@@ -22,7 +22,7 @@ class TopBar(Container):
         super().__init__()
 
         self._title_text = Text.from_markup(
-            f":zap: [bold]{app_title}[/bold] [dim]v{app_version}[/dim]"
+            f"[bold]{app_title}[/bold] [dim]v{app_version}[/dim]"
         )
 
         self.title_label = Label(self._title_text, id="topbar_title")

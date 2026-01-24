@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import stat as stat_module
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,25 +38,21 @@ def collect_directory_listing(directory: Path, token: int) -> DirectoryListingRe
 
 def snapshot_directory(path: Path) -> tuple[str, ...]:
     try:
-        with os.scandir(path) as scan:
-            entries = sorted(
-                entry.name
-                for entry in scan
-                if not _should_skip_entry(Path(entry.path), path)
-            )
+        stat_result = path.stat()
     except OSError:
-        entries = []
-    return tuple(entries)
+        return tuple()
+    signature = f"{stat_result.st_mtime_ns}:{stat_result.st_size}:{stat_result.st_ino}"
+    return (signature,)
 
 
 def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
     try:
-        stat = entry.stat()
+        stat_result = entry.stat()
     except OSError:
         return None
 
     entry_path = Path(entry.path)
-    is_dir = entry.is_dir()
+    is_dir = stat_module.S_ISDIR(stat_result.st_mode)
     stem = Path(entry.name).stem
 
     display_name = stem if not is_dir else f"{stem}/"
@@ -64,14 +61,16 @@ def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
     if not type_label:
         type_label = "file"
 
+    search_blob = f"{display_name}\n{type_label}\n{entry_path.name}".casefold()
     return FileListingEntry(
         path=entry_path,
         display_name=display_name,
         char_count=len(stem),
         type_label=type_label,
-        modified_ts=stat.st_mtime,
-        created_ts=stat.st_ctime,
+        modified_ts=stat_result.st_mtime,
+        created_ts=stat_result.st_ctime,
         is_dir=is_dir,
+        search_blob=search_blob,
     )
 
 

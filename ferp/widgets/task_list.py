@@ -119,6 +119,18 @@ class TaskListItem(ListItem):
         )
         self._meta_widget.update(self._render_meta(self._task_model))
 
+    def update_task(self, task: TodoTask) -> None:
+        self._task_model = task
+        self.set_class(task.completed, "task_item--completed")
+        self.set_class(
+            not task.completed and self._is_priority(task),
+            "task_item--priority",
+        )
+        self._text_widget.update(
+            self._render_text_markup(self._task_model, highlighted=self._highlighted)
+        )
+        self._meta_widget.update(self._render_meta(self._task_model))
+
     def set_highlighted(self, highlighted: bool) -> None:
         if self._highlighted == highlighted:
             return
@@ -261,12 +273,12 @@ class TaskListScreen(ModalScreen[None]):
 
     def _refresh_task_list(self, *, focus_list: bool = True) -> None:
         list_view = self.query_one(ListView)
-        list_view.index = None
-        list_view.clear()
-        self._highlighted_item = None
 
         tasks = self._apply_tag_filter(self._store.sorted())
         if not tasks:
+            list_view.index = None
+            list_view.clear()
+            self._highlighted_item = None
             placeholder_message = "No tasks yet"
             if self._active_tag_filter:
                 placeholder_message = "No tasks match selected tags"
@@ -279,6 +291,17 @@ class TaskListScreen(ModalScreen[None]):
             self._queue_index_assignment(list_view, None, focus_list=focus_list)
             return
 
+        reusable_items = self._reuse_items_if_possible(list_view, tasks)
+        if reusable_items is not None:
+            for item, task in zip(reusable_items, tasks):
+                item.update_task(task)
+            if focus_list:
+                list_view.focus()
+            return
+
+        list_view.index = None
+        list_view.clear()
+        self._highlighted_item = None
         for task in tasks:
             list_view.append(TaskListItem(task))
         self._queue_index_assignment(list_view, 0, focus_list=focus_list)
@@ -347,6 +370,20 @@ class TaskListScreen(ModalScreen[None]):
         return any(
             not getattr(child, "disabled", False) for child in list_view.children
         )
+
+    def _reuse_items_if_possible(
+        self, list_view: ListView, tasks: list[TodoTask]
+    ) -> list[TaskListItem] | None:
+        items: list[TaskListItem] = []
+        for child in list_view.children:
+            if not isinstance(child, TaskListItem):
+                return None
+            items.append(child)
+        if len(items) != len(tasks):
+            return None
+        if any(item.task_model.id != task.id for item, task in zip(items, tasks)):
+            return None
+        return items
 
     def action_capture_task(self) -> None:
         def handle_submit(text: str) -> None:

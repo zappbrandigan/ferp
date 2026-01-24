@@ -25,18 +25,6 @@ class SelectionField:
     values: list[str] | None = None
 
 
-def _option_to_value(option: object) -> str:
-    value = getattr(option, "value", None)
-    if value is None:
-        value = getattr(option, "id", None)
-    if value is None:
-        if isinstance(option, (list, tuple)) and len(option) >= 2:
-            value = option[1]
-        else:
-            value = option
-    return str(value)
-
-
 def _selection_list_values(selection_list: SelectionList) -> list[str]:
     selected = selection_list.selected
     if isinstance(selected, list):
@@ -63,9 +51,7 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
         self._show_text_input = show_text_input
 
     def compose(self) -> ComposeResult:
-        contents: list[Widget] = [
-            Label(self._message, id="dialog_message")
-        ]
+        contents: list[Widget] = [Label(self._message, id="dialog_message")]
         if self._show_text_input:
             contents.append(Input(value=self._default, id="prompt_input"))
         contents.append(

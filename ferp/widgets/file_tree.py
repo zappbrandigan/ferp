@@ -40,6 +40,7 @@ class FileListingEntry:
     modified_ts: float
     created_ts: float
     is_dir: bool
+    search_blob: str
 
 
 @lru_cache(maxsize=2048)
@@ -329,6 +330,10 @@ class FileTree(ListView):
         self._last_selected_path: Path | None = None
         self._selection_history: dict[Path, Path] = {}
         self._last_chunk_direction: str | None = None
+        self._pending_delete_index: int | None = None
+
+    def set_pending_delete_index(self, index: int | None) -> None:
+        self._pending_delete_index = index
 
     def on_mount(self) -> None:
         self._update_border_title()
@@ -393,6 +398,19 @@ class FileTree(ListView):
 
     def _restore_selection(self) -> None:
         should_focus = self._should_focus_after_render()
+        pending_index = self._pending_delete_index
+        if pending_index is not None:
+            self._pending_delete_index = None
+            if len(self.children) <= 1:
+                self.index = None
+                return
+            if pending_index < len(self.children):
+                self.index = pending_index
+            else:
+                self.index = len(self.children) - 1
+            if should_focus:
+                self.focus()
+            return
         target = self._last_selected_path
         if target:
             for idx, child in enumerate(self.children):
@@ -516,11 +534,7 @@ class FileTree(ListView):
 
         query = self._filter_query.casefold()
         self._filtered_entries = [
-            entry
-            for entry in self._all_entries
-            if query in entry.display_name.casefold()
-            or query in entry.type_label.casefold()
-            or query in entry.path.name.casefold()
+            entry for entry in self._all_entries if query in entry.search_blob
         ]
 
     def handle_filter_submit(self, value: str) -> None:
@@ -844,8 +858,7 @@ class FileTree(ListView):
         item = self.highlighted_child
         if isinstance(item, FileItem) and not item.is_header:
             return item.path
-        app = cast(AppWithPath, self.app)
-        return app.current_path
+        return None
 
     def action_new_file(self) -> None:
         app = cast(AppWithPath, self.app)

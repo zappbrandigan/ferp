@@ -47,6 +47,7 @@ dev = [
   "reportlab>=4.4.9",
   "py7zr>=1.1.2",
   "pytest>=8.2",
+  "textual-dev>=1.8.0",
 ]
 
 [tool.setuptools.dynamic]

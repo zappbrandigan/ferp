@@ -50,54 +50,7 @@ FERP is split into sections (called "panels"):
 
 > FERP starts in your Home folder. You can change what directory is loaded on startup using the command palette.
 
----
-
-## 4) Keyboard Shortcuts
-
-Below is the full list of shortcuts by panel focus. If a shortcut doesn’t work, click or move focus into that panel and try again.
-
-### Everywhere (Global)
-
-- `l`: Show the task list.
-- `t`: Add a new task.
-- `m`: Maximize/minimize the focused panel.
-- `?`: Toggle the on-screen help panel (shows all active keys).
-
-### File Navigator (Left Panel)
-
-- `Arrow keys`: Move selection up/down.
-- `Enter`: Open a folder.
-- `g / G`: Jump to top / bottom.
-- `j / k`: Move down / up.
-- `J / K`: Page down / page up (fast move).
-- `u`: Go to parent directory.
-- `h`: Go to startup (home) directory.
-- `r`: Rename selected file or folder.
-- `n`: Create a new file.
-- `N`: Create a new folder.
-- `Delete`: Delete selected file or folder.
-- `Ctrl+F`: Open current folder in the system file explorer.
-- `Ctrl+O`: Open the selected file with the default app.
-- `Ctrl+T`: Open a terminal at the current folder.
-- `/`: Filter the file list.
-- `[ / ]`: Load previous / next chunk of files.
-
-### Scripts (Top-Right Panel)
-
-- `Arrow keys`: Move selection up/down.
-- `Enter`: Open the script README.
-- `R`: Run the selected script.
-- `g / G`: Jump to top / bottom.
-- `j / k`: Move down / up.
-- `J / K`: Page down / page up (fast move).
-
-### Output (Bottom-Right Panel)
-
-- No dedicated shortcuts (output is read-only).
-
----
-
-## 5) Command Palette
+## 4) Command Palette
 
 The command palette lets you run app-level actions (like changing themes or refreshing your cache file). Open it using `Ctrl+p`, then start typing the command name (arrow up/down).
 
@@ -114,7 +67,7 @@ The command palette lets you run app-level actions (like changing themes or refr
 
 ---
 
-## 6) Input Box Editing Shortcuts
+## 5) Input Box Editing Shortcuts
 
 When a text input is focused (filter box, rename dialog, task entry, etc.), these shortcuts apply:
 
@@ -146,7 +99,7 @@ ctrl+v             Paste text from the clipboard.
 
 ---
 
-## 7) Basic Navigation
+## 6) Basic Navigation
 
 FERP is keyboard‑first. Common actions:
 
@@ -157,7 +110,7 @@ Tip: You can move quickly without using the mouse.
 
 ---
 
-## 8) Running a Script (Automation)
+## 7) Running a Script (Automation)
 
 Scripts are pre‑approved tasks like "rename files," "backup a folder," or "convert a file."
 
@@ -173,7 +126,7 @@ If a script needs a specific file type, FERP will only enable it when a matching
 
 ---
 
-## 9) Script Help (READMEs)
+## 8) Script Help (READMEs)
 
 Each script can include built‑in documentation. To open it:
 
@@ -183,22 +136,13 @@ Use this to confirm what a script does before you run it.
 
 ---
 
-## 10) Task List (Quick Notes)
+## 9) Task List (Quick Notes)
 
-FERP includes a simple task list for quick capture:
-
-- Press `t` to add a task.
-- Press `l` to open your task list.
-- Use the `space bar` to mark tasks complete.
-- Press `/` to filter by list by tags.
-- Press `C` to clear all completed tasks.
-- Press `Delete` to delete a task
-
-Tasks can include multiple `@` tags to make them easier to spot and filter (e.g. `@todo`).
+FERP includes a simple task list for quick capture. Tasks can include multiple `@` tags to make them easier to spot and filter (e.g. `@todo`).
 
 ---
 
-## 11) Logs and Output
+## 10) Logs and Output
 
 When a script runs, FERP shows:
 
@@ -206,20 +150,3 @@ When a script runs, FERP shows:
 - **Transcripts** saved automatically for later review.
 
 If you need to confirm what happened in a past run, open the latest transcript (log file) from the command palette.
-
----
-
-## 12) Tips for New Users
-
-- Start by browsing a familiar folder to get comfortable.
-- Open a script’s README before running it the first time.
-- If a script asks a question, read it carefully - it’s usually important.
-- If something looks wrong, stop and ask your team before re‑running a script.
-
----
-
-## 13) Troubleshooting (Basics)
-
-- **No scripts listed**: Scripts may not be installed yet. Install the default scripts using the command palette.
-- **Script won’t run**: You may have the wrong file/folder selected. Review the details in the output panel and try selecting the target the script expects.
-- **Nothing happens**: Check the output pane for a message or prompt.

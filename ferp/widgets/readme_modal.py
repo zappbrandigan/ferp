@@ -1,7 +1,7 @@
 from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Label, MarkdownViewer
+from textual.widgets import Label, MarkdownViewer
 
 
 class ReadmeScreen(ModalScreen):
@@ -23,11 +23,8 @@ class ReadmeScreen(ModalScreen):
     def compose(self):
         markdown = MarkdownViewer(self._content, id="readme_content")
         self._markdown = markdown
-        scroll = VerticalScroll(markdown, id="readme_scroll")
         yield Vertical(
-            Label(self.heading, id="readme_title"),
-            scroll,
-            Footer(id="readme_footer"),
+            VerticalScroll(markdown, id="readme_scroll"),
             id="readme_modal",
         )
 

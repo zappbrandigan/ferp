@@ -225,7 +225,7 @@ ScriptItem.-highlight .script_category {
 #dialog_container {
     align: center middle;
     max-height: 20;
-    max-width: 100;
+    max-width: 120;
     padding: 1 2;
     border: round $secondary;
     background: $panel;
@@ -345,26 +345,12 @@ ScriptItem.-highlight .script_category {
 }
 
 #readme_modal{
-    max-width: 150;
-    max-height: 50;
-}
-
-#readme_title {
-    padding: 0 1;
-    text-style: bold;
-}
-
-#readme_scroll {
-    max-width: 150;
+    max-width: 175;
+    max-height: 55;
 }
 
 #readme_content {
     border: round $secondary;
-}
-
-#readme_modal Footer {
-    align: center middle;
-    background: $background;
 }
 
 /* ============================================================================

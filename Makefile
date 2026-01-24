@@ -1,7 +1,7 @@
 .PHONY: dev test clean bump-patch bump-minor bump-major
 
 dev:
-	FERP_DEV_CONFIG=1 FERP_SCRIPT_LOG_LEVEL=debug  python -m ferp
+	FERP_DEV_CONFIG=1 FERP_SCRIPT_LOG_LEVEL=debug textual run --dev ferp/app.py
 
 test:
 	pytest

@@ -621,8 +621,11 @@ class Ferp(App):
         panel.show_error(error)
 
     def _start_delete_path(self, target: Path) -> None:
+        file_tree = self.query_one(FileTree)
+        file_tree.set_pending_delete_index(file_tree.index)
         label = target.name or str(target)
         self.notify(f"Deleting '{escape(label)}'...", timeout=2)
+        self._stop_file_tree_watch()
         self.run_worker(
             lambda: self._delete_path_worker(target),
             group="delete_path",
@@ -882,6 +885,9 @@ class Ferp(App):
                     severity="error",
                     timeout=3,
                 )
+                file_tree = self.query_one(FileTree)
+                file_tree.set_pending_delete_index(None)
+                self._start_file_tree_watch()
             return
         if worker.group == "bulk_rename":
             if event.state is WorkerState.SUCCESS:
