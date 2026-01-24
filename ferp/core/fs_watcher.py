@@ -31,12 +31,14 @@ class FileTreeWatcher:
         *,
         call_from_thread: Callable[[Callable[[], None]], object | None],
         refresh_callback: Callable[[], None],
+        missing_callback: Callable[[Path], None] | None = None,
         snapshot_func: Callable[[Path], tuple[str, ...]],
         timer_factory: Callable[[float, Callable[[], None]], Timer],
         debounce_seconds: float = 2.0,
     ) -> None:
         self._call_from_thread = call_from_thread
         self._refresh_callback = refresh_callback
+        self._missing_callback = missing_callback
         self._snapshot_func = snapshot_func
         self._timer_factory = timer_factory
         self._debounce_seconds = debounce_seconds
@@ -128,6 +130,8 @@ class FileTreeWatcher:
         self._refresh_timer = None
         directory = self._current_directory
         if directory is None or not directory.exists():
+            if directory is not None and self._missing_callback is not None:
+                self._missing_callback(directory)
             return
 
         signature = self._snapshot_func(directory)

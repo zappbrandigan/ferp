@@ -230,6 +230,7 @@ class ScriptLifecycleController:
         output_panel.mount(
             header,
             Vertical(
+                Static("", id="progress_message"),
                 self._progress_bar_widget,
                 self._progress_status_widget,
                 id="progress-container",
@@ -404,6 +405,11 @@ class ScriptLifecycleController:
 
             total = self._coerce_float(payload.get("total"))
             unit = str(payload.get("unit")).strip() if payload.get("unit") else ""
+            message = payload.get("message")
+            message_text = escape(str(message)) if message is not None else ""
+
+            message_widget = self._app.query_one("#progress_message", Static)
+            message_widget.update(message_text)
 
             if total is not None and total >= 0:
                 bar.update(total=total, progress=max(0.0, min(current, total)))

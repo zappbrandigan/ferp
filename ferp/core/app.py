@@ -144,6 +144,7 @@ class Ferp(App):
         self._file_tree_watcher = FileTreeWatcher(
             call_from_thread=self.call_from_thread,
             refresh_callback=self._refresh_listing_from_watcher,
+            missing_callback=self._handle_missing_directory,
             snapshot_func=snapshot_directory,
             timer_factory=self.set_timer,
         )
@@ -554,8 +555,7 @@ class Ferp(App):
 
     @on(HighlightRequest)
     def handle_highlight(self, event: HighlightRequest) -> None:
-        if event.path:
-            self.highlighted_path = event.path
+        self.highlighted_path = event.path
 
     @on(CreatePathRequest)
     def handle_create_path(self, event: CreatePathRequest) -> None:
@@ -735,6 +735,10 @@ class Ferp(App):
 
         file_tree = self.query_one(FileTree)
         if result.error:
+            if not result.path.exists():
+                self._handle_missing_directory(result.path)
+                self._finalize_directory_listing()
+                return
             file_tree.show_error(
                 result.path, f"Unable to load directory: {result.error}"
             )
@@ -761,11 +765,40 @@ class Ferp(App):
 
     def _request_navigation(self, path: Path) -> None:
         if not path.exists() or not path.is_dir():
+            if not self.current_path.exists():
+                self._handle_missing_directory(self.current_path)
             return
         if self._listing_in_progress:
             self._pending_navigation_path = path
             return
         self._begin_navigation(path)
+
+    def _handle_missing_directory(self, missing: Path) -> None:
+        target = self._nearest_existing_parent(missing)
+        if target is None:
+            target = self.resolve_startup_path()
+
+        if target.exists() and target != self.current_path:
+            self.notify(
+                f"Directory removed. Jumped to '{escape(str(target))}'.",
+                timeout=3,
+            )
+
+        if self._listing_in_progress:
+            self._pending_navigation_path = target
+            return
+
+        self._begin_navigation(target)
+
+    def _nearest_existing_parent(self, missing: Path) -> Path | None:
+        candidate = missing
+        while True:
+            parent = candidate.parent
+            if parent == candidate:
+                return None
+            if parent.exists():
+                return parent
+            candidate = parent
 
     def _begin_navigation(self, path: Path) -> None:
         self._pending_navigation_path = None

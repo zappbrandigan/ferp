@@ -114,6 +114,7 @@ class ScriptAPI:
         current: float,
         total: float | None = None,
         unit: str | None = None,
+        message: str | None = None,
         every: int | None = None,
     ) -> None:
         self._ensure_running()
@@ -131,6 +132,8 @@ class ScriptAPI:
             payload["total"] = total
         if unit is not None:
             payload["unit"] = unit
+        if message is not None:
+            payload["message"] = message
         self._transport.send(MessageType.PROGRESS, payload)
 
     def emit_result(self, payload: Mapping[str, Any]) -> None:

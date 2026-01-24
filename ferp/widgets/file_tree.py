@@ -217,6 +217,14 @@ class FileTreeFilterWidget(Widget):
         file_tree.handle_filter_submit(event.value)
         self.hide()
 
+    @on(Input.Blurred)
+    def handle_blur(self, event: Input.Blurred) -> None:
+        if self._input is None or event.input is not self._input:
+            return
+        file_tree = self.app.query_one("#file_list", FileTree)
+        file_tree.handle_filter_submit(event.value)
+        self.hide()
+
     def _schedule_filter_apply(self) -> None:
         if self._debounce_timer is not None:
             self._debounce_timer.stop()
@@ -497,6 +505,7 @@ class FileTree(ListView):
         )
         notice.can_focus = False
         self.append(notice)
+        self.post_message(HighlightRequest(None))
 
     def show_listing(self, path: Path, entries: Sequence[FileListingEntry]) -> None:
         previous_path = self._current_listing_path
@@ -710,6 +719,13 @@ class FileTree(ListView):
         header_target = parent if parent != path else path
         self.append(FileItem(header_target, is_header=True))
 
+    def _append_notice(self, message: str) -> None:
+        notice = ListItem(
+            Label(message, classes="file_tree_notice"), classes="item_notice"
+        )
+        notice.can_focus = False
+        self.append(notice)
+
     def _render_current_chunk(self) -> None:
         path = self._current_listing_path
         if path is None:
@@ -720,6 +736,11 @@ class FileTree(ListView):
 
         total = len(self._filtered_entries)
         if total == 0:
+            if self._all_entries:
+                self._append_notice("No items match the current filter.")
+            else:
+                self._append_notice("No files in this directory.")
+            self.post_message(HighlightRequest(None))
             self.call_after_refresh(self._restore_selection)
             return
 
