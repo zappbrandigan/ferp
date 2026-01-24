@@ -288,8 +288,7 @@ ScriptItem.-highlight .script_category {
     background: $background;    
 }   
 
-#dialog_container #prompt_flags Checkbox.-on > .toggle--button,
-#dialog_container #prompt_flags Checkbox.-on > .toggle--label {
+#dialog_container #prompt_flags Checkbox.-on > .toggle--button {
     color: $text-primary;
 }   
 
@@ -307,7 +306,7 @@ ScriptItem.-highlight .script_category {
     background: transparent;
 }
 
-#selected_pubs_label {
+.selection_list_subtitle {
     width: 100%;
     margin: 1 0 0 0;
     align: center middle;
@@ -315,12 +314,11 @@ ScriptItem.-highlight .script_category {
 }
 
 #dialog_container .prompt_selection_list:focus {
-    border: round $secondary;
+    border: round $primary;
 }
 
-#dialog_container .prompt_selection_list > .selection-list--option.--selected {
-    background: $primary;
-    color: $text-primary;
+SelectionList .selection-list--button-selected, SelectionList .selection-list--button-selected-highlighted {
+    color: $primary;
 }
 
 #dialog_container .dialog_buttons {

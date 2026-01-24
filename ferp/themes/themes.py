@@ -163,6 +163,37 @@ burgundy = Theme(
     },
 )
 
+zapp_brannigan = Theme(
+    name="zapp-brannigan",
+    primary="#C9A23F",  # Brash command gold (medals, epaulettes)
+    secondary="#1F6F78",  # DOOP teal / space-navy interface
+    warning="#E5533D",  # Dramatic ego-red warnings
+    error="#B11226",  # Militaristic red (court-martial chic)
+    success="#4CAF73",  # Overconfident “mission accomplished” green
+    accent="#5FD3E6",  # Loud, vain highlight gold
+    foreground="#ECE8E1",  # Retro-future off-white text
+    background="#0E1418",  # Deep space bridge black
+    surface="#172026",  # Console surface
+    panel="#1E2A32",  # Panels, dialogs, sidebars
+    dark=True,
+    variables={
+        "input-background": "#1E2A32",
+        "input-foreground": "#ECE8E1",
+        # "input-border": "#C9A23F",
+        "button-background": "#1F6F78",
+        "button-foreground": "#ECE8E1",
+        "button-hover-background": "#2D8C97",
+        "button-hover-foreground": "#FFFFFF",
+        "list-highlight-background": "#C9A23F",
+        "list-highlight-foreground": "#0E1418",
+        "footer-background": "#0E1418",
+        "footer-foreground": "#C9A23F",
+        "header-background": "#0E1418",
+        "header-foreground": "#FFD166",
+    },
+)
+
+
 ALL_THEMES: list[Theme] = [
     industrial_amber,
     blueprint,
@@ -172,4 +203,5 @@ ALL_THEMES: list[Theme] = [
     tokyo_night,
     burgundy,
     petal_sky,
+    zapp_brannigan,
 ]

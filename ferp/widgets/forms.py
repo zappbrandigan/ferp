@@ -65,7 +65,13 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
             )
         )
         for field in self._selection_fields:
-            contents.append(Label(field.label, id=f"{field.id}_label"))
+            contents.append(
+                Label(
+                    field.label,
+                    id=f"{field.id}_label",
+                    classes="selection_list_subtitle",
+                )
+            )
             contents.append(
                 SelectionList(
                     *[(option, option) for option in field.options],
