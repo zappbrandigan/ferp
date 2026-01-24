@@ -33,7 +33,7 @@ class FileTreeWatcher:
         refresh_callback: Callable[[], None],
         snapshot_func: Callable[[Path], tuple[str, ...]],
         timer_factory: Callable[[float, Callable[[], None]], Timer],
-        debounce_seconds: float = 1.0,
+        debounce_seconds: float = 2.0,
     ) -> None:
         self._call_from_thread = call_from_thread
         self._refresh_callback = refresh_callback

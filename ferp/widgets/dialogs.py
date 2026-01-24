@@ -30,6 +30,40 @@ class ConfirmDialog(ModalScreen[bool | None]):
             self.dismiss(None)
 
 
+class BulkRenameConfirmDialog(ModalScreen[bool | None]):
+    def __init__(
+        self,
+        title: str,
+        body: str,
+        id: str = "bulk_rename_confirm_dialog",
+    ) -> None:
+        super().__init__(id=id)
+        self.dialog_title: str = title or ""
+        self.body: str = body or ""
+
+    def compose(self):
+        yield Container(
+            Label(self.dialog_title, id="bulk_rename_dialog_title"),
+            Label(self.body, id="bulk_rename_dialog_message"),
+            Horizontal(
+                Button("Yes", id="bulk_rename_yes", variant="primary"),
+                Button("No", id="bulk_rename_cancel"),
+                classes="dialog_buttons",
+            ),
+            id="bulk_rename_dialog_container",
+        )
+
+    def on_button_pressed(self, event):
+        if event.button.id == "bulk_rename_cancel":
+            self.dismiss(False)
+            return
+        self.dismiss(event.button.id == "bulk_rename_yes")
+
+    def on_screen_resume(self) -> None:
+        if getattr(self, "_dismiss_on_resume", False):
+            self.dismiss(None)
+
+
 class InputDialog(ModalScreen[str | None]):
     def __init__(
         self, message: str, id: str = "input_dialog", default: str | None = None

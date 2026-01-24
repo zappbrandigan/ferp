@@ -20,7 +20,7 @@ from ferp.domain.scripts import Script
 from ferp.services.scripts import ScriptExecutionContext
 from ferp.widgets.dialogs import ConfirmDialog
 from ferp.widgets.file_tree import FileTree
-from ferp.widgets.forms import BooleanField, PromptDialog
+from ferp.widgets.forms import BooleanField, PromptDialog, SelectionField
 from ferp.widgets.output_panel import ScriptOutputPanel
 from ferp.widgets.scripts import ScriptManager
 from ferp.widgets.top_bar import TopBar
@@ -294,15 +294,17 @@ class ScriptLifecycleController:
 
         self._app.query_one(TopBar).status = "Awaiting input"
         bool_fields = self._boolean_fields_for_request(request)
+        selection_fields = self._selection_fields_for_request(request)
         dialog = PromptDialog(
             prompt,
             default=request.default,
             boolean_fields=bool_fields,
+            selection_fields=selection_fields,
             show_text_input=request.show_text_input,
             id="prompt_dialog",
         )
 
-        def on_close(data: dict[str, str | bool] | None) -> None:
+        def on_close(data: dict[str, str | bool | list[str]] | None) -> None:
             if data is None:
                 self._handle_user_cancelled()
                 return
@@ -311,7 +313,7 @@ class ScriptLifecycleController:
             self._input_screen = None
             value = data.get("value", "")
             payload_value = str(value)
-            payload = json.dumps(data) if bool_fields else payload_value
+            payload = json.dumps(data) if (bool_fields or selection_fields) else payload_value
             self._start_worker(lambda: self._runner.provide_input(payload))
 
         self._input_screen = dialog
@@ -354,6 +356,37 @@ class ScriptLifecycleController:
                     str(field_id),
                     str(label),
                     bool(field.get("default", False)),
+                )
+            )
+        return fields
+
+    def _selection_fields_for_request(
+        self, request: ScriptInputRequest
+    ) -> list[SelectionField]:
+        fields: list[SelectionField] = []
+        for field in request.fields:
+            if field.get("type") != "multi_select":
+                continue
+            field_id = field.get("id")
+            label = field.get("label")
+            options = field.get("options")
+            default = field.get("default", [])
+            if not field_id or not label:
+                continue
+            if not isinstance(options, list) or not options:
+                continue
+            options_clean = [str(item) for item in options if item]
+            if not options_clean:
+                continue
+            values = []
+            if isinstance(default, list):
+                values = [str(item) for item in default if item]
+            fields.append(
+                SelectionField(
+                    str(field_id),
+                    str(label),
+                    options_clean,
+                    values or None,
                 )
             )
         return fields

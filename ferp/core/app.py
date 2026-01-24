@@ -143,7 +143,7 @@ class Ferp(App):
         self.fs_controller = FileSystemController()
         self._file_tree_watcher = FileTreeWatcher(
             call_from_thread=self.call_from_thread,
-            refresh_callback=self.refresh_listing,
+            refresh_callback=self._refresh_listing_from_watcher,
             snapshot_func=snapshot_directory,
             timer_factory=self.set_timer,
         )
@@ -439,7 +439,9 @@ class Ferp(App):
 
         def start_sync(api_token: str) -> None:
             panel = self.query_one(ScriptOutputPanel)
-            panel.update_content("[bold $primary]Syncing Monday board…[/bold $primary]")
+            panel.update_content(
+                "[bold $primary]Syncing Monday board...[/bold $primary]"
+            )
             self.run_worker(
                 lambda token=api_token, board=board_id_value: self._sync_monday_board(
                     token, board
@@ -620,7 +622,7 @@ class Ferp(App):
 
     def _start_delete_path(self, target: Path) -> None:
         label = target.name or str(target)
-        self.notify(f"Deleting '{escape(label)}'...")
+        self.notify(f"Deleting '{escape(label)}'...", timeout=2)
         self.run_worker(
             lambda: self._delete_path_worker(target),
             group="delete_path",
@@ -674,7 +676,6 @@ class Ferp(App):
                 "[bold $error]Monday sync failed.[/bold $error]\n" + escape(str(error))
             )
             return
-        cache_path = payload.get("cache_path", "")
         board_name = payload.get("board_name", "")
         group_count = payload.get("group_count", 0)
         publisher_count = payload.get("publisher_count", 0)
@@ -682,7 +683,6 @@ class Ferp(App):
 
         lines = [
             "[bold $success]Monday board cache updated.[/bold $success]",
-            f"[bold $primary]Cache:[/bold $primary] {escape(str(cache_path))}",
         ]
 
         if board_name:
@@ -720,6 +720,11 @@ class Ferp(App):
             exclusive=True,
             thread=True,
         )
+
+    def _refresh_listing_from_watcher(self) -> None:
+        if self._listing_in_progress:
+            return
+        self.refresh_listing()
 
     def _handle_directory_listing_result(self, result: DirectoryListingResult) -> None:
         if result.token != self._directory_listing_token:
@@ -867,12 +872,46 @@ class Ferp(App):
                 result = worker.result
                 if isinstance(result, DeletePathResult):
                     label = result.target.name or str(result.target)
-                    self.notify(f"Deleted '{escape(label)}'.")
+                    self.notify(f"Deleted '{escape(label)}'.", timeout=3)
                     self.refresh_listing()
             elif event.state is WorkerState.ERROR:
                 error = worker.error or RuntimeError("Delete failed.")
                 self.show_error(error)
-                self.notify("Delete failed. See output panel for details.")
+                self.notify(
+                    "Delete failed. See output panel for details.",
+                    severity="error",
+                    timeout=3,
+                )
+            return
+        if worker.group == "bulk_rename":
+            if event.state is WorkerState.SUCCESS:
+                result = worker.result
+                if isinstance(result, dict):
+                    errors = (
+                        result.get("errors")
+                        if isinstance(result.get("errors"), list)
+                        else []
+                    )
+                    count = result.get("count", 0)
+                    if errors:
+                        self.show_error(RuntimeError("\n".join(errors)))
+                        self.notify(
+                            f"Rename completed with errors ({len(errors)} issue(s)).",
+                            severity="warning",
+                            timeout=3,
+                        )
+                    else:
+                        self.notify(f"Rename complete: {count} file(s).", timeout=3)
+                self.refresh_listing()
+            elif event.state is WorkerState.ERROR:
+                error = worker.error or RuntimeError("Bulk rename failed.")
+                self.show_error(error)
+                self.notify(
+                    "Bulk rename failed. See output panel for details.",
+                    severity="warning",
+                    timeout=3,
+                )
+                self.refresh_listing()
             return
         if worker.group == "monday_sync":
             if event.state is WorkerState.SUCCESS:

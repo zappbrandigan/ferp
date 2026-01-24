@@ -6,7 +6,8 @@ from typing import Iterable
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, Input, Label
+from textual.widget import Widget
+from textual.widgets import Button, Checkbox, Input, Label, SelectionList
 
 
 @dataclass(frozen=True)
@@ -16,7 +17,34 @@ class BooleanField:
     value: bool = False
 
 
-class PromptDialog(ModalScreen[dict[str, str | bool] | None]):
+@dataclass(frozen=True)
+class SelectionField:
+    id: str
+    label: str
+    options: list[str]
+    values: list[str] | None = None
+
+
+def _option_to_value(option: object) -> str:
+    value = getattr(option, "value", None)
+    if value is None:
+        value = getattr(option, "id", None)
+    if value is None:
+        if isinstance(option, (list, tuple)) and len(option) >= 2:
+            value = option[1]
+        else:
+            value = option
+    return str(value)
+
+
+def _selection_list_values(selection_list: SelectionList) -> list[str]:
+    selected = selection_list.selected
+    if isinstance(selected, list):
+        return [str(item) for item in selected]
+    return []
+
+
+class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
     def __init__(
         self,
         message: str,
@@ -24,16 +52,18 @@ class PromptDialog(ModalScreen[dict[str, str | bool] | None]):
         *,
         default: str | None = None,
         boolean_fields: Iterable[BooleanField] | None = None,
+        selection_fields: Iterable[SelectionField] | None = None,
         show_text_input: bool = True,
     ) -> None:
         super().__init__(id=id)
         self._message = message
         self._default = default or ""
         self._bool_fields = list(boolean_fields or [])
+        self._selection_fields = list(selection_fields or [])
         self._show_text_input = show_text_input
 
     def compose(self) -> ComposeResult:
-        contents: list[Label | Input | Horizontal] = [
+        contents: list[Widget] = [
             Label(self._message, id="dialog_message")
         ]
         if self._show_text_input:
@@ -48,6 +78,15 @@ class PromptDialog(ModalScreen[dict[str, str | bool] | None]):
                 classes="hidden" if not self._bool_fields else "",
             )
         )
+        for field in self._selection_fields:
+            contents.append(Label(field.label, id=f"{field.id}_label"))
+            contents.append(
+                SelectionList(
+                    *[(option, option) for option in field.options],
+                    id=field.id,
+                    classes="prompt_selection_list",
+                )
+            )
         contents.append(
             Horizontal(
                 Button("OK", id="ok", variant="primary"),
@@ -60,18 +99,31 @@ class PromptDialog(ModalScreen[dict[str, str | bool] | None]):
     def on_mount(self) -> None:
         if self._show_text_input:
             self.query_one(Input).focus()
-            return
-        if self._bool_fields:
-            self.query_one(Checkbox).focus()
-            return
-        self.query_one("#ok", Button).focus()
+        for field in self._selection_fields:
+            selection_list = self.query_one(f"#{field.id}", SelectionList)
+            if field.values:
+                for value in field.values:
+                    selector = getattr(selection_list, "select", None)
+                    if callable(selector):
+                        try:
+                            selector(value)
+                        except Exception:
+                            pass
+        if not self._show_text_input:
+            if self._bool_fields:
+                self.query_one(Checkbox).focus()
+                return
+            if self._selection_fields:
+                self.query_one(SelectionList).focus()
+                return
+            self.query_one("#ok", Button).focus()
 
     def on_screen_resume(self) -> None:
         if getattr(self, "_dismiss_on_resume", False):
             self.dismiss(None)
 
-    def _collect_state(self) -> dict[str, str | bool]:
-        state: dict[str, str | bool] = {}
+    def _collect_state(self) -> dict[str, str | bool | list[str]]:
+        state: dict[str, str | bool | list[str]] = {}
         if self._show_text_input:
             state["value"] = self.query_one(Input).value.strip()
         else:
@@ -79,6 +131,9 @@ class PromptDialog(ModalScreen[dict[str, str | bool] | None]):
         for field in self._bool_fields:
             checkbox = self.query_one(f"#{field.id}", Checkbox)
             state[field.id] = bool(checkbox.value)
+        for field in self._selection_fields:
+            selection_list = self.query_one(f"#{field.id}", SelectionList)
+            state[field.id] = _selection_list_values(selection_list)
         return state
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

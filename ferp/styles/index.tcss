@@ -209,6 +209,19 @@ ScriptItem.-highlight .script_category {
     align: center middle;
 }
 
+#bulk_rename_confirm_dialog {
+    align: center middle;
+}
+
+#bulk_rename_confirm_dialog .dialog_buttons {
+    dock: bottom;
+    height: auto;
+}
+
+#bulk_rename_confirm_dialog .dialog_buttons Button {
+    width: 1fr;
+}
+
 #dialog_container {
     align: center middle;
     max-height: 20;
@@ -217,6 +230,30 @@ ScriptItem.-highlight .script_category {
     border: round $secondary;
     background: $panel;
 }
+
+#bulk_rename_dialog_container {
+    align: center middle;
+    max-height: 20;
+    max-width: 125;
+    padding: 1 1;
+    border: round $secondary;
+    background: $panel;
+}
+
+#bulk_rename_dialog_container #bulk_rename_dialog_message {
+    width: 100%;
+    content-align: left middle;
+    padding: 0 1;
+}
+
+#bulk_rename_dialog_container #bulk_rename_dialog_title {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+
 
 #dialog_container #dialog_message {
     width: 100%;
@@ -258,6 +295,32 @@ ScriptItem.-highlight .script_category {
 
 #dialog_container #prompt_flags Checkbox:focus .toggle--label {
     text-style: bold underline;
+}
+
+/* ============================================================================
+   Prompt SelectionList
+============================================================================ */
+#dialog_container .prompt_selection_list {
+    height: 10;
+    margin: 0 5 0 5;
+    border: round $primary;
+    background: transparent;
+}
+
+#selected_pubs_label {
+    width: 100%;
+    margin: 1 0 0 0;
+    align: center middle;
+    text-align: center;
+}
+
+#dialog_container .prompt_selection_list:focus {
+    border: round $secondary;
+}
+
+#dialog_container .prompt_selection_list > .selection-list--option.--selected {
+    background: $primary;
+    color: $text-primary;
 }
 
 #dialog_container .dialog_buttons {

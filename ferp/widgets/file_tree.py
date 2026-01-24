@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Sequence, cast
+from typing import TYPE_CHECKING, Pattern, Sequence, cast
 
 from textual import on
 from textual.app import ComposeResult
@@ -25,6 +25,10 @@ from ferp.core.messages import (
     RenamePathRequest,
 )
 from ferp.core.protocols import AppWithPath
+from ferp.widgets.dialogs import BulkRenameConfirmDialog
+
+if TYPE_CHECKING:
+    from ferp.core.app import Ferp
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,53 @@ class FileListingEntry:
 @lru_cache(maxsize=2048)
 def _format_timestamp(timestamp: float) -> str:
     return datetime.strftime(datetime.fromtimestamp(timestamp), "%x %I:%S %p")
+
+
+def _split_replace_input(value: str) -> tuple[str, str, str] | None:
+    if value.startswith("/"):
+        second = value.find("/", 1)
+        if second == -1:
+            return None
+        pattern = value[1:second]
+        replacement = value[second + 1 :]
+        return "regex", pattern, replacement
+
+    if "/" not in value:
+        return None
+    pattern, replacement = value.split("/", 1)
+    return "literal", pattern, replacement
+
+
+def _filter_query_for_input(value: str) -> str:
+    parsed = _split_replace_input(value)
+    if parsed is None:
+        return value
+
+    mode, pattern, _replacement = parsed
+    if mode == "regex":
+        return f"/{pattern}"
+    return pattern
+
+
+def _escape_regex_replacement(replacement: str) -> str:
+    return replacement.replace("\\", r"\\").replace("$", r"\$")
+
+
+def _split_stem_suffix(name: str) -> tuple[str, str]:
+    suffix = Path(name).suffix
+    if suffix in ("", "."):
+        suffix = ""
+    stem = name[: -len(suffix)] if suffix else name
+    return stem, suffix
+
+
+def _replace_in_stem(
+    name: str, *, matcher: Pattern[str], replacement: str
+) -> tuple[str, str, int]:
+    stem, suffix = _split_stem_suffix(name)
+    new_stem, count = matcher.subn(replacement, stem)
+    new_name = f"{new_stem}{suffix}"
+    return new_name, new_stem, count
 
 
 class FileItem(ListItem):
@@ -125,7 +176,7 @@ class FileTreeFilterWidget(Widget):
 
     def compose(self) -> ComposeResult:
         yield Input(
-            placeholder="Filter entries (type to refine)...",
+            placeholder="Filter entries (type to refine) — use find/replace or /regex/replace",
             id="file_tree_filter_input",
         )
 
@@ -161,7 +212,8 @@ class FileTreeFilterWidget(Widget):
     def handle_submit(self, event: Input.Submitted) -> None:
         if self._input is None or event.input is not self._input:
             return
-        self._apply_pending_filter()
+        file_tree = self.app.query_one("#file_list", FileTree)
+        file_tree.handle_filter_submit(event.value)
         self.hide()
 
     def _schedule_filter_apply(self) -> None:
@@ -179,7 +231,7 @@ class FileTreeFilterWidget(Widget):
             self._debounce_timer.stop()
             self._debounce_timer = None
         file_tree = self.app.query_one("#file_list", FileTree)
-        file_tree._set_filter(self._pending_value)
+        file_tree.handle_filter_preview(self._pending_value)
 
 
 class FileTree(ListView):
@@ -471,6 +523,139 @@ class FileTree(ListView):
             or query in entry.path.name.casefold()
         ]
 
+    def handle_filter_submit(self, value: str) -> None:
+        parsed = self._parse_replace_request(value)
+        if parsed is None:
+            self._set_filter(_filter_query_for_input(value))
+            return
+
+        filter_query, pattern, replacement, is_regex = parsed
+        self._set_filter(filter_query)
+        self._confirm_replace(pattern, replacement, is_regex)
+
+    def _parse_replace_request(self, value: str) -> tuple[str, str, str, bool] | None:
+        parsed = _split_replace_input(value)
+        if parsed is None:
+            return None
+
+        mode, pattern, replacement = parsed
+        pattern = pattern.strip()
+        replacement = replacement.strip()
+
+        if not pattern:
+            return None
+
+        if mode == "regex":
+            filter_query = f"/{pattern}"
+            return filter_query, pattern, replacement, True
+
+        return pattern, pattern, replacement, False
+
+    def _confirm_replace(self, pattern: str, replacement: str, is_regex: bool) -> None:
+        app = cast("Ferp", self.app)
+        if is_regex:
+            try:
+                matcher = re.compile(pattern, re.IGNORECASE)
+            except re.error as exc:
+                app.show_error(exc)
+                return
+        else:
+            matcher = re.compile(re.escape(pattern), re.IGNORECASE)
+            replacement = _escape_regex_replacement(replacement)
+
+        # Regex replacements must use Python's \g<name> or \g<number> syntax.
+
+        sources = {entry.path for entry in self._filtered_entries if not entry.is_dir}
+        if not sources:
+            app.show_error(RuntimeError("No files match the current filter."))
+            return
+
+        plan: list[tuple[Path, Path]] = []
+        invalid: list[str] = []
+        conflicts: list[str] = []
+        planned_targets: dict[str, str] = {}
+
+        for entry in self._filtered_entries:
+            if entry.is_dir:
+                continue
+            name = entry.path.name
+            stem, _suffix = _split_stem_suffix(name)
+            new_name, new_stem, count = _replace_in_stem(
+                name, matcher=matcher, replacement=replacement
+            )
+            if count == 0 or new_stem == stem:
+                continue
+            if not new_stem:
+                invalid.append(f"{name} -> (empty name)")
+                continue
+            if Path(new_name).name != new_name:
+                invalid.append(f"{name} -> {new_name}")
+                continue
+            if new_name in planned_targets:
+                conflicts.append(
+                    f"{name} -> {new_name} (already used by {planned_targets[new_name]})"
+                )
+                continue
+            destination = entry.path.with_name(new_name)
+            if destination.exists() and destination != entry.path:
+                conflicts.append(f"{name} -> {new_name} (already exists)")
+                continue
+            if destination in sources and destination != entry.path:
+                conflicts.append(f"{name} -> {new_name} (conflicts with another file)")
+                continue
+            planned_targets[new_name] = name
+            plan.append((entry.path, destination))
+
+        if not plan:
+            app.show_error(RuntimeError("No files would be renamed."))
+            return
+
+        if invalid or conflicts:
+            details = []
+            if invalid:
+                details.append("Invalid names:\n" + "\n".join(invalid[:5]))
+            if conflicts:
+                details.append("Conflicts:\n" + "\n".join(conflicts[:5]))
+            message = "Cannot complete replace.\n" + "\n".join(details)
+            app.show_error(RuntimeError(message))
+            return
+
+        preview = [f"{src.name} -> {dest.name}" for src, dest in plan[:5]]
+        if len(plan) > 5:
+            preview.append(f"... and {len(plan) - 5} more.")
+        mode = "regex" if is_regex else "text"
+        title = f"Rename {len(plan)} file(s) using {mode} replace?"
+        body = "\n".join(preview)
+
+        def after(confirmed: bool | None) -> None:
+            if not confirmed:
+                return
+            self._set_filter("")
+            app._stop_file_tree_watch()
+            self.show_loading(app.current_path)
+            app.notify(f"Renaming {len(plan)} file(s)...", timeout=2)
+            app.run_worker(
+                lambda rename_plan=plan: self._bulk_rename_worker(rename_plan),
+                group="bulk_rename",
+                thread=True,
+            )
+
+        app.push_screen(BulkRenameConfirmDialog(title, body), after)
+
+    def _bulk_rename_worker(self, plan: list[tuple[Path, Path]]) -> dict[str, object]:
+        errors: list[str] = []
+        app = cast("Ferp", self.app)
+        for source, destination in plan:
+            try:
+                app.fs_controller.rename_path(
+                    source,
+                    destination,
+                    overwrite=False,
+                )
+            except Exception as exc:  # pragma: no cover - UI path
+                errors.append(f"{source.name}: {exc}")
+        return {"count": len(plan), "errors": errors}
+
     def _set_filter(self, value: str) -> None:
         query = value.strip()
         if query == self._filter_query:
@@ -481,6 +666,9 @@ class FileTree(ListView):
         self._chunk_start = 0
         self._last_chunk_direction = None
         self._render_current_chunk()
+
+    def handle_filter_preview(self, value: str) -> None:
+        self._set_filter(_filter_query_for_input(value))
 
     def _update_border_title(self) -> None:
         title = "File Navigator"

@@ -73,6 +73,14 @@ class BoolField(TypedDict):
     default: bool
 
 
+class MultiSelectField(TypedDict):
+    id: str
+    type: Literal["multi_select"]
+    label: str
+    options: Sequence[str]
+    default: Sequence[str]
+
+
 _InputPayloadT = TypeVar("_InputPayloadT", bound=Mapping[str, object])
 
 
@@ -183,9 +191,9 @@ class ScriptAPI:
         default: str | None = None,
         secret: bool = False,
         id: str | None = None,
-        fields: Sequence[BoolField] | None = None,
+        fields: Sequence[BoolField | MultiSelectField] | None = None,
         show_text_input: bool | None = None,
-    ) -> Dict[str, str | bool]: ...
+    ) -> Dict[str, str | bool | list[str]]: ...
 
     @overload
     def request_input_json(
@@ -195,7 +203,7 @@ class ScriptAPI:
         default: str | None = None,
         secret: bool = False,
         id: str | None = None,
-        fields: Sequence[BoolField] | None = None,
+        fields: Sequence[BoolField | MultiSelectField] | None = None,
         show_text_input: bool | None = None,
         payload_type: type[_InputPayloadT],
     ) -> _InputPayloadT: ...
@@ -207,12 +215,12 @@ class ScriptAPI:
         default: str | None = None,
         secret: bool = False,
         id: str | None = None,
-        fields: Sequence[BoolField] | None = None,
+        fields: Sequence[BoolField | MultiSelectField] | None = None,
         show_text_input: bool | None = None,
         payload_type: type[_InputPayloadT] | None = None,
-    ) -> Dict[str, str | bool] | _InputPayloadT:
+    ) -> Dict[str, str | bool | list[str]] | _InputPayloadT:
         if fields:
-            self._validate_bool_fields(fields)
+            self._validate_fields(fields)
         raw = self.request_input(
             prompt,
             default=default,
@@ -226,7 +234,7 @@ class ScriptAPI:
         if not isinstance(payload, dict):
             raise ValueError("Expected JSON object for request_input_json response.")
         if fields:
-            self._validate_bool_payload(payload, fields)
+            self._validate_payload_fields(payload, fields)
         if payload_type is not None:
             return cast(_InputPayloadT, payload)
         return payload
@@ -246,31 +254,56 @@ class ScriptAPI:
         )
         return raw.strip().lower() in {"true", "1", "yes", "y"}
 
-    def _validate_bool_fields(self, fields: Sequence[BoolField]) -> None:
+    def _validate_fields(
+        self,
+        fields: Sequence[BoolField | MultiSelectField],
+    ) -> None:
         for field in fields:
             field_id = field.get("id")
             label = field.get("label")
-            default = field.get("default")
             field_type = field.get("type")
-            if field_type != "bool":
-                raise ValueError(
-                    f"request_input_json only supports bool fields; received {field_type!r}."
-                )
             if not isinstance(field_id, str) or not field_id:
-                raise ValueError("Boolean fields must define a non-empty 'id'.")
+                raise ValueError("Fields must define a non-empty 'id'.")
             if not isinstance(label, str) or not label:
                 raise ValueError(
-                    f"Boolean field '{field_id}' must define a non-empty 'label'."
+                    f"Field '{field_id}' must define a non-empty 'label'."
                 )
-            if not isinstance(default, bool):
-                raise ValueError(
-                    f"Boolean field '{field_id}' must define a boolean 'default'."
-                )
+            if field_type == "bool":
+                default = field.get("default")
+                if not isinstance(default, bool):
+                    raise ValueError(
+                        f"Boolean field '{field_id}' must define a boolean 'default'."
+                    )
+                continue
+            if field_type == "multi_select":
+                options = field.get("options")
+                default = field.get("default", [])
+                if not isinstance(options, Sequence) or not options:
+                    raise ValueError(
+                        f"Multi-select field '{field_id}' must define non-empty 'options'."
+                    )
+                if any(not isinstance(item, str) or not item for item in options):
+                    raise ValueError(
+                        f"Multi-select field '{field_id}' options must be strings."
+                    )
+                if not isinstance(default, Sequence):
+                    raise ValueError(
+                        f"Multi-select field '{field_id}' must define a list 'default'."
+                    )
+                if any(not isinstance(item, str) for item in default):
+                    raise ValueError(
+                        f"Multi-select field '{field_id}' default values must be strings."
+                    )
+                continue
+            raise ValueError(
+                "request_input_json only supports bool or multi_select fields; "
+                f"received {field_type!r}."
+            )
 
-    def _validate_bool_payload(
+    def _validate_payload_fields(
         self,
         payload: Dict[str, Any],
-        fields: Sequence[BoolField],
+        fields: Sequence[BoolField | MultiSelectField],
     ) -> None:
         value = payload.get("value")
         if not isinstance(value, str):
@@ -281,10 +314,27 @@ class ScriptAPI:
                 raise ValueError(
                     f"request_input_json payload missing field '{field_id}'."
                 )
-            if not isinstance(payload[field_id], bool):
-                raise ValueError(
-                    f"request_input_json field '{field_id}' must be a boolean."
-                )
+            field_type = field.get("type")
+            if field_type == "bool":
+                if not isinstance(payload[field_id], bool):
+                    raise ValueError(
+                        f"request_input_json field '{field_id}' must be a boolean."
+                    )
+                continue
+            if field_type == "multi_select":
+                values = payload[field_id]
+                if not isinstance(values, list):
+                    raise ValueError(
+                        f"request_input_json field '{field_id}' must be a list."
+                    )
+                if any(not isinstance(item, str) for item in values):
+                    raise ValueError(
+                        f"request_input_json field '{field_id}' must contain strings."
+                    )
+                continue
+            raise ValueError(
+                f"request_input_json field '{field_id}' has unknown type '{field_type}'."
+            )
 
     def exit(self, *, code: int = 0) -> None:
         if self._exited:
@@ -474,6 +524,7 @@ def _should_emit_log(level: str, minimum: int) -> bool:
 
 __all__ = [
     "BoolField",
+    "MultiSelectField",
     "ScriptEnvironment",
     "ScriptEnvironmentApp",
     "ScriptEnvironmentHost",

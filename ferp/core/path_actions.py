@@ -80,7 +80,12 @@ class PathActionController:
         if not target.exists():
             return
 
-        suffix = "".join(target.suffixes)
+        name = target.name
+        if name.endswith("."):
+            suffix = ""
+        else:
+            suffix = target.suffix
+        stem = name[: -len(suffix)] if suffix else name
 
         def perform(overwrite: bool) -> None:
             try:
@@ -96,7 +101,8 @@ class PathActionController:
             nonlocal destination
             new_name = name
             if suffix:
-                new_name = f"{name}{suffix}"
+                if not new_name.endswith(suffix):
+                    new_name = f"{new_name}{suffix}"
             destination = target.with_name(new_name)
             if destination == target:
                 return
@@ -111,7 +117,7 @@ class PathActionController:
             perform(False)
 
         destination = target
-        default_name = target.stem if suffix else target.name
+        default_name = stem
         self._present_input(
             InputDialog("Enter new name", default=default_name),
             after,
