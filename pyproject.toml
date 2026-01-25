@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ferp"
-description = "Terminal-first file manager and FSCP automation workbench built with Textual."
+description = "Terminal-first file navigator and FSCP automation workbench built with Textual."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 license = { text = "MIT" }
 authors = [{ name = "Brandon Johnson" }]
 classifiers = [
@@ -15,6 +15,9 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Topic :: System :: Shells",
   "Topic :: Utilities",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
   "jsonschema>=4.21",
@@ -27,7 +30,6 @@ dynamic = ["version"]
 
 [project.scripts]
 ferp = "ferp.cli:main"
-ferp-ui = "ferp.app:main"
 
 [project.urls]
 Homepage = "https://github.com/zappbrandigan/ferp"
@@ -54,4 +56,4 @@ dev = [
 version = { attr = "ferp.__version__.__version__" }
 
 [tool.setuptools.package-data]
-"ferp" = ["styles/*.tcss", "fscp/protocol/schemas/**/*.json"]
+ferp = ["styles/*.tcss", "fscp/protocol/schemas/**/*.json"]
