@@ -196,7 +196,7 @@ class ScriptLifecycleController:
         self._progress_lines = []
         self._progress_started_at = None
         self._set_controls_disabled(False)
-        self._app.query_one(TopBar).status = "Idle"
+        self._app.query_one(TopBar).status = "Ready"
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -204,7 +204,7 @@ class ScriptLifecycleController:
     def _start_worker(self, runner_fn: Callable[[], ScriptResult]) -> None:
         self._script_running = True
         app = self._app
-        app.query_one(TopBar).status = "Running script"
+        app.query_one(TopBar).status = "Running"
         output_panel = app.query_one(ScriptOutputPanel)
         self._progress_lines = []
         output_panel.remove_children()
@@ -276,7 +276,6 @@ class ScriptLifecycleController:
             is_confirm = True
 
         if is_confirm:
-            self._app.query_one(TopBar).status = "Awaiting confirmation"
 
             def handle_confirm(value: bool | None) -> None:
                 if value is None:
@@ -293,7 +292,6 @@ class ScriptLifecycleController:
             self._app.push_screen(dialog, handle_confirm)
             return
 
-        self._app.query_one(TopBar).status = "Awaiting input"
         bool_fields = self._boolean_fields_for_request(request)
         selection_fields = self._selection_fields_for_request(request)
         dialog = PromptDialog(
@@ -314,7 +312,9 @@ class ScriptLifecycleController:
             self._input_screen = None
             value = data.get("value", "")
             payload_value = str(value)
-            payload = json.dumps(data) if (bool_fields or selection_fields) else payload_value
+            payload = (
+                json.dumps(data) if (bool_fields or selection_fields) else payload_value
+            )
             self._start_worker(lambda: self._runner.provide_input(payload))
 
         self._input_screen = dialog
@@ -480,7 +480,7 @@ class ScriptLifecycleController:
         self._abort_worker = None
         self._input_screen = None
         self._set_controls_disabled(False)
-        self._app.query_one(TopBar).status = "Idle"
+        self._app.query_one(TopBar).status = "Ready"
         self._app._start_file_tree_watch()
 
     def _set_controls_disabled(self, disabled: bool) -> None:

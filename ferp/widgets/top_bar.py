@@ -1,8 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
-from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Container
+from textual.containers import Container, Horizontal
 from textual.reactive import reactive
 from textual.widgets import Label
 
@@ -13,7 +12,7 @@ class TopBar(Container):
     """Custom application title bar."""
 
     current_path = reactive("", always_update=True)
-    status = reactive("Idle", always_update=True)
+    status = reactive("Ready", always_update=True)
     cache_updated_at = reactive(
         datetime(1970, 1, 1, tzinfo=timezone.utc), always_update=True
     )
@@ -21,12 +20,18 @@ class TopBar(Container):
     def __init__(self, *, app_title: str | None, app_version: str) -> None:
         super().__init__()
 
-        self._title_text = Text.from_markup(
-            f"[bold]{app_title}[/bold] [dim]v{app_version}[/dim]"
+        self.title_label = Horizontal(
+            Label(
+                f"{app_title}",
+                id="topbar_app_name",
+            ),
+            Label(
+                f"v{app_version}",
+                id="topbar_app_version",
+            ),
+            id="app_meta_container",
         )
-
-        self.title_label = Label(self._title_text, id="topbar_title")
-        self.status_label = Label("", id="topbar_status")
+        self.status_label = Label("", id="topbar_script_status")
         self.cache_label = Label("", id="topbar_cache")
 
     def watch_current_path(self) -> None:
@@ -44,11 +49,11 @@ class TopBar(Container):
             return
 
         status = {
-            "idle": f"[dim]⭘ Idle - [/dim]{self.current_path}",
-            "running": f"[bold $foreground]⏺ Running script[/] - {self.current_path}",
+            "ready": f"[dim]Ready - [/dim]{self.current_path}",
+            "running": f"[$foreground]Running[/] - {self.current_path}",
         }
         self.status_label.update(
-            status["idle"] if self.status == "Idle" else status["running"]
+            status["ready"] if self.status == "Ready" else status["running"]
         )
 
     def _update_cache_status(self) -> None:

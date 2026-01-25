@@ -61,7 +61,6 @@ from ferp.widgets.process_list import ProcessListScreen
 from ferp.widgets.readme_modal import ReadmeScreen
 from ferp.widgets.scripts import ScriptManager
 from ferp.widgets.task_list import TaskListScreen
-from ferp.widgets.task_status import TaskStatusIndicator
 from ferp.widgets.top_bar import TopBar
 
 
@@ -96,7 +95,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 
 
 class Ferp(App):
-    TITLE = "FERP"
+    TITLE = "ferp"
     CSS_PATH = Path(__file__).parent.parent / "styles" / "index.tcss"
     COMMANDS = App.COMMANDS | {FerpCommandProvider}
 
@@ -119,7 +118,6 @@ class Ferp(App):
             show=True,
             tooltip="Show/hide help panel",
         ),
-        # Binding("ctrl+q", "quit", "Quit the application", show=True),
     ]
 
     def __init__(self, start_path: Path | None = None) -> None:
@@ -131,7 +129,6 @@ class Ferp(App):
         self.highlighted_path: Path | None = None
         self.scripts_dir = self._paths.scripts_dir
         self.task_store = TaskStore(self._paths.tasks_file)
-        self._task_status_indicator: TaskStatusIndicator | None = None
         self._pending_task_totals: tuple[int, int] = (0, 0)
         self._directory_listing_token = 0
         self._listing_in_progress = False
@@ -246,8 +243,8 @@ class Ferp(App):
             output_panel, can_focus=True, id="output_panel_container", can_maximize=True
         )
         scroll_container.border_title = "Process Output"
+        yield TopBar(app_title=Ferp.TITLE, app_version=__version__)
         with Vertical(id="app_main_container"):
-            yield TopBar(app_title=Ferp.TITLE, app_version=__version__)
             yield Horizontal(
                 FileTree(id="file_list"),
                 Vertical(
@@ -261,7 +258,6 @@ class Ferp(App):
                 ),
                 id="main_pane",
             )
-            yield TaskStatusIndicator()
             yield FileTreeFilterWidget(id="file_tree_filter")
         yield Footer()
 
@@ -275,12 +271,11 @@ class Ferp(App):
         )
         topbar = self.query_one(TopBar)
         topbar.current_path = str(self.current_path)
-        topbar.status = "Idle"
+        topbar.status = "Ready"
         self.update_cache_timestamp()
         self.refresh_listing()
         file_tree = self.query_one("#file_list", FileTree)
         file_tree.index = 1
-        self._task_status_indicator = self.query_one(TaskStatusIndicator)
         self.task_store.subscribe(self._handle_task_update)
 
     def on_theme_changed(self, theme: Theme) -> None:
@@ -819,8 +814,6 @@ class Ferp(App):
         completed = sum(1 for task in tasks if task.completed)
         total = len(tasks)
         self._pending_task_totals = (completed, total)
-        if self._task_status_indicator is not None:
-            self._task_status_indicator.update_counts(completed, total)
 
     def action_capture_task(self) -> None:
         screen = self._ensure_task_list_screen()

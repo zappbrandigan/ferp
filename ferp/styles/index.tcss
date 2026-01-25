@@ -4,195 +4,198 @@
 * {
     scrollbar-size: 0 1;
 }
-#main_pane {
-    layout: horizontal;
-    height: 1fr;
-    padding: 1 0 0 0;
-}
 
-#details_pane {
-    layout: vertical;
-    width: 1fr;
-    background: $background;
-}
-
-/* ============================================================================
-   Top Bar
-============================================================================ */
 TopBar {
     layout: horizontal;
     height: 1;
-    padding: 0;
+    padding: 0 1 0 1;
+    margin-bottom: 1;
     color: $text;
     background: $primary;
+
+    #app_meta_container {
+        width: 1fr;
+
+        #topbar_app_name {
+            text-style: bold;
+        }
+
+        #topbar_app_version {
+            text-style: italic;
+            opacity: 0.5;
+            margin-left: 1;
+        }
+    }
+
+    #topbar_script_status {
+        width: 4fr;
+        text-align: center;
+    }
+
+    #topbar_cache {
+        width: 1fr;
+        text-align: right;
+    }
+
 }
 
-#topbar_title {
-    text-style: bold;
+#app_main_container {
+    #main_pane {
+        layout: horizontal;
+        height: 1fr;
+        background: $background;
+
+        /* ============================================================================
+        ListView General
+        ============================================================================ */
+        ListView.dimmed {
+            opacity: 0.4;
+        }
+
+        ListItem.-highlight {
+            color: $text !important;
+        }
+
+        ListItem:focus ListItem.-highlight {
+            background: $secondary;
+        }
+
+        ListItem Horizontal {
+            color: $text-primary;
+        }
+
+        ListItem.-highlight Horizontal {
+            color: $text;
+        }
+
+        ListItem .file_tree_header {
+            text-style: bold;
+        }
+
+        /* ============================================================================
+        File Tree
+        ============================================================================ */
+        #file_list {
+            width: 2fr;
+            max-width: 100%;
+            padding: 0 1;
+            border: round $secondary;
+            border-title-align: right;
+            background: $background;
+        }
+
+        .file_tree_header {
+            color: $text;
+        }
+
+        .file_tree_type_dir {
+            color: $text-primary;
+            text-style: bold;
+        }
+
+        .file_tree_type_file {
+            color: $text-accent;
+        }
+
+        .file_tree_row {
+            width: 100%;
+            height: 1;
+        }
+
+        .file_tree_cell {
+            height: 1;
+            padding: 0 1 0 0;
+        }
+
+        .file_tree_name {
+            width: 1fr;
+        }
+
+        .file_tree_chars, .file_tree_type {
+            width: 8;
+        }
+
+        .file_tree_modified, .file_tree_created {
+            width: 20;
+        }
+    }
+
+    #details_pane {
+        layout: vertical;
+        width: 1fr;
+        background: $background;
+
+        /* ============================================================================
+        Scripts Panel
+        ============================================================================ */
+        #scripts_panel {
+            height: 2fr;
+            border: round $secondary;
+            border-title-align: right;
+            background: $background;
+        }
+
+        #script_item {
+            height: 1;
+            padding: 0 1;
+        }
+
+        .script_category {
+            color: $primary;
+        }
+
+        ScriptItem.-highlight .script_category {
+            color: $text;
+        }
+
+        .script_name {
+            width: 1fr;
+            background: transparent;
+        }
+
+        .script_version {
+            color: $text;
+            text-style: italic;
+            opacity: 0.5;
+        }
+
+        /* ============================================================================
+        Output Panel
+        ============================================================================ */
+        #output_panel_container {
+            height: 1fr;
+            border: round $secondary;
+            border-title-align: right;
+        }
+
+        #output_panel {
+            width: 100%;
+            padding: 0 1;
+        }
+
+        #output_panel_container:focus {
+            background: $surface;
+        }
+    }
+
+    /* ============================================================================
+    Filter Bar
+    ============================================================================ */
+    #file_tree_filter {
+        display: none;
+        padding: 0 1;
+        background: $panel;
+        height: 3;
+
+        Input {
+            width: 100%;
+            border: round $secondary;
+        }
+    }
+
 }
 
-#topbar_status {
-    width: 1fr;
-    text-align: center;
-}
 
-.status_idle_icon {
-    text-style: dim;
-}
-
-.status_running_icon {
-    color: $success;
-    text-style: bold;
-}
-
-/* ============================================================================
-   ListView General
-============================================================================ */
-ListView.dimmed {
-    opacity: 0.4;
-}
-
-ListItem.-highlight {
-    color: $text !important;
-}
-
-ListItem:focus ListItem.-highlight {
-    background: $secondary;
-}
-
-ListItem Horizontal {
-    color: $text-primary;
-}
-
-ListItem.-highlight Horizontal {
-    color: $text;
-}
-
-ListItem .file_tree_header {
-    text-style: bold;
-}
-
-/* ============================================================================
-   File Tree
-============================================================================ */
-#file_list {
-    width: 2fr;
-    max-width: 100%;
-    padding: 0 1;
-    border: round $secondary;
-    border-title-align: right;
-    background: $background;
-}
-
-.file_tree_header {
-    color: $text;
-}
-
-.file_tree_type_dir {
-    color: $text-primary;
-    text-style: bold;
-}
-
-.file_tree_type_file {
-    color: $text-accent;
-}
-
-.file_tree_row {
-    width: 100%;
-    height: 1;
-}
-
-.file_tree_cell {
-    height: 1;
-    padding: 0 1 0 0;
-}
-
-.file_tree_name {
-    width: 1fr;
-}
-
-.file_tree_chars {
-    width: 8;
-}
-
-.file_tree_type {
-    width: 8;
-}
-
-.file_tree_modified {
-    width: 20;
-}
-
-.file_tree_created {
-    width: 20;
-}
-
-/* ============================================================================
-   Scripts Panel
-============================================================================ */
-#scripts_panel {
-    height: 2fr;
-    border: round $secondary;
-    border-title-align: right;
-    background: $background;
-}
-
-#script_item {
-    height: 1;
-    padding: 0 1;
-}
-
-.script_category {
-    color: $primary;
-}
-
-ScriptItem.-highlight .script_category {
-    color: $text;
-}
-
-.script_name {
-    width: 1fr;
-    background: transparent;
-}
-
-.script_version {
-    color: $text;
-    text-style: italic;
-    opacity: 0.5;
-}
-
-/* ============================================================================
-   Output Panel
-============================================================================ */
-#output_panel_container {
-    height: 1fr;
-    border: round $secondary;
-    border-title-align: right;
-}
-
-#output_panel {
-    width: 100%;
-    padding: 0 1;
-}
-
-#output_panel_container:focus {
-    background: $surface;
-}
-
-/* ============================================================================
-   Filter Bar
-============================================================================ */
-#file_tree_filter {
-    display: none;
-    padding: 0 1;
-    background: $panel;
-    height: 3;
-}
-
-#file_tree_filter Input {
-    width: 100%;
-    border: round $secondary;
-}
 
 /* ============================================================================
    Dialogs & Prompt Forms
@@ -264,13 +267,8 @@ ScriptItem.-highlight .script_category {
     width: 100%;
     height: 3;
     margin: 1 5 0 5;
-    border: round $primary;
+    border: round $secondary;
     background: transparent;
-
-    #input {
-        border: none;
-        background: transparent;
-    }
 }
 
 #dialog_container #prompt_flags {
@@ -301,8 +299,8 @@ ScriptItem.-highlight .script_category {
 ============================================================================ */
 #dialog_container .prompt_selection_list {
     height: 10;
-    margin: 0 5 0 5;
-    border: round $primary;
+    margin: 0 5 4 5;
+    border: round $secondary;
     background: transparent;
 }
 
@@ -311,10 +309,6 @@ ScriptItem.-highlight .script_category {
     margin: 1 0 0 0;
     align: center middle;
     text-align: center;
-}
-
-#dialog_container .prompt_selection_list:focus {
-    border: round $primary;
 }
 
 SelectionList .selection-list--button-selected, SelectionList .selection-list--button-selected-highlighted {
@@ -340,6 +334,7 @@ SelectionList .selection-list--button-selected, SelectionList .selection-list--b
 
 #readme_screen {
     align: center middle;
+    background: $background 70%;
 }
 
 #readme_modal{
@@ -356,6 +351,10 @@ SelectionList .selection-list--button-selected, SelectionList .selection-list--b
 ============================================================================ */
 TaskEditModal, TaskCaptureModal {
     align: center middle;
+    
+    Footer {
+        background: transparent;
+    }
 }
 
 #task_capture_modal,
@@ -372,7 +371,7 @@ TaskEditModal, TaskCaptureModal {
 #task_edit_input {
     width: 100%;
     height: 3;
-    border: round $primary;
+    border: round $secondary;
     background: transparent;
 }
 
@@ -443,16 +442,6 @@ TaskListScreen {
     text-align: right;
     color: $text-muted;
     padding-left: 1;
-}
-
-/* ============================================================================
-   Task Indicator
-============================================================================ */
-#task_status {
-    height: 1;
-    padding-right: 2;
-    text-align: right;
-    color: $text-muted;
 }
 
 /* ============================================================================
