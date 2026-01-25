@@ -343,8 +343,8 @@ SelectionList .selection-list--button-selected, SelectionList .selection-list--b
 }
 
 #readme_modal{
-    max-width: 175;
-    max-height: 55;
+    max-width: 150;
+    max-height: 50;
 }
 
 #readme_content {

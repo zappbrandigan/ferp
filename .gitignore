@@ -19,3 +19,5 @@ ferp/data/cache/*
 ferp.egg-info/
 
 tests
+
+*.ps1

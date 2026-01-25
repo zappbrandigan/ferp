@@ -221,8 +221,6 @@ class FileTreeFilterWidget(Widget):
     def handle_blur(self, event: Input.Blurred) -> None:
         if self._input is None or event.input is not self._input:
             return
-        file_tree = self.app.query_one("#file_list", FileTree)
-        file_tree.handle_filter_submit(event.value)
         self.hide()
 
     def _schedule_filter_apply(self) -> None:
@@ -744,7 +742,7 @@ class FileTree(ListView):
             self.call_after_refresh(self._restore_selection)
             return
 
-        max_start = max(0, total - self.CHUNK_SIZE)
+        max_start = max(0, total - 1)
         start = max(0, min(self._chunk_start, max_start))
         self._chunk_start = start
         end = min(start + self.CHUNK_SIZE, total)
@@ -797,7 +795,7 @@ class FileTree(ListView):
             else:
                 self._chunk_start = min(
                     self._chunk_start + self.CHUNK_SIZE,
-                    max(0, total - self.CHUNK_SIZE),
+                    max(0, total - 1),
                 )
                 self._last_chunk_direction = "next"
             self._render_current_chunk()
@@ -811,10 +809,7 @@ class FileTree(ListView):
         if direction == "prev":
             next_start = max(0, self._chunk_start - self.CHUNK_SIZE)
         else:
-            next_start = min(
-                self._chunk_start + self.CHUNK_SIZE,
-                max(0, total - self.CHUNK_SIZE),
-            )
+            next_start = min(self._chunk_start + self.CHUNK_SIZE, max(0, total - 1))
 
         if next_start == self._chunk_start:
             return

@@ -940,6 +940,8 @@ class Ferp(App):
                             timeout=3,
                         )
                     else:
+                        panel = self.query_one(ScriptOutputPanel)
+                        panel.update_content("No script output.")
                         self.notify(f"Rename complete: {count} file(s).", timeout=3)
                 self.refresh_listing()
             elif event.state is WorkerState.ERROR:

@@ -18,7 +18,7 @@ FERP is a terminal-friendly file manager and automation workbench. It combines a
 ## Quick Start
 
 ```bash
-pipx install git+https://github.com/zappbrandigan/ferp.git
+pipx install ferp
 ```
 
 > [!NOTE]

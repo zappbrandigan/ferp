@@ -35,9 +35,8 @@ class BulkRenameConfirmDialog(ModalScreen[bool | None]):
         self,
         title: str,
         body: str,
-        id: str = "bulk_rename_confirm_dialog",
     ) -> None:
-        super().__init__(id=id)
+        super().__init__(id="bulk_rename_confirm_dialog")
         self.dialog_title: str = title or ""
         self.body: str = body or ""
 
