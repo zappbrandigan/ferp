@@ -5,9 +5,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from rich.markup import escape
-from textual.containers import Vertical
-from textual.widgets import ProgressBar, Static
 from textual.worker import Worker, WorkerState
 
 from ferp.core.script_runner import (
@@ -21,9 +18,7 @@ from ferp.services.scripts import ScriptExecutionContext
 from ferp.widgets.dialogs import ConfirmDialog
 from ferp.widgets.file_tree import FileTree
 from ferp.widgets.forms import BooleanField, PromptDialog, SelectionField
-from ferp.widgets.output_panel import ScriptOutputPanel
 from ferp.widgets.scripts import ScriptManager
-from ferp.widgets.top_bar import TopBar
 
 if TYPE_CHECKING:
     from ferp.core.app import Ferp
@@ -40,8 +35,6 @@ class ScriptLifecycleController:
             self._handle_script_progress,
         )
         self._progress_lines: list[str] = []
-        self._progress_bar_widget: ProgressBar | None = None
-        self._progress_status_widget: Static | None = None
         self._progress_started_at: datetime | None = None
         self._script_running = False
         self._active_script_name: str | None = None
@@ -138,7 +131,7 @@ class ScriptLifecycleController:
                 self._reset_after_script()
             elif state is WorkerState.ERROR:
                 error = worker.error or RuntimeError("Script cancellation failed.")
-                self._app.show_error(error)
+                self._set_script_error(error)
                 self._app.refresh_listing()
                 self._reset_after_script()
             if state in {WorkerState.SUCCESS, WorkerState.ERROR, WorkerState.CANCELLED}:
@@ -154,7 +147,7 @@ class ScriptLifecycleController:
                 if result.input_request:
                     self._handle_input_request(result.input_request)
                 else:
-                    self._app.show_error(RuntimeError("Missing FSCP input details."))
+                    self._set_script_error(RuntimeError("Missing FSCP input details."))
                     self._runner.abort("Protocol error.")
                     self._reset_after_script()
                 return True
@@ -170,9 +163,9 @@ class ScriptLifecycleController:
         if state is WorkerState.ERROR:
             error = worker.error
             if error is not None:
-                self._app.show_error(error)
+                self._set_script_error(error)
             else:
-                self._app.show_error(RuntimeError("Script worker failed."))
+                self._set_script_error(RuntimeError("Script worker failed."))
             self._runner.abort("Worker failed.")
             self._app.refresh_listing()
             self._reset_after_script()
@@ -191,12 +184,11 @@ class ScriptLifecycleController:
         self._active_target = None
         self._active_worker = None
         self._abort_worker = None
-        self._progress_bar_widget = None
-        self._progress_status_widget = None
         self._progress_lines = []
         self._progress_started_at = None
         self._set_controls_disabled(False)
-        self._app.query_one(TopBar).status = "Ready"
+        self._app.state_store.set_status("Ready")
+        self._set_script_error(RuntimeError("Script launch failed."))
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -204,37 +196,26 @@ class ScriptLifecycleController:
     def _start_worker(self, runner_fn: Callable[[], ScriptResult]) -> None:
         self._script_running = True
         app = self._app
-        app.query_one(TopBar).status = "Running"
-        output_panel = app.query_one(ScriptOutputPanel)
+        app.state_store.set_status("Running")
         self._progress_lines = []
-        output_panel.remove_children()
         self._progress_started_at = datetime.now()
         app._stop_file_tree_watch()
 
         script_name = self._active_script_name or "Script"
         target = self._active_target or app.current_path
-        header = Static(
-            (
-                f"[bold $primary]Script:[/bold $primary] {escape(script_name)}\n"
-                f"[bold $primary]Target:[/bold $primary] {escape(str(target))}"
-            ),
-            id="progress_header",
-        )
-        self._progress_bar_widget = ProgressBar(
-            total=None, show_eta=False, id="script_progress_bar", show_percentage=False
-        )
-        self._progress_status_widget = Static(
-            "[dim]Working, please wait...[/dim]", id="progress_status"
-        )
-
-        output_panel.mount(
-            header,
-            Vertical(
-                Static("", id="progress_message"),
-                self._progress_bar_widget,
-                self._progress_status_widget,
-                id="progress-container",
-            ),
+        app.state_store.update_script_run(
+            phase="running",
+            script_name=script_name,
+            target_path=target,
+            input_prompt=None,
+            progress_message="",
+            progress_line="",
+            progress_current=None,
+            progress_total=None,
+            progress_unit="",
+            result=None,
+            transcript_path=None,
+            error=None,
         )
 
         self._set_controls_disabled(True)
@@ -252,13 +233,10 @@ class ScriptLifecycleController:
             raise
 
     def _handle_input_request(self, request: ScriptInputRequest) -> None:
-        self._progress_bar_widget = None
-        self._progress_status_widget = None
-        panel = self._app.query_one(ScriptOutputPanel)
-        panel.remove_children()
         prompt = request.prompt or "Input required"
-        panel.update_content(
-            "[bold $primary]Input requested:[/bold $primary] " + escape(prompt)
+        self._app.state_store.update_script_run(
+            phase="awaiting_input",
+            input_prompt=prompt,
         )
 
         normalized_default = (request.default or "").strip().lower()
@@ -341,6 +319,24 @@ class ScriptLifecycleController:
             setattr(screen, "_dismiss_on_resume", True)
         self._input_screen = None
 
+    def _set_script_error(self, error: BaseException) -> None:
+        script_name = self._active_script_name or "Script"
+        target = self._active_target or self._app.current_path
+        self._app.state_store.update_script_run(
+            phase="error",
+            script_name=script_name,
+            target_path=target,
+            input_prompt=None,
+            progress_message="",
+            progress_line="",
+            progress_current=None,
+            progress_total=None,
+            progress_unit="",
+            result=None,
+            transcript_path=None,
+            error=str(error),
+        )
+
     def _boolean_fields_for_request(
         self, request: ScriptInputRequest
     ) -> list[BooleanField]:
@@ -394,11 +390,6 @@ class ScriptLifecycleController:
 
     def _handle_script_progress(self, payload: dict[str, Any]) -> None:
         def update() -> None:
-            bar = self._progress_bar_widget
-            status_widget = self._progress_status_widget
-            if bar is None or status_widget is None:
-                return
-
             current = self._coerce_float(payload.get("current"))
             if current is None:
                 return
@@ -406,15 +397,7 @@ class ScriptLifecycleController:
             total = self._coerce_float(payload.get("total"))
             unit = str(payload.get("unit")).strip() if payload.get("unit") else ""
             message = payload.get("message")
-            message_text = escape(str(message)) if message is not None else ""
-
-            message_widget = self._app.query_one("#progress_message", Static)
-            message_widget.update(message_text)
-
-            if total is not None and total >= 0:
-                bar.update(total=total, progress=max(0.0, min(current, total)))
-            else:
-                bar.update(total=None)
+            message_text = str(message) if message is not None else ""
 
             line = self._format_progress_line(current, total, unit)
             if not line:
@@ -422,7 +405,14 @@ class ScriptLifecycleController:
 
             self._progress_lines.append(line)
             self._progress_lines = self._progress_lines[-1:]
-            status_widget.update("\n".join(self._progress_lines))
+            self._app.state_store.update_script_run(
+                phase="running",
+                progress_message=message_text,
+                progress_line="\n".join(self._progress_lines),
+                progress_current=current,
+                progress_total=total,
+                progress_unit=unit,
+            )
 
         self._app.call_from_thread(update)
 
@@ -472,15 +462,27 @@ class ScriptLifecycleController:
         self._script_running = False
         self._active_script_name = None
         self._active_target = None
-        self._progress_bar_widget = None
-        self._progress_status_widget = None
         self._progress_lines = []
         self._progress_started_at = None
         self._active_worker = None
         self._abort_worker = None
         self._input_screen = None
         self._set_controls_disabled(False)
-        self._app.query_one(TopBar).status = "Ready"
+        self._app.state_store.set_status("Ready")
+        self._app.state_store.update_script_run(
+            phase="idle",
+            script_name=None,
+            target_path=None,
+            input_prompt=None,
+            progress_message="",
+            progress_line="",
+            progress_current=None,
+            progress_total=None,
+            progress_unit="",
+            result=None,
+            transcript_path=None,
+            error=None,
+        )
         self._app._start_file_tree_watch()
 
     def _set_controls_disabled(self, disabled: bool) -> None:

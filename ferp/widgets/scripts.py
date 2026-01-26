@@ -107,7 +107,6 @@ class ScriptManager(ListView):
         if not self.children:
             return
         self.index = 0
-        self.focus()
         self.scroll_to(y=0)
 
     def action_run_script(self) -> None:

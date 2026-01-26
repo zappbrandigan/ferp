@@ -5,8 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from rich.markup import escape
+from textual.containers import Vertical
+from textual.widgets import ProgressBar, Static
 
 from ferp.core.script_runner import ScriptResult
+from ferp.core.state import AppState, AppStateStore, ScriptRunState
 from ferp.widgets.panels import ContentPanel
 
 
@@ -22,8 +25,23 @@ class ScriptOutputPanel(ContentPanel):
         title: str = "Script Output",
         panel_id: str = "output_panel",
         initial_message: str = "No script output.",
+        state_store: AppStateStore,
     ) -> None:
         super().__init__(initial_message, id=panel_id, title=title)
+        self._state_store = state_store
+        self._state_subscription = self._handle_state_update
+        self._last_script_run: ScriptRunState | None = None
+        self._progress_header: Static | None = None
+        self._progress_message: Static | None = None
+        self._progress_bar: ProgressBar | None = None
+        self._progress_status: Static | None = None
+
+    def on_mount(self) -> None:
+        super().on_mount()
+        self._state_store.subscribe(self._state_subscription)
+
+    def on_unmount(self) -> None:
+        self._state_store.unsubscribe(self._state_subscription)
 
     def show_error(self, error: BaseException) -> None:
         self.remove_children()
@@ -82,6 +100,99 @@ class ScriptOutputPanel(ContentPanel):
 
         self.remove_children()
         self.update_content("\n".join(lines))
+
+    def _handle_state_update(self, state: AppState) -> None:
+        script_run = state.script_run
+        if self._last_script_run == script_run:
+            return
+        self._last_script_run = script_run
+        self._render_script_state(script_run)
+
+    def _render_script_state(self, script_run: ScriptRunState) -> None:
+        phase = script_run.phase
+        if phase == "running":
+            self._render_progress(script_run)
+            return
+        if phase == "awaiting_input":
+            self._clear_progress()
+            self.remove_children()
+            prompt = script_run.input_prompt or "Input required"
+            self.update_content(
+                "[bold $primary]Input requested:[/bold $primary] " + escape(prompt)
+            )
+            return
+        if phase == "result" and script_run.result is not None:
+            self._clear_progress()
+            script_name = script_run.script_name or "Script"
+            target = script_run.target_path or Path(".")
+            self.show_result(
+                script_name,
+                target,
+                script_run.result,
+                script_run.transcript_path,
+            )
+            return
+        if phase == "error" and script_run.error:
+            self._clear_progress()
+            self.remove_children()
+            self.update_content(
+                "[bold $error]Error:[/bold $error]\n" + escape(script_run.error)
+            )
+
+    def _render_progress(self, script_run: ScriptRunState) -> None:
+        script_name = script_run.script_name or "Script"
+        target = script_run.target_path
+        target_label = escape(str(target)) if target else "Unknown"
+        header_text = (
+            f"[bold $primary]Script:[/bold $primary] {escape(script_name)}\n"
+            f"[bold $primary]Target:[/bold $primary] {target_label}"
+        )
+
+        if self._progress_bar is None or self._progress_header is None:
+            self.remove_children()
+            self._progress_header = Static(header_text, id="progress_header")
+            self._progress_message = Static("", id="progress_message")
+            self._progress_bar = ProgressBar(
+                total=None,
+                show_eta=False,
+                id="script_progress_bar",
+                show_percentage=False,
+            )
+            self._progress_status = Static(
+                "[dim]Working, please wait...[/dim]",
+                id="progress_status",
+            )
+            self.mount(
+                self._progress_header,
+                Vertical(
+                    self._progress_message,
+                    self._progress_bar,
+                    self._progress_status,
+                    id="progress-container",
+                ),
+            )
+        else:
+            self._progress_header.update(header_text)
+
+        if self._progress_message is not None:
+            self._progress_message.update(escape(script_run.progress_message or ""))
+        if self._progress_bar is not None:
+            total = script_run.progress_total
+            current = script_run.progress_current
+            if total is not None and total >= 0 and current is not None:
+                self._progress_bar.update(
+                    total=total, progress=max(0.0, min(current, total))
+                )
+            else:
+                self._progress_bar.update(total=None)
+        if self._progress_status is not None and script_run.progress_line:
+            self._progress_status.update(script_run.progress_line)
+
+    def _clear_progress(self) -> None:
+        self._progress_header = None
+        self._progress_message = None
+        self._progress_bar = None
+        self._progress_status = None
 
     def _format_pair(self, key: Any, value: Any) -> str:
         label = f"[bold $text-primary]{escape(str(key))}:[/bold $text-primary]"

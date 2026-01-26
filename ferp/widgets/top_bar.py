@@ -5,6 +5,8 @@ from textual.containers import Container, Horizontal
 from textual.reactive import reactive
 from textual.widgets import Label
 
+from ferp.core.state import AppState, AppStateStore
+
 EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
@@ -17,8 +19,16 @@ class TopBar(Container):
         datetime(1970, 1, 1, tzinfo=timezone.utc), always_update=True
     )
 
-    def __init__(self, *, app_title: str | None, app_version: str) -> None:
+    def __init__(
+        self,
+        *,
+        app_title: str | None,
+        app_version: str,
+        state_store: AppStateStore,
+    ) -> None:
         super().__init__()
+        self._state_store = state_store
+        self._state_subscription = self._handle_state_update
 
         self.title_label = Horizontal(
             Label(
@@ -33,6 +43,12 @@ class TopBar(Container):
         )
         self.status_label = Label("", id="topbar_script_status")
         self.cache_label = Label("", id="topbar_cache")
+
+    def on_mount(self) -> None:
+        self._state_store.subscribe(self._state_subscription)
+
+    def on_unmount(self) -> None:
+        self._state_store.unsubscribe(self._state_subscription)
 
     def watch_current_path(self) -> None:
         self._update_status()
@@ -82,6 +98,11 @@ class TopBar(Container):
             return "yesterday"
 
         return f"{seconds // 86400} days ago"
+
+    def _handle_state_update(self, state: AppState) -> None:
+        self.current_path = state.current_path
+        self.status = state.status
+        self.cache_updated_at = state.cache_updated_at
 
     def compose(self) -> ComposeResult:
         yield self.title_label

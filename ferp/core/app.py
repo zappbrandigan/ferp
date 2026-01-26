@@ -42,6 +42,7 @@ from ferp.core.paths import APP_AUTHOR, APP_NAME, SCRIPTS_REPO_URL
 from ferp.core.script_controller import ScriptLifecycleController
 from ferp.core.script_runner import ScriptResult
 from ferp.core.settings_store import SettingsStore
+from ferp.core.state import AppStateStore, FileTreeStateStore, TaskListStateStore
 from ferp.core.task_store import Task, TaskStore
 from ferp.core.transcript_logger import TranscriptLogger
 from ferp.fscp.host.process_registry import ProcessRecord
@@ -120,13 +121,25 @@ class Ferp(App):
         ),
     ]
 
+    @property
+    def current_path(self) -> Path:
+        value = self.state_store.state.current_path
+        return Path(value) if value else Path()
+
+    @current_path.setter
+    def current_path(self, value: Path) -> None:
+        self.state_store.set_current_path(str(value))
+
     def __init__(self, start_path: Path | None = None) -> None:
         self._paths = self._prepare_paths()
         self.app_root = self._paths.app_root
         self.settings_store = SettingsStore(self._paths.settings_file)
         self.settings = self.settings_store.load()
-        self.current_path = self._resolve_start_path(start_path)
-        self.highlighted_path: Path | None = None
+        self.state_store = AppStateStore()
+        initial_path = self._resolve_start_path(start_path)
+        self.state_store.set_current_path(str(initial_path))
+        self.file_tree_store = FileTreeStateStore()
+        self.task_list_store = TaskListStateStore()
         self.scripts_dir = self._paths.scripts_dir
         self.task_store = TaskStore(self._paths.tasks_file)
         self._pending_task_totals: tuple[int, int] = (0, 0)
@@ -238,15 +251,19 @@ class Ferp(App):
         return self._resolve_start_path(None)
 
     def compose(self) -> ComposeResult:
-        output_panel = ScriptOutputPanel()
+        output_panel = ScriptOutputPanel(state_store=self.state_store)
         scroll_container = VerticalScroll(
             output_panel, can_focus=True, id="output_panel_container", can_maximize=True
         )
         scroll_container.border_title = "Process Output"
-        yield TopBar(app_title=Ferp.TITLE, app_version=__version__)
+        yield TopBar(
+            app_title=Ferp.TITLE,
+            app_version=__version__,
+            state_store=self.state_store,
+        )
         with Vertical(id="app_main_container"):
             yield Horizontal(
-                FileTree(id="file_list"),
+                FileTree(id="file_list", state_store=self.file_tree_store),
                 Vertical(
                     ScriptManager(
                         self._paths.config_file,
@@ -258,7 +275,10 @@ class Ferp(App):
                 ),
                 id="main_pane",
             )
-            yield FileTreeFilterWidget(id="file_tree_filter")
+            yield FileTreeFilterWidget(
+                id="file_tree_filter",
+                state_store=self.file_tree_store,
+            )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -269,9 +289,8 @@ class Ferp(App):
         self.theme = self.settings.get("userPreferences", {}).get(
             "theme", "textual-dark"
         )
-        topbar = self.query_one(TopBar)
-        topbar.current_path = str(self.current_path)
-        topbar.status = "Ready"
+        self.state_store.set_current_path(str(self.current_path))
+        self.state_store.set_status("Ready")
         self.update_cache_timestamp()
         self.refresh_listing()
         file_tree = self.query_one("#file_list", FileTree)
@@ -293,19 +312,27 @@ class Ferp(App):
                 if not bundle_path.is_absolute():
                     bundle_path = (self.current_path / bundle_path).resolve()
             except Exception as exc:
-                self.show_error(exc)
+                self.notify(f"{exc}", severity="error", timeout=4)
                 return
             if not bundle_path.exists():
-                self.show_error(FileNotFoundError(f"No bundle found at {bundle_path}"))
+                self.notify(
+                    f"No bundle found at {bundle_path}",
+                    severity="error",
+                    timeout=4,
+                )
                 return
             if not bundle_path.is_file():
-                self.show_error(
-                    ValueError(f"Bundle path must point to a file: {bundle_path}")
+                self.notify(
+                    f"Bundle path must point to a file: {bundle_path}",
+                    severity="error",
+                    timeout=4,
                 )
                 return
             if bundle_path.suffix.lower() != ".ferp":
-                self.show_error(
-                    ValueError("Bundles must be supplied as .ferp archives.")
+                self.notify(
+                    "Bundles must be supplied as .ferp archives.",
+                    severity="error",
+                    timeout=4,
                 )
                 return
             self.bundle_installer.start_install(bundle_path)
@@ -327,13 +354,13 @@ class Ferp(App):
         candidates = [entry for entry in logs_dir.glob("*.log") if entry.is_file()]
 
         if not candidates:
-            self.show_error(RuntimeError("No log files found."))
+            self.notify("No log files found.", severity="error", timeout=3)
             return
 
         try:
             latest = max(candidates, key=lambda entry: entry.stat().st_mtime)
         except OSError as exc:
-            self.show_error(exc)
+            self.notify(f"{exc}", severity="error", timeout=3)
             return
 
         try:
@@ -344,17 +371,17 @@ class Ferp(App):
             else:
                 subprocess.run(["xdg-open", str(latest)], check=False)
         except Exception as exc:
-            self.show_error(exc)
+            self.notify(f"{exc}", severity="error", timeout=3)
 
     def _command_open_user_guide(self) -> None:
         guide_path = self.app_root / "resources" / "USERS_GUIDE.md"
         if not guide_path.exists():
-            self.show_error(FileNotFoundError("User guide not found."))
+            self.notify("User guide not found.", severity="error", timeout=3)
             return
         try:
             content = guide_path.read_text(encoding="utf-8")
         except Exception as exc:
-            self.show_error(exc)
+            self.notify(f"{exc}", severity="error", timeout=3)
             return
         screen = ReadmeScreen("FERP User Guide", content, id="readme_screen")
         self.push_screen(screen)
@@ -376,17 +403,15 @@ class Ferp(App):
                 if not path.is_absolute():
                     path = (self.current_path / path).resolve()
             except Exception as exc:
-                self.show_error(exc)
+                self.notify(f"{exc}", severity="error", timeout=3)
                 return
             if not path.exists() or not path.is_dir():
-                self.show_error(ValueError(f"{path} is not a valid directory."))
+                self.notify(
+                    f"{path} is not a valid directory.", severity="error", timeout=3
+                )
                 return
             self.settings_store.update_startup_path(self.settings, path)
-            panel = self.query_one(ScriptOutputPanel)
-            panel.update_content(
-                "[bold $success]Startup directory updated.[/bold $success]\n"
-                f"{escape(str(path))}"
-            )
+            self.notify(f"Startup directory updated: {path}", timeout=3)
 
         self.push_screen(InputDialog(prompt, default=default_value), after)
 
@@ -399,17 +424,11 @@ class Ferp(App):
         def after(value: bool | None) -> None:
             if not value:
                 return
-            panel = self.query_one(ScriptOutputPanel)
             dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
-            detail_line = (
-                "[dim]FERP_DEV_CONFIG=1; dry run (no files will be modified).[/dim]"
-                if dev_config_enabled
-                else "[dim]Overwriting config.json in your user config directory and fully replacing scripts/.[/dim]"
-            )
-            panel.update_content(
-                "[bold $primary]Updating default scripts…[/bold $primary]\n"
-                f"{detail_line}"
-            )
+            if dev_config_enabled:
+                self.notify("Updating default scripts (dry run)...", timeout=3)
+            else:
+                self.notify("Updating default scripts...", timeout=3)
             self.run_worker(
                 self._install_default_scripts,
                 group="default_scripts_update",
@@ -426,18 +445,15 @@ class Ferp(App):
         try:
             board_id_value = int(board_id)
         except (TypeError, ValueError):
-            self.show_error(
-                ValueError(
-                    "Monday board id missing. Set integrations.monday.boardId in settings.json."
-                )
+            self.notify(
+                "Monday board id missing. Set integrations.monday.boardId in settings.json.",
+                severity="error",
+                timeout=4,
             )
             return
 
         def start_sync(api_token: str) -> None:
-            panel = self.query_one(ScriptOutputPanel)
-            panel.update_content(
-                "[bold $primary]Syncing Monday board...[/bold $primary]"
-            )
+            self.notify("Syncing Monday board...", timeout=3)
             self.run_worker(
                 lambda token=api_token, board=board_id_value: self._sync_monday_board(
                     token, board
@@ -550,7 +566,7 @@ class Ferp(App):
 
     @on(HighlightRequest)
     def handle_highlight(self, event: HighlightRequest) -> None:
-        self.highlighted_path = event.path
+        self.state_store.set_highlighted_path(event.path)
 
     @on(CreatePathRequest)
     def handle_create_path(self, event: CreatePathRequest) -> None:
@@ -583,19 +599,31 @@ class Ferp(App):
             context = build_execution_context(
                 app_root=self.app_root,
                 current_path=self.current_path,
-                highlighted_path=self.highlighted_path,
+                highlighted_path=self.state_store.state.highlighted_path,
                 script=event.script,
             )
             self.script_controller.run_script(event.script, context)
         except Exception as e:
-            self.show_error(e)
+            self.state_store.update_script_run(
+                phase="error",
+                script_name=event.script.name,
+                target_path=self.current_path,
+                input_prompt=None,
+                progress_message="",
+                progress_line="",
+                progress_current=None,
+                progress_total=None,
+                progress_unit="",
+                result=None,
+                transcript_path=None,
+                error=str(e),
+            )
 
     def render_script_output(
         self,
         script_name: str,
         result: ScriptResult,
     ) -> None:
-        panel = self.query_one(ScriptOutputPanel)
         target = self.script_controller.active_target or self.current_path
 
         transcript_path = None
@@ -606,14 +634,26 @@ class Ferp(App):
                 result,
             )
 
-        panel.show_result(script_name, target, result, transcript_path)
+        self.state_store.update_script_run(
+            phase="result",
+            script_name=script_name,
+            target_path=target,
+            input_prompt=None,
+            progress_message="",
+            progress_line="",
+            progress_current=None,
+            progress_total=None,
+            progress_unit="",
+            result=result,
+            transcript_path=transcript_path,
+            error=None,
+        )
 
     def on_exit(self) -> None:
         self._stop_file_tree_watch()
 
     def show_error(self, error: BaseException) -> None:
-        panel = self.query_one(ScriptOutputPanel)
-        panel.show_error(error)
+        self.notify(f"{error}", severity="error", timeout=4)
 
     def _start_delete_path(self, target: Path) -> None:
         file_tree = self.query_one(FileTree)
@@ -632,12 +672,12 @@ class Ferp(App):
         return DeletePathResult(target=target)
 
     def _render_default_scripts_update(self, payload: dict[str, Any]) -> None:
-        panel = self.query_one(ScriptOutputPanel)
         error = payload.get("error")
         if error:
-            panel.update_content(
-                "[bold $error]Default scripts update failed.[/bold $error]\n"
-                + escape(str(error))
+            self.notify(
+                f"Default scripts update failed: {error}",
+                severity="error",
+                timeout=4,
             )
             return
         config_path = payload.get("config_path", "")
@@ -645,33 +685,27 @@ class Ferp(App):
         release_detail = payload.get("release_detail", "")
         release_version = payload.get("release_version", "")
 
-        lines = [
-            "[bold $success]Default scripts updated.[/bold $success]",
-            f"[bold $primary]Config:[/bold $primary] {escape(str(config_path))}",
-        ]
-
-        if release_status:
-            lines.append(
-                f"[bold $primary]Release:[/bold $primary] {escape(str(release_status))}"
-            )
+        summary = "Default scripts updated."
         if release_version:
-            lines.append(
-                f"[bold $primary]Version:[/bold $primary] {escape(release_version)}"
-            )
+            summary = f"{summary} v{release_version}"
+        if release_status:
+            summary = f"{summary} ({release_status})"
+        if config_path:
+            summary = f"{summary} Config: {config_path}"
         if release_detail:
-            lines.append("[dim]" + escape(str(release_detail)) + "[/dim]")
-
-        panel.update_content("\n".join(lines))
+            summary = f"{summary} {release_detail}"
+        self.notify(summary, timeout=4)
 
         scripts_panel = self.query_one(ScriptManager)
         scripts_panel.load_scripts()
 
     def _render_monday_sync(self, payload: dict[str, Any]) -> None:
-        panel = self.query_one(ScriptOutputPanel)
         error = payload.get("error")
         if error:
-            panel.update_content(
-                "[bold $error]Monday sync failed.[/bold $error]\n" + escape(str(error))
+            self.notify(
+                f"Monday sync failed: {escape(str(error))}",
+                severity="error",
+                timeout=4,
             )
             return
         board_name = payload.get("board_name", "")
@@ -679,19 +713,15 @@ class Ferp(App):
         publisher_count = payload.get("publisher_count", 0)
         skipped = payload.get("skipped", 0)
 
-        lines = [
-            "[bold $success]Monday board cache updated.[/bold $success]",
-        ]
-
-        if board_name:
-            lines.append(
-                f"[bold $primary]Board:[/bold $primary] {escape(str(board_name))}"
-            )
-        lines.append(f"[bold $primary]Groups:[/bold $primary] {group_count}")
-        lines.append(f"[bold $primary]Publishers:[/bold $primary] {publisher_count}")
-        lines.append(f"[bold $primary]Skipped:[/bold $primary] {skipped}")
-
-        panel.update_content("\n".join(lines))
+        details = (
+            f"\nGroups {group_count}\nPublishers {publisher_count}\nSkipped {skipped}"
+        )
+        title = (
+            f"Monday sync updated ({escape(str(board_name))})"
+            if board_name
+            else "Monday sync updated"
+        )
+        self.notify(f"{title}. {details}", timeout=4)
         self.update_cache_timestamp()
 
     def refresh_listing(self) -> None:
@@ -700,8 +730,7 @@ class Ferp(App):
             return
 
         self._listing_in_progress = True
-        topbar = self.query_one(TopBar)
-        topbar.current_path = str(self.current_path)
+        self.state_store.set_current_path(str(self.current_path))
 
         file_tree = self.query_one(FileTree)
         file_tree.show_loading(self.current_path)
@@ -799,6 +828,7 @@ class Ferp(App):
         self._pending_navigation_path = None
         self._pending_refresh = False
         self.current_path = path
+        self.state_store.set_current_path(str(self.current_path))
         self._stop_file_tree_watch()
         self.refresh_listing()
 
@@ -825,7 +855,7 @@ class Ferp(App):
 
     def _ensure_task_list_screen(self) -> TaskListScreen:
         if self._task_list_screen is None:
-            screen = TaskListScreen(self.task_store)
+            screen = TaskListScreen(self.task_store, state_store=self.task_list_store)
             self.install_screen(screen, name="task_list")
             self._task_list_screen = screen
         return self._task_list_screen
@@ -867,7 +897,7 @@ class Ferp(App):
         else:
             updated_at = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
-        self.query_one(TopBar).cache_updated_at = updated_at
+        self.state_store.set_cache_updated_at(updated_at)
 
     @on(Worker.StateChanged)
     def _on_worker_state_changed(self, event: Worker.StateChanged) -> None:
@@ -894,7 +924,11 @@ class Ferp(App):
                     self._render_default_scripts_update(result)
             elif event.state is WorkerState.ERROR:
                 error = worker.error or RuntimeError("Default script update failed.")
-                self.show_error(error)
+                self.notify(
+                    f"Default scripts update failed: {error}",
+                    severity="error",
+                    timeout=4,
+                )
             return
         if worker.group == "delete_path":
             if event.state is WorkerState.SUCCESS:
@@ -905,12 +939,7 @@ class Ferp(App):
                     self.refresh_listing()
             elif event.state is WorkerState.ERROR:
                 error = worker.error or RuntimeError("Delete failed.")
-                self.show_error(error)
-                self.notify(
-                    "Delete failed. See output panel for details.",
-                    severity="error",
-                    timeout=3,
-                )
+                self.notify(f"Delete failed: {error}", severity="error", timeout=3)
                 file_tree = self.query_one(FileTree)
                 file_tree.set_pending_delete_index(None)
                 self._start_file_tree_watch()
@@ -926,24 +955,18 @@ class Ferp(App):
                     )
                     count = result.get("count", 0)
                     if errors:
-                        self.show_error(RuntimeError("\n".join(errors)))
                         self.notify(
                             f"Rename completed with errors ({len(errors)} issue(s)).",
                             severity="warning",
                             timeout=3,
                         )
                     else:
-                        panel = self.query_one(ScriptOutputPanel)
-                        panel.update_content("No script output.")
                         self.notify(f"Rename complete: {count} file(s).", timeout=3)
                 self.refresh_listing()
             elif event.state is WorkerState.ERROR:
                 error = worker.error or RuntimeError("Bulk rename failed.")
-                self.show_error(error)
                 self.notify(
-                    "Bulk rename failed. See output panel for details.",
-                    severity="warning",
-                    timeout=3,
+                    f"Bulk rename failed: {error}", severity="warning", timeout=3
                 )
                 self.refresh_listing()
             return
@@ -954,5 +977,5 @@ class Ferp(App):
                     self._render_monday_sync(result)
             elif event.state is WorkerState.ERROR:
                 error = worker.error or RuntimeError("Monday sync failed.")
-                self.show_error(error)
+                self.notify(f"Monday sync failed: {error}", severity="error", timeout=4)
             return

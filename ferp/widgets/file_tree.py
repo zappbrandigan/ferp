@@ -25,6 +25,7 @@ from ferp.core.messages import (
     RenamePathRequest,
 )
 from ferp.core.protocols import AppWithPath
+from ferp.core.state import FileTreeState, FileTreeStateStore
 from ferp.widgets.dialogs import BulkRenameConfirmDialog
 
 if TYPE_CHECKING:
@@ -168,8 +169,9 @@ class FileTreeFilterWidget(Widget):
         Binding("escape", "hide", "Hide filter", show=True),
     ]
 
-    def __init__(self, id: str | None = None) -> None:
+    def __init__(self, *, state_store: FileTreeStateStore, id: str | None = None) -> None:
         super().__init__(id=id)
+        self._state_store = state_store
         self.display = "none"
         self._input: Input | None = None
         self._debounce_timer: Timer | None = None
@@ -237,8 +239,7 @@ class FileTreeFilterWidget(Widget):
         if self._debounce_timer is not None:
             self._debounce_timer.stop()
             self._debounce_timer = None
-        file_tree = self.app.query_one("#file_list", FileTree)
-        file_tree.handle_filter_preview(self._pending_value)
+        self._state_store.set_filter_query(_filter_query_for_input(self._pending_value))
 
 
 class FileTree(ListView):
@@ -325,16 +326,18 @@ class FileTree(ListView):
         Binding("/", "filter_entries", "Filter", show=True, tooltip="Filter entries"),
     ]
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, state_store: FileTreeStateStore, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self._state_store = state_store
+        self._state_subscription = self._handle_state_update
         self._all_entries: list[FileListingEntry] = []
         self._filtered_entries: list[FileListingEntry] = []
-        self._filter_query = ""
+        self._filter_query = state_store.state.filter_query
         self._filter_error = False
         self._chunk_start = 0
-        self._current_listing_path: Path | None = None
-        self._last_selected_path: Path | None = None
-        self._selection_history: dict[Path, Path] = {}
+        self._current_listing_path = state_store.state.current_listing_path
+        self._last_selected_path = state_store.state.last_selected_path
+        self._selection_history = dict(state_store.state.selection_history)
         self._last_chunk_direction: str | None = None
         self._pending_delete_index: int | None = None
 
@@ -342,14 +345,18 @@ class FileTree(ListView):
         self._pending_delete_index = index
 
     def on_mount(self) -> None:
+        self._state_store.subscribe(self._state_subscription)
         self._update_border_title()
+
+    def on_unmount(self) -> None:
+        self._state_store.unsubscribe(self._state_subscription)
 
     def action_go_parent(self) -> None:
         app = cast(AppWithPath, self.app)
         self.post_message(NavigateRequest(app.current_path.parent))
 
     def action_go_home(self) -> None:
-        self._selection_history.clear()
+        self._state_store.clear_selection_history()
         app = cast(AppWithPath, self.app)
         self.post_message(NavigateRequest(app.resolve_startup_path()))
 
@@ -507,10 +514,11 @@ class FileTree(ListView):
 
     def show_listing(self, path: Path, entries: Sequence[FileListingEntry]) -> None:
         previous_path = self._current_listing_path
+        self._state_store.set_current_listing_path(path)
         self._current_listing_path = path
         self._all_entries = list(entries)
         if previous_path != path:
-            self._filter_query = ""
+            self._set_filter("")
         self._apply_filter()
         self._update_border_title()
         self._chunk_start = 0
@@ -677,11 +685,13 @@ class FileTree(ListView):
                 errors.append(f"{source.name}: {exc}")
         return {"count": len(plan), "errors": errors}
 
-    def _set_filter(self, value: str) -> None:
+    def _set_filter(self, value: str, *, from_store: bool = False) -> None:
         query = value.strip()
         if query == self._filter_query:
             return
         self._filter_query = query
+        if not from_store:
+            self._state_store.set_filter_query(self._filter_query)
         self._apply_filter()
         self._update_border_title()
         self._chunk_start = 0
@@ -711,6 +721,14 @@ class FileTree(ListView):
         except Exception:
             return
         filter_widget.show(self._filter_query)
+
+    def _handle_state_update(self, state: FileTreeState) -> None:
+        self._current_listing_path = state.current_listing_path
+        self._last_selected_path = state.last_selected_path
+        self._selection_history = dict(state.selection_history)
+        if state.filter_query == self._filter_query:
+            return
+        self._set_filter(state.filter_query, from_store=True)
 
     def _append_header(self, path: Path) -> None:
         parent = path.parent
@@ -774,6 +792,7 @@ class FileTree(ListView):
 
         if isinstance(item, FileItem) and not item.is_header:
             self._last_selected_path = item.path
+            self._state_store.set_last_selected_path(item.path)
             self.post_message(HighlightRequest(item.path))
         else:
             self.post_message(HighlightRequest(None))
@@ -783,7 +802,9 @@ class FileTree(ListView):
         item = event.item
         if isinstance(item, FileItem) and not item.is_header and item.path.is_dir():
             if self._current_listing_path is not None:
-                self._selection_history[self._current_listing_path] = item.path
+                self._state_store.update_selection_history(
+                    self._current_listing_path, item.path
+                )
             self.post_message(DirectorySelectRequest(item.path))
         elif isinstance(item, ChunkNavigatorItem):
             total = len(self._filtered_entries)

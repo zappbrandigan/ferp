@@ -21,6 +21,7 @@ from textual.widgets import (
 
 from ferp.core.task_store import Task as TodoTask
 from ferp.core.task_store import TaskStore
+from ferp.core.state import TaskListState, TaskListStateStore
 from ferp.widgets.dialogs import ConfirmDialog
 from ferp.widgets.task_capture import TaskCaptureModal
 
@@ -198,16 +199,16 @@ class TaskListScreen(ModalScreen[None]):
         Binding("C", "clear_completed", "Clear completed", show=True),
     ]
 
-    def __init__(self, store: TaskStore) -> None:
+    def __init__(self, store: TaskStore, *, state_store: TaskListStateStore) -> None:
         super().__init__()
         self._store = store
+        self._state_store = state_store
+        self._state_subscription = self._handle_state_update
         self._subscription_registered = False
         self._refresh_timer: Timer | None = None
         self._index_assignment_token = 0
         self._filter_input: Input | None = None
-        self._active_tag_filter: set[str] = set()
         self._pending_focus_list = True
-        self._highlighted_item: TaskListItem | None = None
 
     def compose(self):
         placeholder = ListItem(
@@ -235,6 +236,7 @@ class TaskListScreen(ModalScreen[None]):
         list_view.focus()
         if self._filter_input is None:
             self._filter_input = self.query_one("#task_filter_input", Input)
+        self._state_store.subscribe(self._state_subscription)
         if not self._subscription_registered:
             self._store.subscribe(self._handle_store_update)
             self._subscription_registered = True
@@ -249,6 +251,7 @@ class TaskListScreen(ModalScreen[None]):
         if self._subscription_registered:
             self._store.unsubscribe(self._handle_store_update)
             self._subscription_registered = False
+        self._state_store.unsubscribe(self._state_subscription)
         if self._refresh_timer is not None:
             self._refresh_timer.stop()
             self._refresh_timer = None
@@ -278,9 +281,9 @@ class TaskListScreen(ModalScreen[None]):
         if not tasks:
             list_view.index = None
             list_view.clear()
-            self._highlighted_item = None
+            self._state_store.set_highlighted_task_id(None)
             placeholder_message = "No tasks yet"
-            if self._active_tag_filter:
+            if self._state_store.state.active_tag_filter:
                 placeholder_message = "No tasks match selected tags"
             placeholder = ListItem(
                 Label(placeholder_message, classes="task_item_text"),
@@ -301,7 +304,7 @@ class TaskListScreen(ModalScreen[None]):
 
         list_view.index = None
         list_view.clear()
-        self._highlighted_item = None
+        self._state_store.set_highlighted_task_id(None)
         for task in tasks:
             list_view.append(TaskListItem(task))
         self._queue_index_assignment(list_view, 0, focus_list=focus_list)
@@ -316,13 +319,28 @@ class TaskListScreen(ModalScreen[None]):
     @on(ListView.Highlighted, "#task_list_view")
     def _handle_highlighted(self, event: ListView.Highlighted) -> None:
         item = event.item
-        if self._highlighted_item is not None and self._highlighted_item is not item:
-            self._highlighted_item.set_highlighted(False)
-            self._highlighted_item = None
-
+        previous_id = self._state_store.state.highlighted_task_id
         if isinstance(item, TaskListItem):
-            self._highlighted_item = item
+            if previous_id and previous_id != item.task_model.id:
+                previous_item = self._find_task_item(previous_id)
+                if previous_item is not None:
+                    previous_item.set_highlighted(False)
             item.set_highlighted(True)
+            self._state_store.set_highlighted_task_id(item.task_model.id)
+            return
+
+        if previous_id:
+            previous_item = self._find_task_item(previous_id)
+            if previous_item is not None:
+                previous_item.set_highlighted(False)
+        self._state_store.set_highlighted_task_id(None)
+
+    def _find_task_item(self, task_id: str) -> TaskListItem | None:
+        list_view = self.query_one(ListView)
+        for child in list_view.children:
+            if isinstance(child, TaskListItem) and child.task_model.id == task_id:
+                return child
+        return None
 
     def _queue_index_assignment(
         self, list_view: ListView, target: int | None, *, focus_list: bool = True
@@ -435,13 +453,13 @@ class TaskListScreen(ModalScreen[None]):
         field.cursor_position = len(field.value)
 
     def _apply_tag_filter(self, tasks: list[TodoTask]) -> list[TodoTask]:
-        if not self._active_tag_filter:
+        if not self._state_store.state.active_tag_filter:
             return tasks
         return [task for task in tasks if self._task_matches_filter(task)]
 
     def _task_matches_filter(self, task: TodoTask) -> bool:
         task_tags = self._extract_tags(task.text)
-        for filter_tag in self._active_tag_filter:
+        for filter_tag in self._state_store.state.active_tag_filter:
             if not self._tag_fuzzy_match(filter_tag, task_tags):
                 return False
         return True
@@ -465,5 +483,12 @@ class TaskListScreen(ModalScreen[None]):
     @on(Input.Changed, "#task_filter_input")
     def _handle_filter_changed(self, event: Input.Changed) -> None:
         event.stop()
-        self._active_tag_filter = self._extract_tags(event.value)
+        self._state_store.set_active_tag_filter(self._extract_tags(event.value))
         self._schedule_refresh(focus_list=False, delay=0.15)
+
+    def _handle_state_update(self, state: TaskListState) -> None:
+        if self._filter_input is None:
+            return
+        if not state.active_tag_filter:
+            if self._filter_input.value:
+                self._filter_input.value = ""

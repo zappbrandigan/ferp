@@ -8,11 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from rich.markup import escape
 from textual.worker import Worker, WorkerState
 
 from ferp.core.dependency_manager import ScriptDependencyManager
-from ferp.widgets.output_panel import ScriptOutputPanel
 from ferp.widgets.scripts import ScriptManager
 
 if TYPE_CHECKING:
@@ -48,12 +46,7 @@ class ScriptBundleInstaller:
         self._config_file = app._paths.config_file
 
     def start_install(self, bundle_path: Path) -> None:
-        panel = self._app.query_one(ScriptOutputPanel)
-        panel.update_content(
-            "[bold $primary]Installing bundle...[/bold $primary]\n"
-            + escape(str(bundle_path))
-            + "\n[dim]Preparing package...[/dim]"
-        )
+        self._app.notify(f"Installing bundle: {bundle_path}", timeout=3)
         self._app.run_worker(
             lambda: self._process_script_bundle(bundle_path),
             group="bundle_install",
@@ -126,34 +119,13 @@ class ScriptBundleInstaller:
         )
 
     def _handle_bundle_install_result(self, result: InstalledBundleResult) -> None:
-        panel = self._app.query_one(ScriptOutputPanel)
-        rel_script = result.script_path.relative_to(self._app_root)
-
-        lines = [
-            "[bold $success]Script bundle installed[/bold $success]",
-            f"[bold $primary]Name:[/bold $primary] {escape(result.manifest.name)}",
-            f"[bold $primary]Version:[/bold $primary] {escape(result.manifest.version)}",
-            f"[bold $primary]Config ID:[/bold $primary] {escape(result.manifest.id)}",
-            f"[bold $primary]Script:[/bold $primary] {escape(str(rel_script))}",
-        ]
-
-        if result.readme_path:
-            rel_readme = result.readme_path.relative_to(self._app_root)
-            lines.append(
-                f"[bold $primary]README:[/bold $primary] {escape(str(rel_readme))}"
-            )
-
-        if result.manifest.dependencies:
-            deps = ", ".join(result.manifest.dependencies)
-            lines.append(f"[bold $primary]Dependencies:[/bold $primary] {escape(deps)}")
-
-        panel.update_content("\n".join(lines))
-        ## Need to test the following line
-        panel.refresh()
-
+        message = (
+            f"Bundle installed: {result.manifest.name} v{result.manifest.version} "
+            f"({result.manifest.id})"
+        )
+        self._app.notify(message, timeout=4)
         scripts_panel = self._app.query_one(ScriptManager)
         scripts_panel.load_scripts()
-        ## Need to test the following line
         scripts_panel.focus()
 
     def _find_manifest_member(self, archive: zipfile.ZipFile) -> str:
