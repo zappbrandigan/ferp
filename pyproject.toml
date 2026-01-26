@@ -21,7 +21,7 @@ classifiers = [
 dependencies = [
   "jsonschema>=4.21",
   "watchdog>=4.0",
-  "textual>=7.3.0",
+  "textual>=7.4.0",
   "platformdirs>=4.2",
   "requests>=2.32",
 ]
