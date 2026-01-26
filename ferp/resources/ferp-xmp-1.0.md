@@ -5,19 +5,18 @@
 * **Title:** FERP XMP Metadata Contract
 * **Version:** 1.0
 * **Status:** Approved – implementation-ready
-* **Scope:** Defines how FERP embeds and how consumers read publisher-list metadata in PDF files.
+* **Scope:** Defines how FERP embeds and how consumers read stamp metadata in PDF files.
 
 ---
 
 ## 1) Purpose
 
-This contract defines a standards-aligned mechanism for embedding a **list of music publishing companies referenced by a document** into PDF files.
+This contract defines a standards-aligned mechanism for embedding **stamp metadata** into PDF files, including the administrator and agreement details used to generate stamps.
 
 The metadata is intended to be:
 
 * durable across third-party PDF processing tools,
-* authoritative for automated systems,
-* optionally visible in standard PDF UI applications without relying on their preservation guarantees.
+* authoritative for automated systems.
 
 ---
 
@@ -27,7 +26,7 @@ The metadata is intended to be:
    All automated systems MUST rely on XMP metadata for correctness.
 
 2. **PDF Info metadata is volatile**
-   Standard PDF metadata fields (e.g., `/Keywords`) are treated as presentation-only and may be dropped or rewritten by downstream tools.
+   Standard PDF Info metadata fields are treated as presentation-only and may be dropped or rewritten by downstream tools.
 
 3. **No semantic overloading**
    Document-level metadata standards (e.g., Dublin Core) are not repurposed to represent domain-specific music publishing data.
@@ -68,127 +67,164 @@ The metadata is intended to be:
 
 ## 5) Property Definitions
 
-### 5.1 Authoritative Property
+### 5.1 Administrator
 
-**Property:** `ferp:publishers`
+**Property:** `ferp:administrator`
 
-* **Type:** `rdf:Bag` of `rdf:li` (`xsd:string`)
-* **Cardinality:** 0..n
-* **Order:** Unordered
+* **Type:** `xsd:string`
+* **Cardinality:** 1..1
+* **Order:** N/A
 * **Semantics:**
-  List of **`controlled` music publishing companies referenced by the document content**.
+  The company name that administers the FERP stamping ruleset.
 * **Authority:** **Authoritative** source for all automated processing.
 
 #### Example
 
 ```xml
-<ferp:publishers>
-  <rdf:Bag>
-    <rdf:li>Universal Music Publishing Group</rdf:li>
-    <rdf:li>Sony Music Publishing</rdf:li>
-    <rdf:li>Warner Chappell Music</rdf:li>
-  </rdf:Bag>
-</ferp:publishers>
+<ferp:administrator>TūlBOX Music Publishing</ferp:administrator>
 ```
+
+---
+
+### 5.2 Agreements
+
+**Property:** `ferp:agreements`
+
+* **Type:** `rdf:Bag` of `rdf:li` (`rdf:Description`)
+* **Cardinality:** 0..n
+* **Order:** Unordered
+* **Semantics:**
+  Each bag entry represents a single stamp's agreement details. An agreement may contain multiple effective dates and territories for a shared publisher list.
+* **Authority:** **Authoritative** source for all automated processing.
+
+#### Agreement Entry Properties
+
+Within each agreement entry (`rdf:Description`):
+
+**Property:** `ferp:publishers`
+
+* **Type:** `rdf:Bag` of `rdf:li` (`xsd:string`)
+* **Cardinality:** 1..n
+* **Order:** Unordered
+* **Semantics:** List of controlled publishers for the stamp.
+
+**Property:** `ferp:effectiveDates`
+
+* **Type:** `rdf:Seq` of `rdf:li` (`rdf:Description`)
+* **Cardinality:** 0..n
+* **Order:** Oldest to newest
+* **Semantics:** Each entry represents an effective date paired with its applicable territories.
+
+**Property:** `ferp:territories`
+
+* **Type:** `rdf:Bag` of `rdf:li` (`xsd:string`)
+* **Cardinality:** 0..n
+* **Order:** Alphabetical (ascending)
+* **Semantics:** Controlled territories for the effective date entry.
 
 ---
 
 ## 6) Normalization Rules
 
-Normalization MUST be applied before writing `ferp:publishers`.
+Normalization MUST be applied before writing `ferp:administrator` and `ferp:agreements`.
 
-For each publisher value:
+For administrator and publisher/territory values:
 
 1. Trim leading and trailing whitespace.
 2. Collapse internal whitespace to a single ASCII space (`U+0020`).
 3. Remove empty values.
-4. De-duplicate by exact match after normalization.
+4. De-duplicate by exact match after normalization (within each bag).
 5. Preserve original casing.
 6. Preserve punctuation.
+
+For effective dates:
+
+1. Use ISO 8601 date format `YYYY-MM-DD`.
+2. Remove empty or invalid values.
+3. De-duplicate by exact match.
+4. Sort oldest to newest within each agreement.
+
+For territories:
+
+1. Apply the same whitespace normalization as publishers.
+2. Remove empty values.
+3. De-duplicate by exact match.
+4. Sort alphabetically (ascending) within each effective date entry.
 
 Recommended behavior: preserve first occurrence when de-duplicating.
 
 ---
 
-## 7) UI Surfacing via PDF Info Metadata (Non-Authoritative)
-
-### 7.1 `/Keywords` Usage
-
-FERP MAY surface publisher information into the PDF Info `/Keywords` field **for human visibility only**.
-
-* `/Keywords` is **not authoritative**
-* `/Keywords` is **not guaranteed to persist**
-* `/Keywords` MUST NOT be relied upon by automated systems
-
-### 7.2 Required Marking
-
-If used, the value MUST be clearly marked to avoid ambiguity:
-
-```
-FERP_PUBLISHERS=Universal Music Publishing Group | Sony Music Publishing | Warner Chappell Music
-```
-
-* Prefix: `FERP_PUBLISHERS=`
-* Separator: `|` (space-pipe-space)
-* Derived directly from normalized `ferp:publishers`
-
-### 7.3 Stability Warning (Normative)
-
-> Automated systems MUST assume `/Keywords` may be absent, truncated, rewritten, or removed by downstream tools and MUST NOT treat its presence or absence as meaningful.
-
----
-
-## 8) Write Requirements
+## 7) Write Requirements
 
 A compliant writer MUST:
 
 1. Embed an XMP packet in the PDF catalog metadata stream.
-2. Write `ferp:publishers` exactly as defined in Section 5.
+2. Write `ferp:administrator` and `ferp:agreements` exactly as defined in Section 5.
 3. Ensure XML is valid UTF-8 and properly escaped.
 
 A compliant writer MAY:
-
-* Write `/Keywords` as described in Section 7 for UI visibility.
-
-A compliant writer SHOULD:
 
 * Preserve unrelated existing XMP content when updating metadata.
 
 ---
 
-## 9) Read Requirements
+## 8) Read Requirements
 
 A compliant reader MUST:
 
-1. Read `ferp:publishers` from XMP if present.
+1. Read `ferp:administrator` and `ferp:agreements` from XMP if present.
 2. Apply normalization rules after reading.
-
-A compliant reader MAY:
-
-* Fall back to parsing `/Keywords` **only** if XMP is absent and only for best-effort, non-authoritative behavior.
 
 ### Authority Rule
 
-If both XMP and `/Keywords` are present and differ:
+If multiple sources are present and differ:
 
 * **XMP always wins**
-* `/Keywords` MUST be ignored for correctness
 
 ---
 
-## 10) Canonical Minimal XMP Example
+## 9) Canonical Minimal XMP Example
 
 ```xml
-<?xpacket begin='﻿' id='W5M0MpCehiHzreSzNTczkc9d'?>
+<?xpacket begin='' id='W5M0MpCehiHzreSzNTczkc9d'?>
 <x:xmpmeta xmlns:x="adobe:ns:meta/">
   <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
     <rdf:Description xmlns:ferp="https://tulbox.app/ferp/xmp/1.0">
-      <ferp:publishers>
+      <ferp:administrator>Tulbox Music Publishing</ferp:administrator>
+      <ferp:agreements>
         <rdf:Bag>
-          <rdf:li>Universal Music Publishing Group</rdf:li>
-          <rdf:li>Sony Music Publishing</rdf:li>
+          <rdf:li rdf:parseType="Resource">
+            <ferp:publishers>
+              <rdf:Bag>
+                <rdf:li>Random Name Publishing Group</rdf:li>
+                <rdf:li>Some Music Publishing Commpany</rdf:li>
+              </rdf:Bag>
+            </ferp:publishers>
+            <ferp:effectiveDates>
+              <rdf:Seq>
+                <rdf:li rdf:parseType="Resource">
+                  <ferp:date>2024-01-01</ferp:date>
+                  <ferp:territories>
+                    <rdf:Bag>
+                      <rdf:li>Canada</rdf:li>
+                      <rdf:li>United States</rdf:li>
+                    </rdf:Bag>
+                  </ferp:territories>
+                </rdf:li>
+                <rdf:li rdf:parseType="Resource">
+                  <ferp:date>2024-06-15</ferp:date>
+                  <ferp:territories>
+                    <rdf:Bag>
+                      <rdf:li>World (Excl. U.S.)</rdf:li>
+                    </rdf:Bag>
+                  </ferp:territories>
+                </rdf:li>
+              </rdf:Seq>
+            </ferp:effectiveDates>
+          </rdf:li>
         </rdf:Bag>
-      </ferp:publishers>
+      </ferp:agreements>
     </rdf:Description>
   </rdf:RDF>
 </x:xmpmeta>
@@ -197,7 +233,7 @@ If both XMP and `/Keywords` are present and differ:
 
 ---
 
-## 11) Versioning Policy
+## 10) Versioning Policy
 
 * Namespace `https://tulbox.app/ferp/xmp/1.0` is immutable.
 * Any breaking change requires a new namespace version (e.g., `/2.0`).
@@ -205,17 +241,12 @@ If both XMP and `/Keywords` are present and differ:
 
 ---
 
-## 12) Compliance Summary
+## 11) Compliance Summary
 
 ### Writers
 
-* MUST write XMP `ferp:publishers`
-* MAY write `/Keywords` as sugar
-* MUST NOT rely on `/Keywords` for correctness
+* MUST write XMP `ferp:administrator` and `ferp:agreements`
 
 ### Readers
 
 * MUST rely on XMP
-* MAY fall back to `/Keywords`
-* MUST NOT treat `/Keywords` as stable or authoritative
-
