@@ -53,6 +53,7 @@ class ScriptItem(ListItem):
 
 
 class ScriptManager(ListView):
+    FAST_CURSOR_STEP = 5
     BINDINGS = [
         Binding("g", "cursor_top", "To top", show=False),
         Binding("G", "cursor_bottom", "To bottom", key_display="G", show=False),
@@ -129,11 +130,11 @@ class ScriptManager(ListView):
         return candidate if candidate.exists() else None
 
     def action_cursor_down_fast(self) -> None:
-        for _ in range(self._visible_item_count()):
+        for _ in range(self.FAST_CURSOR_STEP):
             super().action_cursor_down()
 
     def action_cursor_up_fast(self) -> None:
-        for _ in range(self._visible_item_count()):
+        for _ in range(self.FAST_CURSOR_STEP):
             super().action_cursor_up()
 
     def action_cursor_top(self) -> None:

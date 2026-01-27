@@ -38,8 +38,7 @@ class FileListingEntry:
     display_name: str
     char_count: int
     type_label: str
-    modified_ts: float
-    created_ts: float
+    modified_ts: float | None
     is_dir: bool
     search_blob: str
 
@@ -121,10 +120,6 @@ class FileItem(ListItem):
                     "Modified",
                     classes="file_tree_cell file_tree_modified file_tree_header",
                 ),
-                Label(
-                    "Created",
-                    classes="file_tree_cell file_tree_created file_tree_header",
-                ),
                 classes="file_tree_row",
             )
         else:
@@ -137,18 +132,23 @@ class FileItem(ListItem):
                 ),
                 Label(metadata.type_label, classes="file_tree_cell file_tree_type"),
                 Label(
-                    _format_timestamp(metadata.modified_ts),
+                    _format_timestamp(self._resolve_modified_ts(metadata)),
                     classes="file_tree_cell file_tree_modified",
-                ),
-                Label(
-                    _format_timestamp(metadata.created_ts),
-                    classes="file_tree_cell file_tree_created",
                 ),
                 classes=f"file_tree_row {'file_tree_type_dir' if metadata.is_dir else 'file_tree_type_file'}",
             )
 
         super().__init__(row, classes=classes, **kwargs)
         self.disabled = is_header
+
+    @staticmethod
+    def _resolve_modified_ts(metadata: FileListingEntry) -> float:
+        if metadata.modified_ts is not None:
+            return metadata.modified_ts
+        try:
+            return metadata.path.stat().st_mtime
+        except OSError:
+            return 0.0
 
 
 class ChunkNavigatorItem(ListItem):
@@ -169,7 +169,9 @@ class FileTreeFilterWidget(Widget):
         Binding("escape", "hide", "Hide filter", show=True),
     ]
 
-    def __init__(self, *, state_store: FileTreeStateStore, id: str | None = None) -> None:
+    def __init__(
+        self, *, state_store: FileTreeStateStore, id: str | None = None
+    ) -> None:
         super().__init__(id=id)
         self._state_store = state_store
         self.display = "none"
@@ -245,6 +247,8 @@ class FileTreeFilterWidget(Widget):
 class FileTree(ListView):
     CHUNK_SIZE = 100
     FILTER_TITLE_MAX = 24
+    CHUNK_DEBOUNCE_S = 0.25
+    FAST_CURSOR_STEP = 5
     BINDINGS = [
         Binding("enter", "select_cursor", "Select directory", show=False),
         Binding("g", "cursor_top", "To top", show=False),
@@ -340,6 +344,8 @@ class FileTree(ListView):
         self._selection_history = dict(state_store.state.selection_history)
         self._last_chunk_direction: str | None = None
         self._pending_delete_index: int | None = None
+        self._pending_chunk_delta = 0
+        self._chunk_timer: Timer | None = None
 
     def set_pending_delete_index(self, index: int | None) -> None:
         self._pending_delete_index = index
@@ -424,19 +430,6 @@ class FileTree(ListView):
             if should_focus:
                 self.focus()
             return
-        target = self._last_selected_path
-        if target:
-            for idx, child in enumerate(self.children):
-                if (
-                    isinstance(child, FileItem)
-                    and not child.is_header
-                    and child.path == target
-                ):
-                    self.index = idx
-                    if should_focus:
-                        self.focus()
-                    return
-
         current_dir = self._current_listing_path
         history_target: Path | None = None
         if current_dir is not None:
@@ -445,6 +438,19 @@ class FileTree(ListView):
         if history_target is not None:
             for idx, child in enumerate(self.children):
                 if isinstance(child, FileItem) and child.path == history_target:
+                    self.index = idx
+                    if should_focus:
+                        self.focus()
+                    return
+
+        target = self._last_selected_path
+        if target:
+            for idx, child in enumerate(self.children):
+                if (
+                    isinstance(child, FileItem)
+                    and not child.is_header
+                    and child.path == target
+                ):
                     self.index = idx
                     if should_focus:
                         self.focus()
@@ -518,6 +524,8 @@ class FileTree(ListView):
         self._current_listing_path = path
         self._all_entries = list(entries)
         if previous_path != path:
+            self._last_selected_path = None
+            self._state_store.set_last_selected_path(None)
             self._set_filter("")
         self._apply_filter()
         self._update_border_title()
@@ -760,7 +768,9 @@ class FileTree(ListView):
             self.call_after_refresh(self._restore_selection)
             return
 
-        max_start = max(0, total - 1)
+        max_start = (
+            0 if total == 0 else (total - 1) // self.CHUNK_SIZE * self.CHUNK_SIZE
+        )
         start = max(0, min(self._chunk_start, max_start))
         self._chunk_start = start
         end = min(start + self.CHUNK_SIZE, total)
@@ -805,6 +815,8 @@ class FileTree(ListView):
                 self._state_store.update_selection_history(
                     self._current_listing_path, item.path
                 )
+            self._last_selected_path = None
+            self._state_store.set_last_selected_path(None)
             self.post_message(DirectorySelectRequest(item.path))
         elif isinstance(item, ChunkNavigatorItem):
             total = len(self._filtered_entries)
@@ -821,30 +833,47 @@ class FileTree(ListView):
                 self._last_chunk_direction = "next"
             self._render_current_chunk()
             self._last_selected_path = None
+            self._state_store.set_last_selected_path(None)
 
-    def _move_chunk(self, direction: str) -> None:
+    def action_prev_chunk(self) -> None:
+        self._schedule_chunk_move(-1)
+
+    def action_next_chunk(self) -> None:
+        self._schedule_chunk_move(1)
+
+    def _schedule_chunk_move(self, delta: int) -> None:
+        self._pending_chunk_delta += delta
+        if self._chunk_timer is not None:
+            self._chunk_timer.stop()
+            self._chunk_timer = None
+        self._chunk_timer = self.set_timer(
+            self.CHUNK_DEBOUNCE_S,
+            self._apply_pending_chunk_move,
+            name="file-tree-chunk-debounce",
+        )
+
+    def _apply_pending_chunk_move(self) -> None:
+        if self._chunk_timer is not None:
+            self._chunk_timer.stop()
+            self._chunk_timer = None
+        delta = self._pending_chunk_delta
+        self._pending_chunk_delta = 0
+        if delta == 0:
+            return
         total = len(self._filtered_entries)
         if total == 0:
             return
-
-        if direction == "prev":
-            next_start = max(0, self._chunk_start - self.CHUNK_SIZE)
-        else:
-            next_start = min(self._chunk_start + self.CHUNK_SIZE, max(0, total - 1))
-
+        if total <= self.CHUNK_SIZE:
+            return
+        max_start = (total - 1) // self.CHUNK_SIZE * self.CHUNK_SIZE
+        next_start = self._chunk_start + (delta * self.CHUNK_SIZE)
+        next_start = max(0, min(next_start, max_start))
         if next_start == self._chunk_start:
             return
-
         self._chunk_start = next_start
-        self._last_chunk_direction = direction
+        self._last_chunk_direction = "next" if delta > 0 else "prev"
         self._last_selected_path = None
         self._render_current_chunk()
-
-    def action_prev_chunk(self) -> None:
-        self._move_chunk("prev")
-
-    def action_next_chunk(self) -> None:
-        self._move_chunk("next")
 
     def action_cursor_down(self) -> None:
         super().action_cursor_down()
@@ -857,15 +886,13 @@ class FileTree(ListView):
             self.index = 1
 
     def action_cursor_down_fast(self) -> None:
-        step = max(1, self._visible_item_count() // 2)
-        for _ in range(step):
+        for _ in range(self.FAST_CURSOR_STEP):
             super().action_cursor_down()
         if self.index == 0 and len(self.children) > 1:
             self.index = 1
 
     def action_cursor_up_fast(self) -> None:
-        step = max(1, self._visible_item_count() // 2)
-        for _ in range(step):
+        for _ in range(self.FAST_CURSOR_STEP):
             super().action_cursor_up()
         if self.index == 0 and len(self.children) > 1:
             self.index = 1

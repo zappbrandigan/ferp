@@ -115,7 +115,7 @@ TopBar {
             width: 8;
         }
 
-        .file_tree_modified, .file_tree_created {
+        .file_tree_modified {
             width: 20;
         }
     }

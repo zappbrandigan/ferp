@@ -426,9 +426,9 @@ class Ferp(App):
                 return
             dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
             if dev_config_enabled:
-                self.notify("Updating default scripts (dry run)...", timeout=3)
+                self.notify("Updating default scripts (dry run)...", timeout=5)
             else:
-                self.notify("Updating default scripts...", timeout=3)
+                self.notify("Updating default scripts...", timeout=5)
             self.run_worker(
                 self._install_default_scripts,
                 group="default_scripts_update",
@@ -453,7 +453,7 @@ class Ferp(App):
             return
 
         def start_sync(api_token: str) -> None:
-            self.notify("Syncing Monday board...", timeout=3)
+            self.notify("Syncing Monday board...", timeout=5)
             self.run_worker(
                 lambda token=api_token, board=board_id_value: self._sync_monday_board(
                     token, board
@@ -687,7 +687,7 @@ class Ferp(App):
 
         summary = "Default scripts updated."
         if release_version:
-            summary = f"{summary} v{release_version}"
+            summary = f"{summary} {release_version}"
         if release_status:
             summary = f"{summary} ({release_status})"
         if config_path:
@@ -721,7 +721,7 @@ class Ferp(App):
             if board_name
             else "Monday sync updated"
         )
-        self.notify(f"{title}. {details}", timeout=4)
+        self.notify(f"{title}. {details}", timeout=5)
         self.update_cache_timestamp()
 
     def refresh_listing(self) -> None:

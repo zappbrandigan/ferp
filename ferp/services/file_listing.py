@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import stat as stat_module
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,20 +19,34 @@ class DirectoryListingResult:
 def collect_directory_listing(directory: Path, token: int) -> DirectoryListingResult:
     try:
         with os.scandir(directory) as scan:
-            entries = sorted(scan, key=lambda entry: entry.name.casefold())
+            visible = []
+            for entry in scan:
+                entry_path = Path(entry.path)
+                if _should_skip_entry(entry_path, directory):
+                    continue
+                visible.append(entry)
+            entries = sorted(visible, key=_sort_key)
     except OSError as exc:
         return DirectoryListingResult(directory, token, [], str(exc))
 
     rows: list[FileListingEntry] = []
     for entry in entries:
-        entry_path = Path(entry.path)
-        if _should_skip_entry(entry_path, directory):
-            continue
         listing_entry = _build_listing_entry(entry)
         if listing_entry is not None:
             rows.append(listing_entry)
 
     return DirectoryListingResult(directory, token, rows)
+
+
+def _sort_key(entry: os.DirEntry[str]) -> tuple[int, int, str]:
+    try:
+        is_dir = entry.is_dir(follow_symlinks=False)
+    except OSError:
+        is_dir = False
+    name = entry.name
+    dir_rank = 0 if is_dir else 1
+    underscore_rank = 0 if name.startswith("_") else 1
+    return (dir_rank, underscore_rank, name.casefold())
 
 
 def snapshot_directory(path: Path) -> tuple[str, ...]:
@@ -46,13 +59,11 @@ def snapshot_directory(path: Path) -> tuple[str, ...]:
 
 
 def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
+    entry_path = Path(entry.path)
     try:
-        stat_result = entry.stat()
+        is_dir = entry.is_dir(follow_symlinks=False)
     except OSError:
         return None
-
-    entry_path = Path(entry.path)
-    is_dir = stat_module.S_ISDIR(stat_result.st_mode)
     stem = Path(entry.name).stem
 
     display_name = stem if not is_dir else f"{stem}/"
@@ -67,8 +78,7 @@ def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
         display_name=display_name,
         char_count=len(stem),
         type_label=type_label,
-        modified_ts=stat_result.st_mtime,
-        created_ts=stat_result.st_ctime,
+        modified_ts=None,
         is_dir=is_dir,
         search_blob=search_blob,
     )
