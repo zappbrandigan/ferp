@@ -127,11 +127,19 @@ class FileItem(ListItem):
             if metadata is None:
                 raise ValueError("metadata required for non-header FileItems")
             row = Horizontal(
-                Label(metadata.display_name, classes="file_tree_cell file_tree_name"),
+                Label(
+                    metadata.display_name,
+                    classes="file_tree_cell file_tree_name",
+                    markup=False,
+                ),
                 Label(
                     str(metadata.char_count), classes="file_tree_cell file_tree_chars"
                 ),
-                Label(metadata.type_label, classes="file_tree_cell file_tree_type"),
+                Label(
+                    metadata.type_label,
+                    classes="file_tree_cell file_tree_type",
+                    markup=False,
+                ),
                 Label(
                     _format_timestamp(self._resolve_modified_ts(metadata)),
                     classes="file_tree_cell file_tree_modified",
