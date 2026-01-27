@@ -102,14 +102,16 @@ class Ferp(App):
 
     BINDINGS = [
         Binding(
-            "l", "show_task_list", "Show tasks", show=True, tooltip="Show task list"
+            "l", "show_task_list", "Show tasks", show=False, tooltip="Show task list"
         ),
-        Binding("t", "capture_task", "Add task", show=True, tooltip="Capture new task"),
+        Binding(
+            "t", "capture_task", "Add task", show=False, tooltip="Capture new task"
+        ),
         Binding(
             "m",
             "toggle_maximize",
             "Maximize",
-            show=True,
+            show=False,
             tooltip="Maximize/minimize the focused widget",
         ),
         Binding(
@@ -279,7 +281,7 @@ class Ferp(App):
                 id="file_tree_filter",
                 state_store=self.file_tree_store,
             )
-        yield Footer()
+        yield Footer(id="app_footer")
 
     def on_mount(self) -> None:
         for theme in ALL_THEMES:

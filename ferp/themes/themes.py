@@ -62,20 +62,20 @@ paper_ledger = Theme(
 
 neo_matrix = Theme(
     name="neo-matrix",
-    primary="#00FF9C",
-    secondary="#00C97A",
-    accent="#00FFCC",
-    foreground="#B6FFE3",
-    background="#020D08",
-    success="#00FF9C",
-    warning="#FFD166",
-    error="#FF4D6D",
-    surface="#041A12",
-    panel="#06261B",
+    primary="#37FF14DC",
+    secondary="#0F7B0F",
+    accent="#ABFCAB",
+    foreground="#B6FFB6",
+    background="#000B00",
+    success="#00FF66",
+    warning="#FFB000",
+    error="#FF3B30",
+    surface="#000B00",
+    panel="#000B00",
     dark=True,
     variables={
-        "footer-key-foreground": "#00ff9c",
-        "input-selection-background": "#00ff9c 30%",
+        "footer-key-foreground": "#39ff14",
+        "input-selection-background": "#39ff14 25%",
         "block-cursor-text-style": "none",
     },
 )
@@ -97,48 +97,6 @@ slate_copper = Theme(
     variables={
         "footer-key-foreground": "#c97c5d",
         "input-selection-background": "#c97c5d 30%",
-        "block-cursor-text-style": "none",
-    },
-)
-
-petal_sky = Theme(
-    name="petal-sky",
-    primary="#CDB4DB",  # thistle
-    secondary="#a2d2ff",  # sky-blue
-    accent="#ffafcc",  # baby-pink
-    foreground="#3A2F3F",  # derived: muted plum for legibility
-    background="#F7F3FA",  # derived: off-white lavender
-    surface="#EFE7F3",  # derived pastel surface
-    panel="#E6DCEF",  # derived panel tone
-    success="#7FB8A8",  # derived soft teal
-    warning="#FFC8DD",  # pastel-petal
-    error="#E89BB3",  # derived muted rose
-    dark=False,
-    variables={
-        # Text hierarchy
-        "text-muted": "#7A6F85",
-        "text-subtle": "#9A90A5",
-        "footer-key-foreground": "#3A2F3F",
-    },
-)
-
-
-tokyo_night = Theme(
-    name="tokyo-night",
-    primary="#7AA2F7",
-    secondary="#9ECE6A",
-    accent="#BB9AF7",
-    foreground="#C0CAF5",
-    background="#1A1B26",
-    success="#9ECE6A",
-    warning="#E0AF68",
-    error="#F7768E",
-    surface="#24283B",
-    panel="#2F3549",
-    dark=True,
-    variables={
-        "footer-key-foreground": "#7aa2f7",
-        "input-selection-background": "#bb9af7 30%",
         "block-cursor-text-style": "none",
     },
 )
@@ -177,19 +135,28 @@ zapp_brannigan = Theme(
     panel="#1E2A32",  # Panels, dialogs, sidebars
     dark=True,
     variables={
-        "input-background": "#1E2A32",
-        "input-foreground": "#ECE8E1",
-        # "input-border": "#C9A23F",
-        "button-background": "#1F6F78",
-        "button-foreground": "#ECE8E1",
-        "button-hover-background": "#2D8C97",
-        "button-hover-foreground": "#FFFFFF",
-        "list-highlight-background": "#C9A23F",
-        "list-highlight-foreground": "#0E1418",
-        "footer-background": "#0E1418",
-        "footer-foreground": "#C9A23F",
-        "header-background": "#0E1418",
-        "header-foreground": "#FFD166",
+        "block-cursor-text-style": "none",
+        "footer-key-foreground": "#C9A23F",
+    },
+)
+
+
+black_and_white = Theme(
+    name="black-and-white",
+    primary="#FFFFFF",
+    secondary="#C7C5C5",
+    warning="#E5533D",
+    error="#B11226",
+    success="#4CAF73",
+    accent="#AAAAAA",
+    foreground="#ECE8E1",
+    background="#000000",
+    surface="#000000",
+    panel="#000000",
+    dark=True,
+    variables={
+        "block-cursor-text-style": "none",
+        "footer-key-foreground": "#FFFFFF",
     },
 )
 
@@ -200,8 +167,7 @@ ALL_THEMES: list[Theme] = [
     paper_ledger,
     neo_matrix,
     slate_copper,
-    tokyo_night,
     burgundy,
-    petal_sky,
+    black_and_white,
     zapp_brannigan,
 ]

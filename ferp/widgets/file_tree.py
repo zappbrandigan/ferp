@@ -12,6 +12,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
+from textual.events import Click
 from textual.timer import Timer
 from textual.widget import Widget
 from textual.widgets import Input, Label, ListItem, ListView, LoadingIndicator
@@ -150,6 +151,13 @@ class FileItem(ListItem):
         except OSError:
             return 0.0
 
+    def on_click(self, event: Click) -> None:
+        if event.chain < 2:
+            return
+        parent = self.parent
+        if isinstance(parent, FileTree):
+            parent._activate_item(self)
+
 
 class ChunkNavigatorItem(ListItem):
     """Interactive row to navigate between file list chunks."""
@@ -250,7 +258,7 @@ class FileTree(ListView):
     CHUNK_DEBOUNCE_S = 0.25
     FAST_CURSOR_STEP = 5
     BINDINGS = [
-        Binding("enter", "select_cursor", "Select directory", show=False),
+        Binding("enter", "activate_item", "Select directory", show=False),
         Binding("g", "cursor_top", "To top", show=False),
         Binding("G", "cursor_bottom", "To bottom", key_display="G", show=False),
         Binding("k", "cursor_up", "Cursor up", show=False),
@@ -346,6 +354,7 @@ class FileTree(ListView):
         self._pending_delete_index: int | None = None
         self._pending_chunk_delta = 0
         self._chunk_timer: Timer | None = None
+        self._listing_changed = False
 
     def set_pending_delete_index(self, index: int | None) -> None:
         self._pending_delete_index = index
@@ -435,7 +444,11 @@ class FileTree(ListView):
         if current_dir is not None:
             history_target = self._selection_history.get(current_dir)
 
-        if history_target is not None:
+        prefer_history = self._listing_changed
+        target = self._last_selected_path
+        self._listing_changed = False
+
+        if prefer_history and history_target is not None:
             for idx, child in enumerate(self.children):
                 if isinstance(child, FileItem) and child.path == history_target:
                     self.index = idx
@@ -443,7 +456,6 @@ class FileTree(ListView):
                         self.focus()
                     return
 
-        target = self._last_selected_path
         if target:
             for idx, child in enumerate(self.children):
                 if (
@@ -451,6 +463,14 @@ class FileTree(ListView):
                     and not child.is_header
                     and child.path == target
                 ):
+                    self.index = idx
+                    if should_focus:
+                        self.focus()
+                    return
+
+        if history_target is not None:
+            for idx, child in enumerate(self.children):
+                if isinstance(child, FileItem) and child.path == history_target:
                     self.index = idx
                     if should_focus:
                         self.focus()
@@ -522,6 +542,7 @@ class FileTree(ListView):
         previous_path = self._current_listing_path
         self._state_store.set_current_listing_path(path)
         self._current_listing_path = path
+        self._listing_changed = previous_path != path
         self._all_entries = list(entries)
         if previous_path != path:
             self._last_selected_path = None
@@ -810,15 +831,7 @@ class FileTree(ListView):
     @on(ListView.Selected)
     def emit_selection(self, event: ListView.Selected) -> None:
         item = event.item
-        if isinstance(item, FileItem) and not item.is_header and item.path.is_dir():
-            if self._current_listing_path is not None:
-                self._state_store.update_selection_history(
-                    self._current_listing_path, item.path
-                )
-            self._last_selected_path = None
-            self._state_store.set_last_selected_path(None)
-            self.post_message(DirectorySelectRequest(item.path))
-        elif isinstance(item, ChunkNavigatorItem):
+        if isinstance(item, ChunkNavigatorItem):
             total = len(self._filtered_entries)
             if total == 0:
                 return
@@ -834,6 +847,40 @@ class FileTree(ListView):
             self._render_current_chunk()
             self._last_selected_path = None
             self._state_store.set_last_selected_path(None)
+
+    def action_activate_item(self) -> None:
+        item = self.highlighted_child
+        if isinstance(item, FileItem) and not item.is_header:
+            self._activate_item(item)
+            return
+        if isinstance(item, ChunkNavigatorItem):
+            self._activate_chunk_item(item)
+
+    def _activate_item(self, item: FileItem) -> None:
+        if not item.path.is_dir():
+            return
+        if self._current_listing_path is not None:
+            self._state_store.update_selection_history(
+                self._current_listing_path, item.path
+            )
+        self._last_selected_path = None
+        self._state_store.set_last_selected_path(None)
+        self.post_message(DirectorySelectRequest(item.path))
+
+    def _activate_chunk_item(self, item: ChunkNavigatorItem) -> None:
+        total = len(self._filtered_entries)
+        if total == 0:
+            return
+        if item.direction == "prev":
+            self._chunk_start = max(0, self._chunk_start - self.CHUNK_SIZE)
+            self._last_chunk_direction = "prev"
+        else:
+            max_start = (total - 1) // self.CHUNK_SIZE * self.CHUNK_SIZE
+            self._chunk_start = min(self._chunk_start + self.CHUNK_SIZE, max_start)
+            self._last_chunk_direction = "next"
+        self._render_current_chunk()
+        self._last_selected_path = None
+        self._state_store.set_last_selected_path(None)
 
     def action_prev_chunk(self) -> None:
         self._schedule_chunk_move(-1)

@@ -84,6 +84,11 @@ TopBar {
             background: $background;
         }
 
+        #file_list:focus {
+            border: $secondary-lighten-3;
+            background: transparent;
+        }
+
         .file_tree_header {
             color: $text;
         }
@@ -135,6 +140,11 @@ TopBar {
             background: $background;
         }
 
+        #scripts_panel:focus {
+            border: $secondary-lighten-3;
+            background: transparent;
+        }
+
         #script_item {
             height: 1;
             padding: 0 1;
@@ -174,7 +184,7 @@ TopBar {
         }
 
         #output_panel_container:focus {
-            background: $surface;
+            border: $secondary-lighten-3;
         }
     }
 
