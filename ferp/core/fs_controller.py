@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import shutil
+import stat
 from pathlib import Path
 
 
@@ -35,7 +37,14 @@ class FileSystemController:
             return
 
         if target.is_dir():
-            shutil.rmtree(target)
+            def _handle_remove_error(func, path, exc):
+                if isinstance(exc, PermissionError):
+                    os.chmod(path, stat.S_IWRITE)
+                    func(path)
+                    return
+                raise exc
+
+            shutil.rmtree(target, onexc=_handle_remove_error)
         else:
             target.unlink()
 

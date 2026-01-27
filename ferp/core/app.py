@@ -81,6 +81,7 @@ class AppPaths:
 @dataclass(frozen=True)
 class DeletePathResult:
     target: Path
+    error: str | None = None
 
 
 DEFAULT_SETTINGS: dict[str, Any] = {
@@ -670,8 +671,11 @@ class Ferp(App):
         )
 
     def _delete_path_worker(self, target: Path) -> DeletePathResult:
-        self.fs_controller.delete_path(target)
-        return DeletePathResult(target=target)
+        try:
+            self.fs_controller.delete_path(target)
+        except OSError as exc:
+            return DeletePathResult(target=target, error=str(exc))
+        return DeletePathResult(target=target, error=None)
 
     def _render_default_scripts_update(self, payload: dict[str, Any]) -> None:
         error = payload.get("error")
@@ -936,6 +940,16 @@ class Ferp(App):
             if event.state is WorkerState.SUCCESS:
                 result = worker.result
                 if isinstance(result, DeletePathResult):
+                    if result.error:
+                        self.notify(
+                            f"Delete failed: {result.error}",
+                            severity="error",
+                            timeout=3,
+                        )
+                        file_tree = self.query_one(FileTree)
+                        file_tree.set_pending_delete_index(None)
+                        self._start_file_tree_watch()
+                        return
                     label = result.target.name or str(result.target)
                     self.notify(f"Deleted '{escape(label)}'.", timeout=3)
                     self.refresh_listing()
