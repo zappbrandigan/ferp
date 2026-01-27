@@ -31,7 +31,6 @@ from ferp.core.messages import (
     CreatePathRequest,
     DeletePathRequest,
     DirectorySelectRequest,
-    HighlightRequest,
     NavigateRequest,
     RenamePathRequest,
     RunScriptRequest,
@@ -567,10 +566,6 @@ class Ferp(App):
     def handle_directory_selection(self, event: DirectorySelectRequest) -> None:
         self._request_navigation(event.path)
 
-    @on(HighlightRequest)
-    def handle_highlight(self, event: HighlightRequest) -> None:
-        self.state_store.set_highlighted_path(event.path)
-
     @on(CreatePathRequest)
     def handle_create_path(self, event: CreatePathRequest) -> None:
         self.path_actions.create_path(event.base, is_directory=event.is_directory)
@@ -602,7 +597,7 @@ class Ferp(App):
             context = build_execution_context(
                 app_root=self.app_root,
                 current_path=self.current_path,
-                highlighted_path=self.state_store.state.highlighted_path,
+                selected_path=self.file_tree_store.state.last_selected_path,
                 script=event.script,
             )
             self.script_controller.run_script(event.script, context)

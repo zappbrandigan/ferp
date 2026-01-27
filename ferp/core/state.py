@@ -41,7 +41,6 @@ class TaskListState:
 @dataclass(frozen=True, slots=True)
 class AppState:
     current_path: str = ""
-    highlighted_path: Path | None = None
     status: str = "Ready"
     cache_updated_at: datetime = datetime(1970, 1, 1, tzinfo=timezone.utc)
     script_run: ScriptRunState = field(default_factory=ScriptRunState)
@@ -65,9 +64,6 @@ class AppStateStore:
 
     def set_current_path(self, value: str) -> None:
         self._update_state(current_path=value)
-
-    def set_highlighted_path(self, value: Path | None) -> None:
-        self._update_state(highlighted_path=value)
 
     def set_status(self, value: str) -> None:
         self._update_state(status=value)

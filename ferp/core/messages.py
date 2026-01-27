@@ -11,12 +11,6 @@ class NavigateRequest(Message):
         super().__init__()
 
 
-class HighlightRequest(Message):
-    def __init__(self, path: Path | None) -> None:
-        self.path = path
-        super().__init__()
-
-
 class RunScriptRequest(Message):
     def __init__(self, script: Script) -> None:
         self.script = script

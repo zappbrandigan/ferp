@@ -21,7 +21,6 @@ from ferp.core.messages import (
     CreatePathRequest,
     DeletePathRequest,
     DirectorySelectRequest,
-    HighlightRequest,
     NavigateRequest,
     RenamePathRequest,
 )
@@ -356,7 +355,6 @@ class FileTree(ListView):
         self._filter_error = False
         self._chunk_start = 0
         self._current_listing_path = state_store.state.current_listing_path
-        self._last_selected_path = state_store.state.last_selected_path
         self._selection_history = dict(state_store.state.selection_history)
         self._last_chunk_direction: str | None = None
         self._pending_delete_index: int | None = None
@@ -453,7 +451,7 @@ class FileTree(ListView):
             history_target = self._selection_history.get(current_dir)
 
         prefer_history = self._listing_changed
-        target = self._last_selected_path
+        target = self._state_store.state.last_selected_path
         self._listing_changed = False
 
         if prefer_history and history_target is not None:
@@ -544,7 +542,6 @@ class FileTree(ListView):
         )
         notice.can_focus = False
         self.append(notice)
-        self.post_message(HighlightRequest(None))
 
     def show_listing(self, path: Path, entries: Sequence[FileListingEntry]) -> None:
         previous_path = self._current_listing_path
@@ -553,7 +550,6 @@ class FileTree(ListView):
         self._listing_changed = previous_path != path
         self._all_entries = list(entries)
         if previous_path != path:
-            self._last_selected_path = None
             self._state_store.set_last_selected_path(None)
             self._set_filter("")
         self._apply_filter()
@@ -761,7 +757,6 @@ class FileTree(ListView):
 
     def _handle_state_update(self, state: FileTreeState) -> None:
         self._current_listing_path = state.current_listing_path
-        self._last_selected_path = state.last_selected_path
         self._selection_history = dict(state.selection_history)
         if state.filter_query == self._filter_query:
             return
@@ -793,7 +788,6 @@ class FileTree(ListView):
                 self._append_notice("No items match the current filter.")
             else:
                 self._append_notice("No files in this directory.")
-            self.post_message(HighlightRequest(None))
             self.call_after_refresh(self._restore_selection)
             return
 
@@ -830,11 +824,9 @@ class FileTree(ListView):
         item = event.item
 
         if isinstance(item, FileItem) and not item.is_header:
-            self._last_selected_path = item.path
             self._state_store.set_last_selected_path(item.path)
-            self.post_message(HighlightRequest(item.path))
         else:
-            self.post_message(HighlightRequest(None))
+            pass
 
     @on(ListView.Selected)
     def emit_selection(self, event: ListView.Selected) -> None:
@@ -853,7 +845,6 @@ class FileTree(ListView):
                 )
                 self._last_chunk_direction = "next"
             self._render_current_chunk()
-            self._last_selected_path = None
             self._state_store.set_last_selected_path(None)
 
     def action_activate_item(self) -> None:
@@ -871,7 +862,6 @@ class FileTree(ListView):
             self._state_store.update_selection_history(
                 self._current_listing_path, item.path
             )
-        self._last_selected_path = None
         self._state_store.set_last_selected_path(None)
         self.post_message(DirectorySelectRequest(item.path))
 
@@ -887,7 +877,6 @@ class FileTree(ListView):
             self._chunk_start = min(self._chunk_start + self.CHUNK_SIZE, max_start)
             self._last_chunk_direction = "next"
         self._render_current_chunk()
-        self._last_selected_path = None
         self._state_store.set_last_selected_path(None)
 
     def action_prev_chunk(self) -> None:
@@ -927,7 +916,6 @@ class FileTree(ListView):
             return
         self._chunk_start = next_start
         self._last_chunk_direction = "next" if delta > 0 else "prev"
-        self._last_selected_path = None
         self._render_current_chunk()
 
     def action_cursor_down(self) -> None:

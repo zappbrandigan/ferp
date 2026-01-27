@@ -19,7 +19,7 @@ def build_execution_context(
     *,
     app_root: Path,
     current_path: Path,
-    highlighted_path: Path | None,
+    selected_path: Path | None,
     script: Script,
 ) -> ScriptExecutionContext:
     """Resolve script metadata into an execution context for the FSCP runner."""
@@ -37,9 +37,9 @@ def build_execution_context(
     if script.target == "current_directory":
         target_path = current_path
     elif script.target in {"highlighted_file", "highlighted_directory"}:
-        if highlighted_path is None:
+        if selected_path is None:
             raise ValueError("Select a file or directory before running this script.")
-        target_path = highlighted_path
+        target_path = selected_path
     else:
         raise ValueError(f"Unsupported script target: {script.target}")
 
