@@ -19,9 +19,9 @@ from textual.widgets import (
     Static,
 )
 
+from ferp.core.state import TaskListState, TaskListStateStore
 from ferp.core.task_store import Task as TodoTask
 from ferp.core.task_store import TaskStore
-from ferp.core.state import TaskListState, TaskListStateStore
 from ferp.widgets.dialogs import ConfirmDialog
 from ferp.widgets.task_capture import TaskCaptureModal
 
@@ -225,7 +225,7 @@ class TaskListScreen(ModalScreen[None]):
             Vertical(
                 Container(filter_input, id="task_filter_container"),
                 ListView(placeholder, id="task_list_view"),
-                Footer(),
+                Footer(id="task_list_footer"),
             ),
             id="task_list_modal",
         )

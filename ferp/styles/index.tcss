@@ -68,29 +68,45 @@ TopBar {
             color: $text;
         }
 
-        ListItem .file_tree_header {
+        .file_tree_header {
             text-style: bold;
         }
 
         /* ============================================================================
         File Tree
         ============================================================================ */
-        #file_list {
+        #file_list_container {
             width: 2fr;
+            height: 1fr;
+            min-height: 1;
             max-width: 100%;
             padding: 0 1;
             border: round $secondary;
             border-title-align: right;
             background: $background;
+            layout: vertical;
         }
 
-        #file_list:focus {
+        #file_list_container:focus-within {
             border: $secondary-lighten-3;
             background: transparent;
         }
 
-        .file_tree_header {
+        #file_list {
+            height: 1fr;
+            min-height: 1;
+            background: transparent;
+            scrollbar-gutter: stable;
+        }
+
+        #file_list_header {
+            height: 1;
             color: $text;
+            padding-right: 1;
+        }
+
+        .file_tree_header {
+            text-style: bold underline;
         }
 
         .file_tree_type_dir {
@@ -107,11 +123,6 @@ TopBar {
             height: 1;
         }
 
-        .file_tree_cell {
-            height: 1;
-            padding: 0 1 0 0;
-        }
-
         .file_tree_name {
             width: 1fr;
         }
@@ -121,7 +132,7 @@ TopBar {
         }
 
         .file_tree_modified {
-            width: 20;
+            width: 18;
         }
     }
 
@@ -460,6 +471,10 @@ TaskListScreen {
     text-align: right;
     color: $text-muted;
     padding-left: 1;
+}
+
+#task_list_footer {
+    background: $background;
 }
 
 /* ============================================================================

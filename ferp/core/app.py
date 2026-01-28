@@ -55,7 +55,7 @@ from ferp.services.releases import update_scripts_from_release
 from ferp.services.scripts import build_execution_context
 from ferp.themes.themes import ALL_THEMES
 from ferp.widgets.dialogs import ConfirmDialog, InputDialog
-from ferp.widgets.file_tree import FileTree, FileTreeFilterWidget
+from ferp.widgets.file_tree import FileTree, FileTreeFilterWidget, FileTreeHeader
 from ferp.widgets.output_panel import ScriptOutputPanel
 from ferp.widgets.process_list import ProcessListScreen
 from ferp.widgets.readme_modal import ReadmeScreen
@@ -265,7 +265,11 @@ class Ferp(App):
         )
         with Vertical(id="app_main_container"):
             yield Horizontal(
-                FileTree(id="file_list", state_store=self.file_tree_store),
+                Vertical(
+                    FileTreeHeader(id="file_list_header"),
+                    FileTree(id="file_list", state_store=self.file_tree_store),
+                    id="file_list_container",
+                ),
                 Vertical(
                     ScriptManager(
                         self._paths.config_file,
@@ -295,8 +299,6 @@ class Ferp(App):
         self.state_store.set_status("Ready")
         self.update_cache_timestamp()
         self.refresh_listing()
-        file_tree = self.query_one("#file_list", FileTree)
-        file_tree.index = 1
         self.task_store.subscribe(self._handle_task_update)
 
     def on_theme_changed(self, theme: Theme) -> None:

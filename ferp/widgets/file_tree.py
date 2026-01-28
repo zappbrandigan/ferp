@@ -176,6 +176,19 @@ class ChunkNavigatorItem(ListItem):
         self.direction = direction
 
 
+class FileTreeHeader(Widget):
+    """Static header row for the file tree list."""
+
+    def compose(self) -> ComposeResult:
+        yield Horizontal(
+            Label("Name", classes="file_tree_name file_tree_header"),
+            Label("Chars", classes="file_tree_chars file_tree_header"),
+            Label("Type", classes="file_tree_type file_tree_header"),
+            Label("Modified", classes="file_tree_modified file_tree_header"),
+            classes="file_tree_header_row",
+        )
+
+
 class FileTreeFilterWidget(Widget):
     """Hidden input bar for filtering file tree entries."""
 
@@ -398,6 +411,9 @@ class FileTree(ListView):
         target = str(path)
 
         if sys.platform == "darwin":
+            if path.is_file() and path.suffix.lower() == ".zip":
+                subprocess.run(["open", "-R", target])
+                return
             subprocess.run(["open", target])
         elif sys.platform == "win32":
             subprocess.run(["explorer", target])
@@ -527,7 +543,6 @@ class FileTree(ListView):
 
     def show_loading(self, path: Path) -> None:
         self.clear()
-        self._append_header(path)
         indicator = LoadingIndicator()
         indicator.loading = True
         placeholder = ListItem(indicator, classes="item_loading")
@@ -536,7 +551,6 @@ class FileTree(ListView):
 
     def show_error(self, path: Path, message: str) -> None:
         self.clear()
-        self._append_header(path)
         notice = ListItem(
             Label(message, classes="file_tree_error"), classes="item_error"
         )
@@ -744,7 +758,12 @@ class FileTree(ListView):
                 title = f'{title} (filter: "{truncated}" - invalid regex)'
             else:
                 title = f'{title} (filter: "{truncated}")'
-        self.border_title = title
+        try:
+            container = self.app.query_one("#file_list_container")
+        except Exception:
+            self.border_title = title
+        else:
+            container.border_title = title
 
     def action_filter_entries(self) -> None:
         try:
@@ -762,11 +781,6 @@ class FileTree(ListView):
             return
         self._set_filter(state.filter_query, from_store=True)
 
-    def _append_header(self, path: Path) -> None:
-        parent = path.parent
-        header_target = parent if parent != path else path
-        self.append(FileItem(header_target, is_header=True))
-
     def _append_notice(self, message: str) -> None:
         notice = ListItem(
             Label(message, classes="file_tree_notice"), classes="item_notice"
@@ -779,8 +793,8 @@ class FileTree(ListView):
         if path is None:
             return
 
+        self.scroll_to(y=0, animate=False)
         self.clear()
-        self._append_header(path)
 
         total = len(self._filtered_entries)
         if total == 0:
@@ -835,17 +849,8 @@ class FileTree(ListView):
             total = len(self._filtered_entries)
             if total == 0:
                 return
-            if item.direction == "prev":
-                self._chunk_start = max(0, self._chunk_start - self.CHUNK_SIZE)
-                self._last_chunk_direction = "prev"
-            else:
-                self._chunk_start = min(
-                    self._chunk_start + self.CHUNK_SIZE,
-                    max(0, total - 1),
-                )
-                self._last_chunk_direction = "next"
-            self._render_current_chunk()
-            self._state_store.set_last_selected_path(None)
+            delta = -1 if item.direction == "prev" else 1
+            self._schedule_chunk_move(delta)
 
     def action_activate_item(self) -> None:
         item = self.highlighted_child
@@ -920,33 +925,25 @@ class FileTree(ListView):
 
     def action_cursor_down(self) -> None:
         super().action_cursor_down()
-        if self.index == 0 and len(self.children) > 1:
-            self.index = 1
 
     def action_cursor_up(self) -> None:
         super().action_cursor_up()
-        if self.index == 0 and len(self.children) > 1:
-            self.index = 1
 
     def action_cursor_down_fast(self) -> None:
         for _ in range(self.FAST_CURSOR_STEP):
             super().action_cursor_down()
-        if self.index == 0 and len(self.children) > 1:
-            self.index = 1
 
     def action_cursor_up_fast(self) -> None:
         for _ in range(self.FAST_CURSOR_STEP):
             super().action_cursor_up()
-        if self.index == 0 and len(self.children) > 1:
-            self.index = 1
 
     def action_cursor_top(self) -> None:
-        if len(self.children) > 1:
-            self.index = 1
+        if self.children:
+            self.index = 0
             self.scroll_to(y=0)
 
     def action_cursor_bottom(self) -> None:
-        if len(self.children) > 1:
+        if self.children:
             self.index = len(self.children) - 1
 
     def _visible_item_count(self) -> int:
@@ -959,7 +956,7 @@ class FileTree(ListView):
         if row_height <= 0:
             return 0
 
-        return (self.size.height // row_height) - 1
+        return self.size.height // row_height
 
     def _selected_path(self) -> Path | None:
         item = self.highlighted_child
