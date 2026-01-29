@@ -195,7 +195,6 @@ class TaskListScreen(ModalScreen[None]):
         Binding("t", "capture_task", "Add task", show=True),
         Binding("j", "cursor_down", "Next", show=False),
         Binding("k", "cursor_up", "Previous", show=False),
-        Binding("/", "focus_filter", "Filter tags", show=True),
         Binding("C", "clear_completed", "Clear completed", show=True),
     ]
 

@@ -38,15 +38,14 @@ def collect_directory_listing(directory: Path, token: int) -> DirectoryListingRe
     return DirectoryListingResult(directory, token, rows)
 
 
-def _sort_key(entry: os.DirEntry[str]) -> tuple[int, int, str]:
+def _sort_key(entry: os.DirEntry[str]) -> tuple[int, str]:
     try:
         is_dir = entry.is_dir(follow_symlinks=False)
     except OSError:
         is_dir = False
     name = entry.name
-    dir_rank = 0 if is_dir else 1
-    underscore_rank = 0 if name.startswith("_") else 1
-    return (dir_rank, underscore_rank, name.casefold())
+    underscore_dir_rank = 0 if is_dir and name.startswith("_") else 1
+    return (underscore_dir_rank, name.casefold())
 
 
 def snapshot_directory(path: Path) -> tuple[str, ...]:

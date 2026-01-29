@@ -36,6 +36,7 @@ def sync_monday_board(
             group { id }
             column_values { text column { title } }
             subitems {
+              name
               column_values { text column { title } }
             }
           }
@@ -105,17 +106,19 @@ def sync_monday_board(
                 skipped += 1
                 continue
 
+            territory_mode = col_map.get("Territory", "").strip()
             subitems = item.get("subitems") or []
-            multi_territory = []
-            for subitem in subitems:
-                subitem_values = subitem.get("column_values") or []
-                sub_map = build_col_map(subitem_values)
-                multi_territory.append(
-                    {
+            subitem_rows: list[dict[str, str]] = []
+            if territory_mode in {"Multiple", "Split"}:
+                for subitem in subitems:
+                    subitem_values = subitem.get("column_values") or []
+                    sub_map = build_col_map(subitem_values)
+                    row_data = {
                         name.lower(): sub_map.get(name, "")
                         for name in MONDAY_SUBITEM_COLUMNS
                     }
-                )
+                    row_data["territory_code"] = subitem.get("name") or ""
+                    subitem_rows.append(row_data)
 
             group_info = item.get("group") or {}
             group_name = group_map.get(group_info.get("id"), "Ungrouped")
@@ -124,8 +127,10 @@ def sync_monday_board(
             row: dict[str, object] = {
                 name.lower(): col_map.get(name, "") for name in MONDAY_REQUIRED_COLUMNS
             }
-            if multi_territory:
-                row["multi_territory"] = multi_territory
+            if territory_mode == "Multiple" and subitem_rows:
+                row["multi_territory"] = subitem_rows
+            elif territory_mode == "Split" and subitem_rows:
+                row["split_territory"] = subitem_rows
             group_bucket.append(row)
             publisher_count += 1
 

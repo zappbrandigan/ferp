@@ -1,6 +1,8 @@
+from rich.style import Style
+from rich.text import Text
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label
+from textual.widgets import Button, DataTable, Input, Label
 
 
 class ConfirmDialog(ModalScreen[bool | None]):
@@ -12,8 +14,8 @@ class ConfirmDialog(ModalScreen[bool | None]):
         yield Container(
             Label(self.message, id="dialog_message"),
             Horizontal(
-                Button("Yes", id="yes", variant="primary"),
-                Button("No", id="cancel"),
+                Button("Yes", id="yes", variant="primary", flat=True),
+                Button("No", id="cancel", flat=True),
                 classes="dialog_buttons",
             ),
             id="dialog_container",
@@ -34,19 +36,42 @@ class BulkRenameConfirmDialog(ModalScreen[bool | None]):
     def __init__(
         self,
         title: str,
-        body: str,
+        rows: list[tuple[str, str]],
+        more_count: int = 0,
     ) -> None:
         super().__init__(id="bulk_rename_confirm_dialog")
         self.dialog_title: str = title or ""
-        self.body: str = body or ""
+        self.rows: list[tuple[str, str]] = rows
+        self.more_count = more_count
 
     def compose(self):
+        table = DataTable(
+            id="bulk_rename_preview_table", show_cursor=False, disabled=True
+        )
+        table.add_column("From", width=75)
+        table.add_column("To", width=75)
+        if self.rows:
+            success_color = self.app.theme_variables["success"]
+            error_color = self.app.theme_variables["error"]
+            styled_rows = [
+                (
+                    Text(src, style=Style(color=error_color)),
+                    Text(dest, style=Style(color=success_color)),
+                )
+                for src, dest in self.rows
+            ]
+            table.add_rows(styled_rows)
         yield Container(
             Label(self.dialog_title, id="bulk_rename_dialog_title"),
-            Label(self.body, id="bulk_rename_dialog_message"),
+            table,
+            Label(
+                f"... and {self.more_count} more.",
+                id="bulk_rename_dialog_message",
+                classes="" if self.more_count else "hidden",
+            ),
             Horizontal(
-                Button("Yes", id="bulk_rename_yes", variant="primary"),
-                Button("No", id="bulk_rename_cancel"),
+                Button("Yes", id="bulk_rename_yes", variant="primary", flat=True),
+                Button("No", id="bulk_rename_cancel", flat=True),
                 classes="dialog_buttons",
             ),
             id="bulk_rename_dialog_container",
@@ -79,8 +104,8 @@ class InputDialog(ModalScreen[str | None]):
                 id="input_container",
             ),
             Horizontal(
-                Button("OK", id="ok", variant="primary"),
-                Button("Cancel", id="cancel"),
+                Button("OK", id="ok", variant="primary", flat=True),
+                Button("Cancel", id="cancel", flat=True),
                 classes="dialog_buttons",
             ),
             id="dialog_container",

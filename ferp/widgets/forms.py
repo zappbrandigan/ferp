@@ -54,16 +54,6 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
         contents: list[Widget] = [Label(self._message, id="dialog_message")]
         if self._show_text_input:
             contents.append(Input(value=self._default, id="prompt_input"))
-        contents.append(
-            Horizontal(
-                *(
-                    Checkbox(label=field.label, value=field.value, id=field.id)
-                    for field in self._bool_fields
-                ),
-                id="prompt_flags",
-                classes="hidden" if not self._bool_fields else "",
-            )
-        )
         for field in self._selection_fields:
             contents.append(
                 Label(
@@ -81,8 +71,18 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
             )
         contents.append(
             Horizontal(
-                Button("OK", id="ok", variant="primary"),
-                Button("Cancel", id="cancel"),
+                *(
+                    Checkbox(label=field.label, value=field.value, id=field.id)
+                    for field in self._bool_fields
+                ),
+                id="prompt_flags",
+                classes="hidden" if not self._bool_fields else "",
+            )
+        )
+        contents.append(
+            Horizontal(
+                Button("OK", id="ok", variant="primary", flat=True),
+                Button("Cancel", id="cancel", flat=True),
                 classes="dialog_buttons",
             )
         )
@@ -102,11 +102,11 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
                         except Exception:
                             pass
         if not self._show_text_input:
-            if self._bool_fields:
-                self.query_one(Checkbox).focus()
-                return
             if self._selection_fields:
                 self.query_one(SelectionList).focus()
+                return
+            if self._bool_fields:
+                self.query_one(Checkbox).focus()
                 return
             self.query_one("#ok", Button).focus()
 

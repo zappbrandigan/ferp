@@ -5,6 +5,20 @@
     scrollbar-size: 0 1;
 }
 
+Button {
+    color: $text;
+}
+
+#ok:hover, #ok:focus, #yes:hover, #yes:focus {
+    background: $primary;
+    border: inner $primary;
+}
+
+#cancel:hover, #cancel:focus {
+    background: $error-darken-2;
+    border: inner $error-darken-2;
+}
+
 TopBar {
     layout: horizontal;
     height: 1;
@@ -48,7 +62,8 @@ TopBar {
         /* ============================================================================
         ListView General
         ============================================================================ */
-        ListView.dimmed {
+
+        .dimmed {
             opacity: 0.4;
         }
 
@@ -87,7 +102,7 @@ TopBar {
             layout: vertical;
         }
 
-        #file_list_container:focus-within {
+        #file_list_container:focus {
             border: $secondary-lighten-3;
             background: transparent;
         }
@@ -240,16 +255,17 @@ TopBar {
 #bulk_rename_confirm_dialog .dialog_buttons {
     dock: bottom;
     height: auto;
+    align: center middle;
 }
 
 #bulk_rename_confirm_dialog .dialog_buttons Button {
-    width: 1fr;
+    width: 25%;
 }
 
 #dialog_container {
     align: center middle;
-    max-height: 20;
-    max-width: 120;
+    height: auto;
+    width: 100;
     padding: 1 2;
     border: round $secondary;
     background: $panel;
@@ -258,7 +274,7 @@ TopBar {
 #bulk_rename_dialog_container {
     align: center middle;
     max-height: 20;
-    max-width: 125;
+    max-width: 160;
     padding: 1 1;
     border: round $secondary;
     background: $panel;
@@ -270,6 +286,32 @@ TopBar {
     padding: 0 1;
 }
 
+#bulk_rename_dialog_container #bulk_rename_preview_table {
+    height: auto;
+    max-height: 12;
+    width: 100%;
+    margin: 0 1;
+}
+
+#bulk_rename_preview_table {
+    background: $surface-darken-1;
+    color: $text;
+}
+
+/* header */
+#bulk_rename_preview_table .datatable--header {
+    background: $background-lighten-3;
+    color: $text;
+}
+
+#bulk_rename_preview_table .from-col {
+    color: $error;
+}
+
+#bulk_rename_preview_table .to-col {
+    color: $success;
+}
+
 #bulk_rename_dialog_container #bulk_rename_dialog_title {
     width: 100%;
     content-align: center middle;
@@ -277,15 +319,12 @@ TopBar {
     margin-bottom: 1;
 }
 
-
-
 #dialog_container #dialog_message {
     width: 100%;
     content-align: center middle;
 }
 
 #dialog_container #prompt_input, #dialog_container #input_container {
-    width: 100%;
     height: 3;
     margin: 1 5 0 5;
     border: round $secondary;
@@ -293,16 +332,15 @@ TopBar {
 
     /* dialogs/InputDialog */
     #input {
-    border: none;
-    background: transparent;
+        border: none;
+        background: transparent;
+    }
 }
-}
-
-
 
 #dialog_container #prompt_flags {
-    height: 3;
+    height: 1;
     align: center middle;
+    margin-top: 1;
 }
 
 #dialog_container #prompt_flags Checkbox {
@@ -328,7 +366,7 @@ TopBar {
 ============================================================================ */
 #dialog_container .prompt_selection_list {
     height: 10;
-    margin: 0 5 4 5;
+    margin: 0 5 0 5;
     border: round $secondary;
     background: transparent;
 }
@@ -347,10 +385,13 @@ SelectionList .selection-list--button-selected, SelectionList .selection-list--b
 #dialog_container .dialog_buttons {
     dock: bottom;
     height: auto;
+    margin-top: 1;
+    align: center middle;
 }
 
 #dialog_container .dialog_buttons Button {
-    width: 1fr;
+    height: 3;
+    width: 25%;
 }
 
 #dialog_container .hidden {

@@ -696,12 +696,11 @@ class FileTree(ListView):
             app.show_error(RuntimeError(message))
             return
 
-        preview = [f"{src.name} -> {dest.name}" for src, dest in plan[:5]]
-        if len(plan) > 5:
-            preview.append(f"... and {len(plan) - 5} more.")
+        preview_rows = [(src.name, dest.name) for src, dest in plan[:5]]
+        more_count = max(len(plan) - len(preview_rows), 0)
         mode = "regex" if is_regex else "text"
         title = f"Rename {len(plan)} file(s) using {mode} replace?"
-        body = "\n".join(preview)
+        body = preview_rows
 
         def after(confirmed: bool | None) -> None:
             if not confirmed:
@@ -716,7 +715,7 @@ class FileTree(ListView):
                 thread=True,
             )
 
-        app.push_screen(BulkRenameConfirmDialog(title, body), after)
+        app.push_screen(BulkRenameConfirmDialog(title, body, more_count), after)
 
     def _bulk_rename_worker(self, plan: list[tuple[Path, Path]]) -> dict[str, object]:
         errors: list[str] = []

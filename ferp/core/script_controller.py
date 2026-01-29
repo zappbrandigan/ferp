@@ -494,8 +494,9 @@ class ScriptLifecycleController:
             script_manager.remove_class("dimmed")
 
         file_tree = self._app.query_one(FileTree)
+        file_tree_container = self._app.query_one("#file_list_container")
         file_tree.disabled = disabled
         if disabled:
-            file_tree.add_class("dimmed")
+            file_tree_container.add_class("dimmed")
         else:
-            file_tree.remove_class("dimmed")
+            file_tree_container.remove_class("dimmed")
