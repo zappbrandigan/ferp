@@ -616,8 +616,6 @@ class FileTree(ListView):
 
         mode, pattern, replacement = parsed
         pattern = pattern.strip()
-        replacement = replacement.strip()
-
         if not pattern:
             return None
 

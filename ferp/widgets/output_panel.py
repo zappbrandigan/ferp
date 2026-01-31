@@ -56,14 +56,14 @@ class ScriptOutputPanel(ContentPanel):
     ) -> None:
         status = result.status.value.replace("_", " ").title()
         lines: list[str] = [
-            f"[bold $primary]Script:[/bold $primary] {escape(script_name)}",
-            f"[bold $primary]Target:[/bold $primary] {escape(str(target.name))}",
-            f"[bold $primary]Status:[/bold $primary] {status}",
+            f"[bold $text-primary]Script:[/bold $text-primary] {escape(script_name)}",
+            f"[bold $text-primary]Target:[/bold $text-primary] {escape(str(target.name))}",
+            f"[bold $text-primary]Status:[/bold $text-primary] {status}",
         ]
 
         if result.exit_code is not None:
             lines.append(
-                f"[bold $primary]Exit Code:[/bold $primary] {result.exit_code}"
+                f"[bold $text-primary]Exit Code:[/bold $text-primary] {result.exit_code}"
             )
 
         if result.results:

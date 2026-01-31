@@ -16,6 +16,10 @@
             "secret": { "type": "boolean" },
             "mode": { "enum": ["input", "confirm"] },
             "show_text_input": { "type": "boolean" },
+            "suggestions": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
             "fields": {
               "type": "array",
               "items": {

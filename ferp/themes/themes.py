@@ -123,16 +123,16 @@ burgundy = Theme(
 
 zapp_brannigan = Theme(
     name="zapp-brannigan",
-    primary="#C9A23F",  # Brash command gold (medals, epaulettes)
-    secondary="#1F6F78",  # DOOP teal / space-navy interface
-    warning="#E5533D",  # Dramatic ego-red warnings
-    error="#B11226",  # Militaristic red (court-martial chic)
-    success="#4CAF73",  # Overconfident “mission accomplished” green
-    accent="#5FD3E6",  # Loud, vain highlight gold
-    foreground="#ECE8E1",  # Retro-future off-white text
-    background="#0E1418",  # Deep space bridge black
-    surface="#172026",  # Console surface
-    panel="#1E2A32",  # Panels, dialogs, sidebars
+    primary="#b69003",
+    secondary="#1F6F78",
+    warning="#E5533D",
+    error="#B11226",
+    success="#4CAF73",
+    accent="#800e13",
+    foreground="#ECE8E1",
+    background="#0E1418",
+    surface="#172026",
+    panel="#1E2A32",
     dark=True,
     variables={
         "block-cursor-text-style": "none",
@@ -142,7 +142,7 @@ zapp_brannigan = Theme(
 
 
 black_and_white = Theme(
-    name="black-and-white",
+    name="black_and_white",
     primary="#FFFFFF",
     secondary="#C7C5C5",
     warning="#E5533D",
@@ -151,12 +151,54 @@ black_and_white = Theme(
     accent="#AAAAAA",
     foreground="#ECE8E1",
     background="#000000",
-    surface="#000000",
+    surface="#292929",
     panel="#000000",
     dark=True,
     variables={
         "block-cursor-text-style": "none",
         "footer-key-foreground": "#FFFFFF",
+    },
+)
+
+
+nashua_kyle = Theme(
+    name="nashua-kyle",
+    primary="#A3B18A",
+    secondary="#606c38",
+    warning="#ca6c00",
+    error="#c1121f",
+    success="#405824",
+    accent="#bc6c25",
+    foreground="#1e2211",
+    background="#EDE0D4",
+    surface="#a28c73",
+    panel="#c6ac8f",
+    dark=False,
+    variables={
+        "block-cursor-text-style": "none",
+        "footer-key-foreground": "#606c38",
+        "footer-description-foreground": "#EDE0D4",
+    },
+)
+
+
+hey_noodle = Theme(
+    name="hey-noodle",
+    primary="#748cab",
+    secondary="#1d2d44",
+    warning="#ca6c00",
+    error="#c1121f",
+    success="#679436",
+    accent="#959b9d",
+    foreground="#1d2d44",
+    background="#dbe9ee",
+    surface="#accbe1",
+    panel="#edede9",
+    dark=False,
+    variables={
+        "block-cursor-text-style": "none",
+        "footer-key-foreground": "#1d2d44",
+        "footer-description-foreground": "#1d2d44",
     },
 )
 
@@ -169,5 +211,7 @@ ALL_THEMES: list[Theme] = [
     slate_copper,
     burgundy,
     black_and_white,
+    nashua_kyle,
     zapp_brannigan,
+    hey_noodle,
 ]

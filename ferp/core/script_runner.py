@@ -101,6 +101,7 @@ class ScriptInputRequest:
     secret: bool = False
     mode: Literal["input", "confirm"] = "input"
     fields: list[dict[str, Any]] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)
     show_text_input: bool = True
 
 
@@ -359,6 +360,12 @@ class ScriptRunner:
                     for item in raw_fields:
                         if isinstance(item, dict):
                             fields.append(dict(item))
+                raw_suggestions = payload.get("suggestions")
+                suggestions: list[str] = []
+                if isinstance(raw_suggestions, list):
+                    for value in raw_suggestions:
+                        if isinstance(value, str) and value:
+                            suggestions.append(value)
                 show_text_input = payload.get("show_text_input", True)
                 if not isinstance(show_text_input, bool):
                     show_text_input = True
@@ -369,6 +376,7 @@ class ScriptRunner:
                     secret=bool(payload.get("secret", False)),
                     mode=mode,  # type: ignore
                     fields=fields,
+                    suggestions=suggestions,
                     show_text_input=show_text_input,
                 )
 

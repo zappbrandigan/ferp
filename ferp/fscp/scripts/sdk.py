@@ -165,6 +165,7 @@ class ScriptAPI:
         id: str | None = None,
         mode: Literal["input", "confirm"] = "input",
         fields: Sequence[Mapping[str, Any]] | None = None,
+        suggestions: Sequence[str] | None = None,
         show_text_input: bool | None = None,
     ) -> str:
         self._ensure_running()
@@ -180,6 +181,8 @@ class ScriptAPI:
             request["secret"] = True
         if fields:
             request["fields"] = fields
+        if suggestions:
+            request["suggestions"] = list(suggestions)
         if show_text_input is not None:
             request["show_text_input"] = show_text_input
 
@@ -195,6 +198,7 @@ class ScriptAPI:
         secret: bool = False,
         id: str | None = None,
         fields: Sequence[BoolField | MultiSelectField] | None = None,
+        suggestions: Sequence[str] | None = None,
         show_text_input: bool | None = None,
     ) -> Dict[str, str | bool | list[str]]: ...
 
@@ -207,6 +211,7 @@ class ScriptAPI:
         secret: bool = False,
         id: str | None = None,
         fields: Sequence[BoolField | MultiSelectField] | None = None,
+        suggestions: Sequence[str] | None = None,
         show_text_input: bool | None = None,
         payload_type: type[_InputPayloadT],
     ) -> _InputPayloadT: ...
@@ -219,6 +224,7 @@ class ScriptAPI:
         secret: bool = False,
         id: str | None = None,
         fields: Sequence[BoolField | MultiSelectField] | None = None,
+        suggestions: Sequence[str] | None = None,
         show_text_input: bool | None = None,
         payload_type: type[_InputPayloadT] | None = None,
     ) -> Dict[str, str | bool | list[str]] | _InputPayloadT:
@@ -231,6 +237,7 @@ class ScriptAPI:
             id=id,
             mode="input",
             fields=fields,
+            suggestions=suggestions,
             show_text_input=show_text_input,
         )
         payload = json.loads(raw)

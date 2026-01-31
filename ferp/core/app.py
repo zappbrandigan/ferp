@@ -487,6 +487,30 @@ class Ferp(App):
 
         start_sync(token)
 
+    def _command_upgrade_app(self) -> None:
+        prompt = "Upgrade FERP now via pipx and restart?"
+
+        def after(value: bool | None) -> None:
+            if not value:
+                return
+            pipx_path = shutil.which("pipx")
+            if not pipx_path:
+                self.notify(
+                    "pipx not found on PATH. Please run 'pipx upgrade ferp' manually.",
+                    severity="error",
+                    timeout=5,
+                )
+                return
+            self.notify("Upgrading FERP via pipx...", timeout=5)
+            self.run_worker(
+                lambda: self._upgrade_app(pipx_path),
+                group="app_upgrade",
+                exclusive=True,
+                thread=True,
+            )
+
+        self.push_screen(ConfirmDialog(prompt), after)
+
     def _install_default_scripts(self) -> dict[str, str | bool]:
         try:
             dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
@@ -530,6 +554,39 @@ class Ferp(App):
             "release_detail": config_status,
             "release_version": release_version,
         }
+
+    def _upgrade_app(self, pipx_path: str) -> dict[str, object]:
+        try:
+            result = subprocess.run(
+                [pipx_path, "upgrade", "ferp"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+        return {
+            "ok": result.returncode == 0,
+            "code": result.returncode,
+            "stdout": result.stdout.strip(),
+            "stderr": result.stderr.strip(),
+        }
+
+    def _restart_app(self) -> None:
+        cmd = sys.argv[0] or "ferp"
+        if os.path.isabs(cmd) and Path(cmd).exists():
+            exe = cmd
+        else:
+            exe = shutil.which(cmd) or shutil.which("ferp") or cmd
+        if not exe:
+            self.notify(
+                "Unable to resolve the FERP executable for restart.",
+                severity="error",
+                timeout=4,
+            )
+            return
+        subprocess.Popen([exe, *sys.argv[1:]])
+        self.exit()
 
     def _sync_monday_board(self, api_token: str, board_id: int) -> dict[str, object]:
         cache_path = self._paths.cache_dir / "publishers_cache.json"
@@ -932,6 +989,35 @@ class Ferp(App):
                     severity="error",
                     timeout=4,
                 )
+            return
+        if worker.group == "app_upgrade":
+            if event.state is WorkerState.SUCCESS:
+                result = worker.result
+                if isinstance(result, dict):
+                    if result.get("ok") is True:
+                        self.notify("Upgrade complete.", timeout=4)
+
+                        def after(value: bool | None) -> None:
+                            if value:
+                                self._restart_app()
+
+                        self.push_screen(
+                            ConfirmDialog("Restart FERP now to finish the upgrade?"),
+                            after,
+                        )
+                    else:
+                        error = result.get("error") or result.get("stderr") or ""
+                        code = result.get("code")
+                        detail = f" (exit {code})" if code is not None else ""
+                        message = (
+                            f"Upgrade failed{detail}. {error}".strip()
+                            if error
+                            else f"Upgrade failed{detail}."
+                        )
+                        self.notify(message, severity="error", timeout=6)
+            elif event.state is WorkerState.ERROR:
+                error = worker.error or RuntimeError("Upgrade failed.")
+                self.notify(f"Upgrade failed: {error}", severity="error", timeout=6)
             return
         if worker.group == "delete_path":
             if event.state is WorkerState.SUCCESS:

@@ -6,6 +6,7 @@ from typing import Iterable
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
+from textual.suggester import SuggestFromList
 from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Input, Label, SelectionList
 
@@ -39,6 +40,7 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
         id: str,
         *,
         default: str | None = None,
+        suggestions: Iterable[str] | None = None,
         boolean_fields: Iterable[BooleanField] | None = None,
         selection_fields: Iterable[SelectionField] | None = None,
         show_text_input: bool = True,
@@ -46,6 +48,7 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
         super().__init__(id=id)
         self._message = message
         self._default = default or ""
+        self._suggestions = list(suggestions or [])
         self._bool_fields = list(boolean_fields or [])
         self._selection_fields = list(selection_fields or [])
         self._show_text_input = show_text_input
@@ -53,7 +56,15 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
     def compose(self) -> ComposeResult:
         contents: list[Widget] = [Label(self._message, id="dialog_message")]
         if self._show_text_input:
-            contents.append(Input(value=self._default, id="prompt_input"))
+            suggester = None
+            if self._suggestions:
+                suggester = SuggestFromList(
+                    self._suggestions,
+                    case_sensitive=False,
+                )
+            contents.append(
+                Input(value=self._default, id="prompt_input", suggester=suggester)
+            )
         for field in self._selection_fields:
             contents.append(
                 Label(

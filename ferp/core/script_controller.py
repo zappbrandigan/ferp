@@ -275,6 +275,7 @@ class ScriptLifecycleController:
         dialog = PromptDialog(
             prompt,
             default=request.default,
+            suggestions=request.suggestions,
             boolean_fields=bool_fields,
             selection_fields=selection_fields,
             show_text_input=request.show_text_input,

@@ -19,6 +19,20 @@ Button {
     border: inner $error-darken-2;
 }
 
+Input .input--cursor {
+    background: transparent;
+    color: $text-muted;
+    opacity: 0.6;
+    text-style: underline;
+}
+
+#prompt_input .input--suggestion {
+    color: $text-muted; 
+    opacity: 0.6;
+    text-style: italic;
+}
+
+
 TopBar {
     layout: horizontal;
     height: 1;
@@ -102,7 +116,7 @@ TopBar {
             layout: vertical;
         }
 
-        #file_list_container:focus {
+        #file_list_container:focus-within {
             border: $secondary-lighten-3;
             background: transparent;
         }
@@ -177,7 +191,7 @@ TopBar {
         }
 
         .script_category {
-            color: $primary;
+            color: $text-accent;
         }
 
         ScriptItem.-highlight .script_category {
@@ -202,6 +216,7 @@ TopBar {
             height: 1fr;
             border: round $secondary;
             border-title-align: right;
+            color: $text;
         }
 
         #output_panel {
@@ -226,6 +241,11 @@ TopBar {
         Input {
             width: 100%;
             border: round $secondary;
+            background: transparent;
+        }
+
+        Input:focus {
+            background: transparent;
         }
     }
 
@@ -350,7 +370,7 @@ TopBar {
 
 #dialog_container #prompt_flags Checkbox .toggle--button {
     border: round $primary;
-    background: $background;    
+    background: $surface;    
 }   
 
 #dialog_container #prompt_flags Checkbox.-on > .toggle--button {
@@ -358,7 +378,7 @@ TopBar {
 }   
 
 #dialog_container #prompt_flags Checkbox:focus .toggle--label {
-    text-style: bold underline;
+    text-style: bold;
 }
 
 /* ============================================================================
@@ -378,8 +398,15 @@ TopBar {
     text-align: center;
 }
 
-SelectionList .selection-list--button-selected, SelectionList .selection-list--button-selected-highlighted {
-    color: $primary;
+SelectionList .selection-list--button-selected,
+SelectionList .selection-list--button-selected-highlighted {
+    color: $text-primary;
+    background: $surface;
+}
+
+SelectionList .selection-list--button,
+SelectionList .selection-list--button-highlighted {
+    background: $surface;
 }
 
 #dialog_container .dialog_buttons {

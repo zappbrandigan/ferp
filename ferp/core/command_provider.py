@@ -59,6 +59,11 @@ class FerpCommandProvider(SimpleProvider):
             "Fetch the Monday board and refresh publishers_cache.json.",
             "_command_sync_monday_board",
         ),
+        (
+            "Upgrade FERP",
+            "Run pipx upgrade and restart the app.",
+            "_command_upgrade_app",
+        ),
     )
 
     def __init__(self, screen: Screen[Any], match_style: Style | None = None) -> None:
