@@ -468,6 +468,9 @@ class ScriptLifecycleController:
         self._active_worker = None
         self._abort_worker = None
         self._input_screen = None
+        if self._app.is_shutting_down:
+            self._app._maybe_exit_after_script()
+            return
         self._set_controls_disabled(False)
         self._app.state_store.set_status("Ready")
         self._app.state_store.update_script_run(
@@ -485,6 +488,7 @@ class ScriptLifecycleController:
             error=None,
         )
         self._app._start_file_tree_watch()
+        self._app._maybe_exit_after_script()
 
     def _set_controls_disabled(self, disabled: bool) -> None:
         script_manager = self._app.query_one(ScriptManager)

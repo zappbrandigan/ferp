@@ -151,6 +151,8 @@ class Ferp(App):
         self._pending_refresh = False
         self._task_list_screen: TaskListScreen | None = None
         self._process_list_screen: ProcessListScreen | None = None
+        self._pending_exit = False
+        self._is_shutting_down = False
         super().__init__()
         self.fs_controller = FileSystemController()
         self._file_tree_watcher = FileTreeWatcher(
@@ -292,9 +294,14 @@ class Ferp(App):
             self.register_theme(theme)
         self.console.set_window_title("FERP")
         self.theme_changed_signal.subscribe(self, self.on_theme_changed)
-        self.theme = self.settings.get("userPreferences", {}).get(
-            "theme", "textual-dark"
-        )
+        preferred = self.settings.get("userPreferences", {}).get("theme")
+        fallback = DEFAULT_SETTINGS["userPreferences"]["theme"]
+        try:
+            self.theme = preferred or fallback
+        except Exception:
+            self.theme = fallback
+            if preferred != fallback:
+                self.settings_store.update_theme(self.settings, fallback)
         self.state_store.set_current_path(str(self.current_path))
         self.state_store.set_status("Ready")
         self.update_cache_timestamp()
@@ -707,7 +714,44 @@ class Ferp(App):
         )
 
     def on_exit(self) -> None:
+        self._is_shutting_down = True
         self._stop_file_tree_watch()
+
+    async def action_quit(self) -> None:
+        if not self.script_controller.is_running:
+            self._is_shutting_down = True
+            self.exit()
+            return
+
+        def after(value: bool | None) -> None:
+            if not value:
+                return
+            self._pending_exit = True
+            self._is_shutting_down = True
+            if not self.script_controller.request_abort("App exit requested."):
+                self._pending_exit = False
+                self._is_shutting_down = True
+                self.exit()
+
+        self.push_screen(
+            ConfirmDialog(
+                "A script is still running. Abort it and quit?",
+                id="confirm_quit_dialog",
+            ),
+            after,
+        )
+
+    def _maybe_exit_after_script(self) -> None:
+        if not self._pending_exit:
+            return
+        if self.script_controller.is_running:
+            return
+        self._pending_exit = False
+        self.exit()
+
+    @property
+    def is_shutting_down(self) -> bool:
+        return self._is_shutting_down
 
     def show_error(self, error: BaseException) -> None:
         self.notify(f"{error}", severity="error", timeout=4)
@@ -785,6 +829,8 @@ class Ferp(App):
         self.update_cache_timestamp()
 
     def refresh_listing(self) -> None:
+        if self._is_shutting_down:
+            return
         if self._listing_in_progress:
             self._pending_refresh = True
             return
@@ -792,7 +838,14 @@ class Ferp(App):
         self._listing_in_progress = True
         self.state_store.set_current_path(str(self.current_path))
 
-        file_tree = self.query_one(FileTree)
+        try:
+            file_tree = self.query_one(FileTree)
+        except NoMatches:
+            self._listing_in_progress = False
+            return
+        if not file_tree.is_attached:
+            self._listing_in_progress = False
+            return
         file_tree.show_loading(self.current_path)
 
         self._directory_listing_token += 1
@@ -816,8 +869,18 @@ class Ferp(App):
     def _handle_directory_listing_result(self, result: DirectoryListingResult) -> None:
         if result.token != self._directory_listing_token:
             return
+        if self._is_shutting_down:
+            self._finalize_directory_listing()
+            return
 
-        file_tree = self.query_one(FileTree)
+        try:
+            file_tree = self.query_one(FileTree)
+        except NoMatches:
+            self._finalize_directory_listing()
+            return
+        if not file_tree.is_attached:
+            self._finalize_directory_listing()
+            return
         if result.error:
             if not result.path.exists():
                 self._handle_missing_directory(result.path)
