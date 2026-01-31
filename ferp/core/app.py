@@ -563,6 +563,22 @@ class Ferp(App):
         }
 
     def _upgrade_app(self, pipx_path: str) -> dict[str, object]:
+        current_version = str(__version__)
+        latest_version: str | None = None
+        check_error: str | None = None
+        try:
+            latest_version = self._fetch_latest_pypi_version("ferp")
+        except Exception as exc:
+            check_error = str(exc)
+        if latest_version and not self._is_version_newer(
+            latest_version, current_version
+        ):
+            return {
+                "ok": True,
+                "no_update": True,
+                "current": current_version,
+                "latest": latest_version,
+            }
         try:
             result = subprocess.run(
                 [pipx_path, "upgrade", "ferp"],
@@ -577,23 +593,46 @@ class Ferp(App):
             "code": result.returncode,
             "stdout": result.stdout.strip(),
             "stderr": result.stderr.strip(),
+            "current": current_version,
+            "latest": latest_version,
+            "check_error": check_error,
         }
 
-    def _restart_app(self) -> None:
-        cmd = sys.argv[0] or "ferp"
-        if os.path.isabs(cmd) and Path(cmd).exists():
-            exe = cmd
-        else:
-            exe = shutil.which(cmd) or shutil.which("ferp") or cmd
-        if not exe:
-            self.notify(
-                "Unable to resolve the FERP executable for restart.",
-                severity="error",
-                timeout=4,
-            )
-            return
-        subprocess.Popen([exe, *sys.argv[1:]])
-        self.exit()
+    def _fetch_latest_pypi_version(self, package: str) -> str:
+        import json
+        import urllib.request
+
+        url = f"https://pypi.org/pypi/{package}/json"
+        with urllib.request.urlopen(url, timeout=5) as response:
+            payload = json.load(response)
+        info = payload.get("info", {})
+        version = info.get("version")
+        if not isinstance(version, str) or not version:
+            raise RuntimeError("PyPI response missing latest version.")
+        return version
+
+    def _is_version_newer(self, latest: str, current: str) -> bool:
+        def normalize(value: str) -> tuple[int, ...]:
+            parts: list[int] = []
+            for token in value.split("."):
+                digits = []
+                for ch in token:
+                    if ch.isdigit():
+                        digits.append(ch)
+                    else:
+                        break
+                number = int("".join(digits) or "0")
+                parts.append(number)
+            while parts and parts[-1] == 0:
+                parts.pop()
+            return tuple(parts)
+
+        latest_parts = normalize(latest)
+        current_parts = normalize(current)
+        max_len = max(len(latest_parts), len(current_parts))
+        latest_parts += (0,) * (max_len - len(latest_parts))
+        current_parts += (0,) * (max_len - len(current_parts))
+        return latest_parts > current_parts
 
     def _sync_monday_board(self, api_token: str, board_id: int) -> dict[str, object]:
         cache_path = self._paths.cache_dir / "publishers_cache.json"
@@ -1057,17 +1096,29 @@ class Ferp(App):
             if event.state is WorkerState.SUCCESS:
                 result = worker.result
                 if isinstance(result, dict):
-                    if result.get("ok") is True:
-                        self.notify("Upgrade complete.", timeout=4)
-
-                        def after(value: bool | None) -> None:
-                            if value:
-                                self._restart_app()
-
-                        self.push_screen(
-                            ConfirmDialog("Restart FERP now to finish the upgrade?"),
-                            after,
+                    if result.get("no_update") is True:
+                        current = result.get("current") or ""
+                        latest = result.get("latest") or current
+                        label = latest or current
+                        message = (
+                            f"FERP is already up to date ({label})."
+                            if label
+                            else "FERP is already up to date."
                         )
+                        self.notify(message, timeout=4)
+                        return
+                    check_error = result.get("check_error")
+                    if check_error:
+                        self.notify(
+                            f"Update check failed ({check_error}); running upgrade anyway.",
+                            timeout=5,
+                        )
+                    if result.get("ok") is True:
+                        self.notify(
+                            "Upgrade complete. Please restart after the app exits. Exiting...",
+                            timeout=5,
+                        )
+                        self.set_timer(2.0, self.exit)
                     else:
                         error = result.get("error") or result.get("stderr") or ""
                         code = result.get("code")
