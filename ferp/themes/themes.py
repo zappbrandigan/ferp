@@ -203,6 +203,26 @@ hey_noodle = Theme(
 )
 
 
+dusty_dawn = Theme(
+    name="dusty-dawn",
+    primary="#49111C",
+    secondary="#2C0B11",
+    warning="#b25f00",
+    error="#a8000b",
+    success="#53772C",
+    accent="#5E503F",
+    foreground="#F3E9EB",
+    background="#A9927D",
+    surface="#998163",
+    panel="#816D55",
+    dark=False,
+    variables={
+        "block-cursor-text-style": "none",
+        "footer-key-foreground": "#49111C",
+    },
+)
+
+
 ALL_THEMES: list[Theme] = [
     industrial_amber,
     blueprint,
@@ -214,4 +234,5 @@ ALL_THEMES: list[Theme] = [
     nashua_kyle,
     zapp_brannigan,
     hey_noodle,
+    dusty_dawn,
 ]

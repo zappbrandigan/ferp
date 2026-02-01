@@ -20,6 +20,10 @@ If you already use file explorers or Finder/File Explorer, think of FERP as a po
 
 ## 2) Opening FERP
 
+> This section assumes FERP was installed using `pipx`. 
+> The built-in update command also assumes FERP was installed using `pipx`. 
+> If you installed using a different method, you will need to manually manage launching and updating the app.
+
 FERP opens inside a terminal window (a black‑or‑white text window). You won’t need to type any extra commands unless someone has given you specific instructions.
 
 To launch FERP, open your terminal application (Terminal on macOS, Command Prompt/PowerShell on Windows) and type `ferp`, then press Enter. The symbols you see before the cursor (like `~>` or `$`) are just the prompt — you do **not** type those.
@@ -28,7 +32,7 @@ To launch FERP, open your terminal application (Terminal on macOS, Command Promp
 ~> ferp
 ```
 
-To update FERP to the latest version (if installed by your team):
+To update FERP to the latest version, select "Upgrade FERP" from the command palette. Alternatively, you can run the following command in the terminal:
 
 ```bash
 ~> pipx upgrade ferp
@@ -58,6 +62,7 @@ The command palette lets you run app-level actions (like changing themes or refr
 
 - Install Script Bundle (for advanced users installing custom scripts)
 - Install/Update Default Scripts (this is how you update your default FERP script bundle)
+- Upgrade FERP
 - Refresh File Tree
 - Reload Script Catalog
 - Open Latest Log
@@ -106,7 +111,7 @@ FERP is keyboard‑first. Common actions:
 - **Arrow keys**: Move selection up/down.
 - **Enter**: Open a folder or display a help file for a script.
 
-Tip: You can move quickly without using the mouse.
+Tip: You can move quickly without using the mouse. The full list of navigation keys are available in the app.
 
 ---
 

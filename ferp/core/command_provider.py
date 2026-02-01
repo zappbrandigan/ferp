@@ -61,7 +61,7 @@ class FerpCommandProvider(SimpleProvider):
         ),
         (
             "Upgrade FERP",
-            "Run pipx upgrade and restart the app.",
+            "Run pipx upgrade.",
             "_command_upgrade_app",
         ),
     )

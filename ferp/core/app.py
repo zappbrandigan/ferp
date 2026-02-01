@@ -53,6 +53,7 @@ from ferp.services.file_listing import (
 from ferp.services.monday_sync import sync_monday_board
 from ferp.services.releases import update_scripts_from_release
 from ferp.services.scripts import build_execution_context
+from ferp.services.update_check import UpdateCheckResult, check_for_update
 from ferp.themes.themes import ALL_THEMES
 from ferp.widgets.dialogs import ConfirmDialog, InputDialog
 from ferp.widgets.file_tree import FileTree, FileTreeFilterWidget, FileTreeHeader
@@ -305,6 +306,7 @@ class Ferp(App):
         self.state_store.set_current_path(str(self.current_path))
         self.state_store.set_status("Ready")
         self.update_cache_timestamp()
+        self._check_for_updates()
         self.refresh_listing()
         self.task_store.subscribe(self._handle_task_update)
 
@@ -518,6 +520,20 @@ class Ferp(App):
 
         self.push_screen(ConfirmDialog(prompt), after)
 
+    def _check_for_updates(self) -> None:
+        cache_path = self._paths.cache_dir / "update_check.json"
+        self.run_worker(
+            lambda: check_for_update(
+                "ferp",
+                str(__version__),
+                cache_path,
+                ttl_seconds=2 * 60 * 60,
+            ),
+            group="update_check",
+            exclusive=True,
+            thread=True,
+        )
+
     def _install_default_scripts(self) -> dict[str, str | bool]:
         try:
             dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
@@ -564,15 +580,16 @@ class Ferp(App):
 
     def _upgrade_app(self, pipx_path: str) -> dict[str, object]:
         current_version = str(__version__)
-        latest_version: str | None = None
-        check_error: str | None = None
-        try:
-            latest_version = self._fetch_latest_pypi_version("ferp")
-        except Exception as exc:
-            check_error = str(exc)
-        if latest_version and not self._is_version_newer(
-            latest_version, current_version
-        ):
+        cache_path = self._paths.cache_dir / "update_check.json"
+        check = check_for_update(
+            "ferp",
+            current_version,
+            cache_path,
+            ttl_seconds=2 * 60 * 60,
+        )
+        latest_version = check.latest
+        check_error = check.error
+        if check.ok and not check.is_update and not check_error:
             return {
                 "ok": True,
                 "no_update": True,
@@ -597,42 +614,6 @@ class Ferp(App):
             "latest": latest_version,
             "check_error": check_error,
         }
-
-    def _fetch_latest_pypi_version(self, package: str) -> str:
-        import json
-        import urllib.request
-
-        url = f"https://pypi.org/pypi/{package}/json"
-        with urllib.request.urlopen(url, timeout=5) as response:
-            payload = json.load(response)
-        info = payload.get("info", {})
-        version = info.get("version")
-        if not isinstance(version, str) or not version:
-            raise RuntimeError("PyPI response missing latest version.")
-        return version
-
-    def _is_version_newer(self, latest: str, current: str) -> bool:
-        def normalize(value: str) -> tuple[int, ...]:
-            parts: list[int] = []
-            for token in value.split("."):
-                digits = []
-                for ch in token:
-                    if ch.isdigit():
-                        digits.append(ch)
-                    else:
-                        break
-                number = int("".join(digits) or "0")
-                parts.append(number)
-            while parts and parts[-1] == 0:
-                parts.pop()
-            return tuple(parts)
-
-        latest_parts = normalize(latest)
-        current_parts = normalize(current)
-        max_len = max(len(latest_parts), len(current_parts))
-        latest_parts += (0,) * (max_len - len(latest_parts))
-        current_parts += (0,) * (max_len - len(current_parts))
-        return latest_parts > current_parts
 
     def _sync_monday_board(self, api_token: str, board_id: int) -> dict[str, object]:
         cache_path = self._paths.cache_dir / "publishers_cache.json"
@@ -1074,6 +1055,16 @@ class Ferp(App):
                 file_tree = self.query_one(FileTree)
                 file_tree.show_error(self.current_path, str(error))
                 self._finalize_directory_listing()
+            return
+        if worker.group == "update_check":
+            if event.state is WorkerState.SUCCESS:
+                result = worker.result
+                if (
+                    isinstance(result, UpdateCheckResult)
+                    and result.ok
+                    and result.is_update
+                ):
+                    self.notify("A new verion of FERP is avaiable.", timeout=6)
             return
         if self.bundle_installer.handle_worker_state(event):
             return

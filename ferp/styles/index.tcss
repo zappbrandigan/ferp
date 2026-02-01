@@ -50,7 +50,7 @@ TopBar {
 
         #topbar_app_version {
             text-style: italic;
-            opacity: 0.5;
+            opacity: 0.6;
             margin-left: 1;
         }
     }
