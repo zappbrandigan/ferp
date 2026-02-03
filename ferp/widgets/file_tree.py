@@ -140,7 +140,7 @@ class FileItem(ListItem):
                     markup=False,
                 ),
                 Label(
-                    _format_timestamp(self._resolve_modified_ts(metadata)),
+                    self._format_modified(metadata),
                     classes="file_tree_cell file_tree_modified",
                 ),
                 classes=f"file_tree_row {'file_tree_type_dir' if metadata.is_dir else 'file_tree_type_file'}",
@@ -150,13 +150,15 @@ class FileItem(ListItem):
         self.disabled = is_header
 
     @staticmethod
-    def _resolve_modified_ts(metadata: FileListingEntry) -> float:
-        if metadata.modified_ts is not None:
-            return metadata.modified_ts
-        try:
-            return metadata.path.stat().st_mtime
-        except OSError:
-            return 0.0
+    def _resolve_modified_ts(metadata: FileListingEntry) -> float | None:
+        return metadata.modified_ts
+
+    @classmethod
+    def _format_modified(cls, metadata: FileListingEntry) -> str:
+        modified_ts = cls._resolve_modified_ts(metadata)
+        if modified_ts is None:
+            return "--"
+        return _format_timestamp(modified_ts)
 
     def on_click(self, event: Click) -> None:
         if event.chain < 2:
@@ -273,7 +275,7 @@ class FileTreeFilterWidget(Widget):
 
 
 class FileTree(ListView):
-    CHUNK_SIZE = 100
+    CHUNK_SIZE = 50
     FILTER_TITLE_MAX = 24
     CHUNK_DEBOUNCE_S = 0.25
     FAST_CURSOR_STEP = 5
@@ -359,7 +361,7 @@ class FileTree(ListView):
     ]
 
     def __init__(self, *args, state_store: FileTreeStateStore, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, initial_index=None, **kwargs)
         self._state_store = state_store
         self._state_subscription = self._handle_state_update
         self._all_entries: list[FileListingEntry] = []
@@ -374,6 +376,8 @@ class FileTree(ListView):
         self._pending_chunk_delta = 0
         self._chunk_timer: Timer | None = None
         self._listing_changed = False
+        self._suppress_focus_once = False
+        self._current_chunk_items: dict[Path, FileItem] = {}
 
     def set_pending_delete_index(self, index: int | None) -> None:
         self._pending_delete_index = index
@@ -470,46 +474,28 @@ class FileTree(ListView):
         target = self._state_store.state.last_selected_path
         self._listing_changed = False
 
-        if prefer_history and history_target is not None:
-            for idx, child in enumerate(self.children):
-                if isinstance(child, FileItem) and child.path == history_target:
-                    self.index = idx
-                    if should_focus:
-                        self.focus()
-                    return
+        def _select_path(path: Path | None) -> bool:
+            if path is None:
+                return False
+            item = self._current_chunk_items.get(path)
+            if item is None:
+                return False
+            try:
+                self.index = self.children.index(item)
+            except ValueError:
+                return False
+            if should_focus:
+                self.focus()
+            return True
 
-        if target:
-            for idx, child in enumerate(self.children):
-                if (
-                    isinstance(child, FileItem)
-                    and not child.is_header
-                    and child.path == target
-                ):
-                    self.index = idx
-                    if should_focus:
-                        self.focus()
-                    return
+        if prefer_history and _select_path(history_target):
+            return
 
-        if history_target is not None:
-            for idx, child in enumerate(self.children):
-                if isinstance(child, FileItem) and child.path == history_target:
-                    self.index = idx
-                    if should_focus:
-                        self.focus()
-                    return
+        if _select_path(target):
+            return
 
-        if target:
-            # fall back to target again if it was removed from history, but still present
-            for idx, child in enumerate(self.children):
-                if (
-                    isinstance(child, FileItem)
-                    and not child.is_header
-                    and child.path == target
-                ):
-                    self.index = idx
-                    if should_focus:
-                        self.focus()
-                    return
+        if _select_path(history_target):
+            return
 
         direction = self._last_chunk_direction
         if direction in {"prev", "next"}:
@@ -530,6 +516,9 @@ class FileTree(ListView):
         self.index = None
 
     def _should_focus_after_render(self) -> bool:
+        if self._suppress_focus_once:
+            self._suppress_focus_once = False
+            return False
         focused = getattr(self.app, "focused", None)
         if isinstance(focused, Input) and focused.id == "file_tree_filter_input":
             return False
@@ -541,36 +530,47 @@ class FileTree(ListView):
             return True
         return filter_widget.display != "block"
 
+    def suppress_focus_once(self) -> None:
+        self._suppress_focus_once = True
+
     def show_loading(self, path: Path) -> None:
-        self.clear()
-        indicator = LoadingIndicator()
-        indicator.loading = True
-        placeholder = ListItem(indicator, classes="item_loading")
-        placeholder.can_focus = False
-        self.append(placeholder)
+        app = self.app
+        with app.batch_update():
+            self.clear()
+            self._current_chunk_items = {}
+            indicator = LoadingIndicator()
+            indicator.loading = True
+            placeholder = ListItem(indicator, classes="item_loading")
+            placeholder.can_focus = False
+            self.append(placeholder)
 
     def show_error(self, path: Path, message: str) -> None:
-        self.clear()
-        notice = ListItem(
-            Label(message, classes="file_tree_error"), classes="item_error"
-        )
-        notice.can_focus = False
-        self.append(notice)
+        app = self.app
+        with app.batch_update():
+            self.clear()
+            self._current_chunk_items = {}
+            notice = ListItem(
+                Label(message, classes="file_tree_error"), classes="item_error"
+            )
+            notice.can_focus = False
+            self.append(notice)
 
     def show_listing(self, path: Path, entries: Sequence[FileListingEntry]) -> None:
-        previous_path = self._current_listing_path
-        self._state_store.set_current_listing_path(path)
-        self._current_listing_path = path
-        self._listing_changed = previous_path != path
-        self._all_entries = list(entries)
-        if previous_path != path:
-            self._state_store.set_last_selected_path(None)
-            self._set_filter("")
-        self._apply_filter()
-        self._update_border_title()
-        self._chunk_start = 0
-        self._last_chunk_direction = None
-        self._render_current_chunk()
+        app = self.app
+        with app.batch_update():
+            previous_path = self._current_listing_path
+            self._state_store.set_current_listing_path(path)
+            self._current_listing_path = path
+            self._listing_changed = previous_path != path
+            self._all_entries = list(entries)
+            if previous_path != path:
+                self._state_store.set_last_selected_path(None)
+                self._set_filter("")
+            self._apply_filter()
+            self._update_border_title()
+            self._chunk_start = 0
+            self._last_chunk_direction = None
+            self._render_current_chunk()
 
     def _apply_filter(self) -> None:
         self._filter_error = False
@@ -790,45 +790,48 @@ class FileTree(ListView):
         if path is None:
             return
 
-        self.scroll_to(y=0, animate=False)
-        self.clear()
+        app = self.app
+        with app.batch_update():
+            self.scroll_to(y=0, animate=False)
+            self.clear()
+            self._current_chunk_items = {}
 
-        total = len(self._filtered_entries)
-        if total == 0:
-            if self._all_entries:
-                self._append_notice("No items match the current filter.")
-            else:
-                self._append_notice("No files in this directory.")
+            total = len(self._filtered_entries)
+            if total == 0:
+                if self._all_entries:
+                    self._append_notice("No items match the current filter.")
+                else:
+                    self._append_notice("No files in this directory.")
+                self.call_after_refresh(self._restore_selection)
+                return
+
+            max_start = (
+                0 if total == 0 else (total - 1) // self.CHUNK_SIZE * self.CHUNK_SIZE
+            )
+            start = max(0, min(self._chunk_start, max_start))
+            self._chunk_start = start
+            end = min(start + self.CHUNK_SIZE, total)
+            if start > 0:
+                prev_start = max(0, start - self.CHUNK_SIZE)
+                prev_end = start
+                prev_label = f"Show previous {self.CHUNK_SIZE} (items {prev_start + 1}-{prev_end})"
+                self.append(ChunkNavigatorItem(prev_label, direction="prev"))
+
+            for entry in self._filtered_entries[start:end]:
+                classes = "item_dir" if entry.is_dir else "item_file"
+                item = FileItem(entry.path, metadata=entry, classes=classes)
+                self.append(item)
+                self._current_chunk_items[entry.path] = item
+
+            if end < total:
+                next_end = min(total, end + self.CHUNK_SIZE)
+                next_label = (
+                    f"Showing items {start + 1}-{end} of {total}. "
+                    f"Press Enter to load {end + 1}-{next_end}"
+                )
+                self.append(ChunkNavigatorItem(next_label, direction="next"))
+
             self.call_after_refresh(self._restore_selection)
-            return
-
-        max_start = (
-            0 if total == 0 else (total - 1) // self.CHUNK_SIZE * self.CHUNK_SIZE
-        )
-        start = max(0, min(self._chunk_start, max_start))
-        self._chunk_start = start
-        end = min(start + self.CHUNK_SIZE, total)
-        if start > 0:
-            prev_start = max(0, start - self.CHUNK_SIZE)
-            prev_end = start
-            prev_label = (
-                f"Show previous {self.CHUNK_SIZE} (items {prev_start + 1}-{prev_end})"
-            )
-            self.append(ChunkNavigatorItem(prev_label, direction="prev"))
-
-        for entry in self._filtered_entries[start:end]:
-            classes = "item_dir" if entry.is_dir else "item_file"
-            self.append(FileItem(entry.path, metadata=entry, classes=classes))
-
-        if end < total:
-            next_end = min(total, end + self.CHUNK_SIZE)
-            next_label = (
-                f"Showing items {start + 1}-{end} of {total}. "
-                f"Press Enter to load {end + 1}-{next_end}"
-            )
-            self.append(ChunkNavigatorItem(next_label, direction="next"))
-
-        self.call_after_refresh(self._restore_selection)
 
     @on(ListView.Highlighted)
     def emit_highlight(self, event: ListView.Highlighted) -> None:

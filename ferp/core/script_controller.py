@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 class ScriptLifecycleController:
     """Coordinates script execution, prompts, and progress UI."""
 
+    _POST_SCRIPT_REFRESH_DELAY_S = 0.25
+
     def __init__(self, app: "Ferp") -> None:
         self._app = app
         self._runner = ScriptRunner(
@@ -78,7 +80,7 @@ class ScriptLifecycleController:
         if cancelled:
             script_name = self._active_script_name or "Script"
             self._app.render_script_output(script_name, cancelled)
-        self._app.refresh_listing()
+        self._schedule_post_script_refresh()
         self._reset_after_script()
         return cancelled is not None
 
@@ -127,12 +129,12 @@ class ScriptLifecycleController:
                         self._active_script_name or "Script",
                         result,
                     )
-                    self._app.refresh_listing()
+                    self._schedule_post_script_refresh()
                 self._reset_after_script()
             elif state is WorkerState.ERROR:
                 error = worker.error or RuntimeError("Script cancellation failed.")
                 self._set_script_error(error)
-                self._app.refresh_listing()
+                self._schedule_post_script_refresh()
                 self._reset_after_script()
             if state in {WorkerState.SUCCESS, WorkerState.ERROR, WorkerState.CANCELLED}:
                 self._abort_worker = None
@@ -156,7 +158,7 @@ class ScriptLifecycleController:
                 self._active_script_name or "Script",
                 result,
             )
-            self._app.refresh_listing()
+            self._schedule_post_script_refresh()
             self._reset_after_script()
             return True
 
@@ -167,7 +169,7 @@ class ScriptLifecycleController:
             else:
                 self._set_script_error(RuntimeError("Script worker failed."))
             self._runner.abort("Worker failed.")
-            self._app.refresh_listing()
+            self._schedule_post_script_refresh()
             self._reset_after_script()
             return True
 
@@ -505,3 +507,9 @@ class ScriptLifecycleController:
             file_tree_container.add_class("dimmed")
         else:
             file_tree_container.remove_class("dimmed")
+
+    def _schedule_post_script_refresh(self) -> None:
+        self._app.schedule_refresh_listing(
+            delay=self._POST_SCRIPT_REFRESH_DELAY_S,
+            suppress_focus=True,
+        )

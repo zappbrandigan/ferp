@@ -18,6 +18,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.theme import Theme
+from textual.timer import Timer
 from textual.widgets import Footer
 from textual.worker import Worker, WorkerState
 
@@ -154,6 +155,7 @@ class Ferp(App):
         self._listing_in_progress = False
         self._pending_navigation_path: Path | None = None
         self._pending_refresh = False
+        self._refresh_timer: Timer | None = None
         self._task_list_screen: TaskListScreen | None = None
         self._process_list_screen: ProcessListScreen | None = None
         self._pending_exit = False
@@ -177,7 +179,7 @@ class Ferp(App):
             present_input=self._present_input_dialog,
             present_confirm=self._present_confirm_dialog,
             show_error=self.show_error,
-            refresh_listing=self.refresh_listing,
+            refresh_listing=self.schedule_refresh_listing,
             fs_controller=self.fs_controller,
             delete_handler=self._start_delete_path,
         )
@@ -921,6 +923,9 @@ class Ferp(App):
     def refresh_listing(self) -> None:
         if self._is_shutting_down:
             return
+        if self._refresh_timer is not None:
+            self._refresh_timer.stop()
+            self._refresh_timer = None
         if self._listing_in_progress:
             self._pending_refresh = True
             return
@@ -951,8 +956,29 @@ class Ferp(App):
             thread=True,
         )
 
+    def schedule_refresh_listing(
+        self, *, delay: float = 0.2, suppress_focus: bool = False
+    ) -> None:
+        if self._is_shutting_down:
+            return
+        if self._listing_in_progress:
+            self._pending_refresh = True
+            return
+        if suppress_focus:
+            try:
+                file_tree = self.query_one(FileTree)
+            except Exception:
+                file_tree = None
+            if file_tree is not None:
+                file_tree.suppress_focus_once()
+        if self._refresh_timer is not None:
+            self._refresh_timer.stop()
+            self._refresh_timer = None
+        self._refresh_timer = self.set_timer(delay, self.refresh_listing)
+
     def _refresh_listing_from_watcher(self) -> None:
         if self._listing_in_progress:
+            self._pending_refresh = True
             return
         self.refresh_listing()
 

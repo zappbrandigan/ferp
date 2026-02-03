@@ -88,9 +88,12 @@ class ScriptManager(ListView):
     ]
 
     def __init__(
-        self, config_paths: Sequence[Path], *, scripts_root: Path, id: str
+        self, config_paths: Sequence[Path] | Path, *, scripts_root: Path, id: str
     ) -> None:
-        self.config_paths = list(config_paths)
+        if isinstance(config_paths, Path):
+            self.config_paths = [config_paths]
+        else:
+            self.config_paths = list(config_paths)
         self.scripts_root = scripts_root
         super().__init__(id=id)
 
