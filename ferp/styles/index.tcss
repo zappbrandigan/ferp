@@ -285,7 +285,7 @@ TopBar {
 #dialog_container {
     align: center middle;
     height: auto;
-    width: 100;
+    width: 110;
     padding: 1 2;
     border: round $secondary;
     background: $panel;

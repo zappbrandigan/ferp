@@ -1096,7 +1096,7 @@ class Ferp(App):
                             if label
                             else "FERP is already up to date."
                         )
-                        self.notify(message, timeout=4)
+                        self.notify(message, timeout=5)
                         return
                     check_error = result.get("check_error")
                     if check_error:
