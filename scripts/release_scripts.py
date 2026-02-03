@@ -68,6 +68,17 @@ def _load_config(path: Path) -> tuple[dict, list[dict]]:
     return data, scripts
 
 
+def _load_config_paths(root: Path) -> list[Path]:
+    config_paths: list[Path] = []
+    default_config = root / "config.json"
+    if default_config.exists():
+        config_paths.append(default_config)
+    config_paths.extend(sorted(root.glob("*/config.json")))
+    if not config_paths:
+        raise FileNotFoundError(f"No config.json found under {root}")
+    return config_paths
+
+
 def _release_notes(changes: list[dict]) -> str:
     lines = ["## Script updates", ""]
     for change in changes:
@@ -121,17 +132,26 @@ def main() -> int:
 
     main_root = Path(__file__).resolve().parents[1]
     submodule_root = main_root / "ferp" / "scripts"
-    config_path = submodule_root / "config.json"
-    data, scripts = _load_config(config_path)
+    config_paths = _load_config_paths(submodule_root)
+    configs: dict[Path, tuple[dict, list[dict]]] = {}
+    scripts_by_id: dict[str, tuple[Path, dict]] = {}
+    for config_path in config_paths:
+        data, scripts = _load_config(config_path)
+        configs[config_path] = (data, scripts)
+        for entry in scripts:
+            script_id = str(entry.get("id", "")).strip()
+            if not script_id:
+                continue
+            scripts_by_id.setdefault(script_id, (config_path, entry))
 
     changes: list[dict] = []
+    bumped_paths: set[Path] = set()
     for script_id, bump in args.bump:
-        entry = next(
-            (script for script in scripts if script.get("id") == script_id), None
-        )
-        if not entry:
+        resolved = scripts_by_id.get(script_id)
+        if not resolved:
             print(f"Unknown script id: {script_id}", file=sys.stderr)
             return 2
+        config_path, entry = resolved
         current = str(entry.get("version", "")).strip()
         if not current:
             print(f"Missing version for script: {script_id}", file=sys.stderr)
@@ -141,6 +161,7 @@ def main() -> int:
             print(f"Version unchanged for {script_id} ({current}).", file=sys.stderr)
             return 2
         entry["version"] = new_version
+        bumped_paths.add(config_path)
         changes.append(
             {
                 "id": script_id,
@@ -165,11 +186,19 @@ def main() -> int:
             )
             return 2
 
-    config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    if not bumped_paths:
+        print("No config files updated.", file=sys.stderr)
+        return 2
+    for path in bumped_paths:
+        data, _scripts = configs[path]
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
     commit_message = args.message or f"build(release): bump script versions {args.tag}"
     if not args.no_commit:
-        _run(["git", "add", str(config_path)], cwd=submodule_root)
+        _run(
+            ["git", "add", *[str(path) for path in sorted(bumped_paths)]],
+            cwd=submodule_root,
+        )
         _run(["git", "commit", "-m", commit_message], cwd=submodule_root)
 
     if not args.no_tag:

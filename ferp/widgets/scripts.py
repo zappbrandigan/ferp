@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Sequence
 
 from textual.binding import Binding
 from textual.containers import Horizontal
@@ -32,6 +33,25 @@ def load_scripts_config(path: Path) -> list[Script]:
         scripts.append(script_from_config(raw))  # type: ignore[arg-type]
 
     return sorted(scripts, key=lambda script: script.name.lower())
+
+
+def load_scripts_configs(paths: Sequence[Path]) -> list[Script]:
+    scripts_by_id: dict[str, Script] = {}
+    errors: list[str] = []
+
+    for path in paths:
+        try:
+            loaded = load_scripts_config(path)
+        except ValueError as exc:
+            errors.append(f"{path}: {exc}")
+            continue
+        for script in loaded:
+            scripts_by_id.setdefault(script.id, script)
+
+    if not scripts_by_id and errors:
+        raise ValueError("; ".join(errors))
+
+    return sorted(scripts_by_id.values(), key=lambda script: script.name.lower())
 
 
 class ScriptItem(ListItem):
@@ -67,8 +87,10 @@ class ScriptManager(ListView):
         Binding("enter", "show_readme", "Show readme", show=True),
     ]
 
-    def __init__(self, config_path: Path, *, scripts_root: Path, id: str) -> None:
-        self.config_path = config_path
+    def __init__(
+        self, config_paths: Sequence[Path], *, scripts_root: Path, id: str
+    ) -> None:
+        self.config_paths = list(config_paths)
         self.scripts_root = scripts_root
         super().__init__(id=id)
 
@@ -85,12 +107,12 @@ class ScriptManager(ListView):
     def load_scripts(self) -> None:
         self.clear()
 
-        if not self.config_path.exists():
+        if not any(path.exists() for path in self.config_paths):
             self.append(ListItem(Label("No config.json found")))
             return
 
         try:
-            scripts = load_scripts_config(self.config_path)
+            scripts = load_scripts_configs(self.config_paths)
         except ValueError as exc:
             self.append(ListItem(Label(f"Invalid config: {exc}")))
             return
@@ -126,7 +148,15 @@ class ScriptManager(ListView):
         self.post_message(ShowReadmeRequest(script, readme_path))
 
     def resolve_readme(self, script: Script) -> Path | None:
-        candidate = self.scripts_root / script.id / "readme.md"
+        script_path = Path(script.script)
+        if script_path.is_absolute():
+            full_script_path = script_path
+        elif script_path.parts and script_path.parts[0] == "scripts":
+            full_script_path = (self.scripts_root.parent / script_path).resolve()
+        else:
+            full_script_path = (self.scripts_root / script_path).resolve()
+        script_path = full_script_path
+        candidate = script_path.parent / "readme.md"
         return candidate if candidate.exists() else None
 
     def action_cursor_down_fast(self) -> None:

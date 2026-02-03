@@ -136,6 +136,7 @@ class Ferp(App):
     def __init__(self, start_path: Path | None = None) -> None:
         self._paths = self._prepare_paths()
         self.app_root = self._paths.app_root
+        self._dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
         self.settings_store = SettingsStore(self._paths.settings_file)
         self.settings = self.settings_store.load()
         self.state_store = AppStateStore()
@@ -275,7 +276,7 @@ class Ferp(App):
                 ),
                 Vertical(
                     ScriptManager(
-                        self._paths.config_file,
+                        self._resolve_script_config_paths(),
                         scripts_root=self._paths.scripts_dir,
                         id="scripts_panel",
                     ),
@@ -289,6 +290,18 @@ class Ferp(App):
                 state_store=self.file_tree_store,
             )
         yield Footer(id="app_footer")
+
+    def _resolve_script_config_paths(self) -> list[Path]:
+        if not self._dev_config_enabled:
+            return [self._paths.config_file]
+
+        scripts_root = self.app_root / "scripts"
+        config_paths: list[Path] = []
+        default_config = scripts_root / "config.json"
+        if default_config.exists():
+            config_paths.append(default_config)
+        config_paths.extend(sorted(scripts_root.glob("*/config.json")))
+        return config_paths
 
     def on_mount(self) -> None:
         for theme in ALL_THEMES:
