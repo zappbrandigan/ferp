@@ -51,11 +51,14 @@ from ferp.services.file_listing import (
     snapshot_directory,
 )
 from ferp.services.monday_sync import sync_monday_board
-from ferp.services.releases import update_scripts_from_release
+from ferp.services.releases import (
+    fetch_namespace_index,
+    update_scripts_from_namespace_release,
+)
 from ferp.services.scripts import build_execution_context
 from ferp.services.update_check import UpdateCheckResult, check_for_update
 from ferp.themes.themes import ALL_THEMES
-from ferp.widgets.dialogs import ConfirmDialog, InputDialog
+from ferp.widgets.dialogs import ConfirmDialog, InputDialog, SelectDialog
 from ferp.widgets.file_tree import FileTree, FileTreeFilterWidget, FileTreeHeader
 from ferp.widgets.output_panel import ScriptOutputPanel
 from ferp.widgets.process_list import ProcessListScreen
@@ -442,27 +445,13 @@ class Ferp(App):
         self.push_screen(InputDialog(prompt, default=default_value), after)
 
     def _command_install_default_scripts(self) -> None:
-        prompt = (
-            "Replace your script catalog with the default FERP scripts?\n"
-            "This will overwrite config.json and fully replace scripts/ from the latest release."
+        self.notify("Fetching available namespaces...", timeout=4)
+        self.run_worker(
+            self._fetch_default_script_namespaces,
+            group="default_scripts_namespace",
+            exclusive=True,
+            thread=True,
         )
-
-        def after(value: bool | None) -> None:
-            if not value:
-                return
-            dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
-            if dev_config_enabled:
-                self.notify("Updating default scripts (dry run)...", timeout=5)
-            else:
-                self.notify("Updating default scripts...", timeout=5)
-            self.run_worker(
-                self._install_default_scripts,
-                group="default_scripts_update",
-                exclusive=True,
-                thread=True,
-            )
-
-        self.push_screen(ConfirmDialog(prompt), after)
 
     def _command_sync_monday_board(self) -> None:
         monday_settings = self.settings.get("integrations", {}).get("monday", {})
@@ -547,32 +536,70 @@ class Ferp(App):
             thread=True,
         )
 
-    def _install_default_scripts(self) -> dict[str, str | bool]:
+    def _fetch_default_script_namespaces(self) -> dict[str, object]:
+        try:
+            release_version, index_payload = fetch_namespace_index(SCRIPTS_REPO_URL)
+            namespaces = index_payload.get("namespaces", [])
+            if not isinstance(namespaces, list):
+                raise RuntimeError("namespaces.json is missing a namespaces list.")
+            options = [
+                str(entry.get("id", "")).strip()
+                for entry in namespaces
+                if isinstance(entry, dict)
+            ]
+            options = sorted({opt for opt in options if opt and opt != "core"})
+            if not options:
+                raise RuntimeError("No namespaces available to install.")
+            return {
+                "release_version": release_version,
+                "options": options,
+            }
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def _install_default_scripts(self, namespace: str) -> dict[str, str | bool]:
         try:
             dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
-            release_version = update_scripts_from_release(
-                SCRIPTS_REPO_URL, self.scripts_dir, dry_run=dev_config_enabled
+            release_version = update_scripts_from_namespace_release(
+                SCRIPTS_REPO_URL,
+                self.scripts_dir,
+                namespace=namespace,
+                dry_run=dev_config_enabled,
             )
 
             if dev_config_enabled:
                 return {
                     "release_status": "Default scripts update skipped (dry run).",
-                    "release_detail": "FERP_DEV_CONFIG=1; no files were modified.",
+                    "release_detail": (
+                        "FERP_DEV_CONFIG=1; downloaded assets were discarded."
+                    ),
                     "release_version": release_version,
                 }
 
-            scripts_config_file = self.scripts_dir / "config.json"
-            if not scripts_config_file.exists():
+            core_config = self.scripts_dir / "core" / "config.json"
+            namespace_config = self.scripts_dir / namespace / "config.json"
+            if not core_config.exists():
+                raise FileNotFoundError(f"No default config found at {core_config}")
+            if not namespace_config.exists():
                 raise FileNotFoundError(
-                    f"No default config found at {scripts_config_file}"
+                    f"No namespace config found at {namespace_config}"
                 )
 
-            if scripts_config_file.resolve() != self._paths.config_file.resolve():
-                self._paths.config_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(scripts_config_file, self._paths.config_file)
-                config_status = "Updated user config from bundled defaults."
-            else:
-                config_status = "Default config already in use; skipping copy."
+            core_data = json.loads(core_config.read_text(encoding="utf-8"))
+            namespace_data = json.loads(namespace_config.read_text(encoding="utf-8"))
+            core_scripts = core_data.get("scripts", [])
+            namespace_scripts = namespace_data.get("scripts", [])
+            if not isinstance(core_scripts, list) or not isinstance(
+                namespace_scripts, list
+            ):
+                raise RuntimeError("Namespace config is missing a scripts list.")
+
+            merged = {"scripts": [*core_scripts, *namespace_scripts]}
+            self._paths.config_dir.mkdir(parents=True, exist_ok=True)
+            self._paths.config_file.write_text(
+                json.dumps(merged, indent=2) + "\n", encoding="utf-8"
+            )
+            config_status = f"Installed core + {namespace} scripts."
 
             dependency_manager = ScriptDependencyManager(
                 self._paths.config_file, python_executable=sys.executable
@@ -836,6 +863,36 @@ class Ferp(App):
         scripts_panel = self.query_one(ScriptManager)
         scripts_panel.load_scripts()
 
+    def _prompt_default_scripts_namespace(self, options: list[str]) -> None:
+        prompt = "Select a namespace to install"
+
+        def after(value: str | None) -> None:
+            if not value:
+                return
+            namespace = value.strip()
+            if not namespace:
+                self.notify(
+                    "Select a namespace to continue.", severity="error", timeout=4
+                )
+                return
+            dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
+            if dev_config_enabled:
+                self.notify("Updating default scripts (dry run)...", timeout=5)
+            else:
+                self.notify("Updating default scripts...", timeout=5)
+            self.run_worker(
+                lambda ns=namespace: self._install_default_scripts(ns),
+                group="default_scripts_update",
+                exclusive=True,
+                thread=True,
+            )
+
+        dialog = SelectDialog(
+            prompt,
+            options,
+        )
+        self.push_screen(dialog, after)
+
     def _render_monday_sync(self, payload: dict[str, Any]) -> None:
         error = payload.get("error")
         if error:
@@ -1082,6 +1139,37 @@ class Ferp(App):
         if self.bundle_installer.handle_worker_state(event):
             return
         if self.script_controller.handle_worker_state(event):
+            return
+        if worker.group == "default_scripts_namespace":
+            if event.state is WorkerState.SUCCESS:
+                result = worker.result
+                if isinstance(result, dict):
+                    error = result.get("error")
+                    if error:
+                        self.notify(
+                            f"Namespace fetch failed: {error}",
+                            severity="error",
+                            timeout=4,
+                        )
+                        return
+                    options = result.get("options", [])
+                    if isinstance(options, list) and options:
+                        self._prompt_default_scripts_namespace(
+                            [str(option) for option in options]
+                        )
+                        return
+                    self.notify(
+                        "No namespaces available for installation.",
+                        severity="error",
+                        timeout=4,
+                    )
+            elif event.state is WorkerState.ERROR:
+                error = worker.error or RuntimeError("Namespace fetch failed.")
+                self.notify(
+                    f"Namespace fetch failed: {error}",
+                    severity="error",
+                    timeout=4,
+                )
             return
         if worker.group == "default_scripts_update":
             if event.state is WorkerState.SUCCESS:

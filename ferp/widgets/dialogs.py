@@ -2,7 +2,7 @@ from rich.style import Style
 from rich.text import Text
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Input, Label
+from textual.widgets import Button, DataTable, Input, Label, Select
 
 
 class ConfirmDialog(ModalScreen[bool | None]):
@@ -118,5 +118,50 @@ class InputDialog(ModalScreen[str | None]):
         if event.button.id == "ok":
             value = self.query_one(Input).value
             self.dismiss(value)
+        else:
+            self.dismiss(None)
+
+
+class SelectDialog(ModalScreen[str | None]):
+    def __init__(
+        self,
+        message: str,
+        options: list[str],
+        *,
+        id: str = "select_dialog",
+    ) -> None:
+        super().__init__(id=id)
+        self._message = message
+        self._options = options
+
+    def compose(self):
+        select_options = [(option, option) for option in self._options]
+        default = self._options[0] if self._options else ""
+        yield Vertical(
+            Label(self._message, id="dialog_message"),
+            Container(
+                Select(
+                    select_options,
+                    value=default,
+                    allow_blank=False,
+                    id="select",
+                ),
+                id="select_container",
+            ),
+            Horizontal(
+                Button("OK", id="ok", variant="primary", flat=True),
+                Button("Cancel", id="cancel", flat=True),
+                classes="dialog_buttons",
+            ),
+            id="dialog_container",
+        )
+
+    def on_mount(self) -> None:
+        self.query_one(Select).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "ok":
+            value = self.query_one(Select).value
+            self.dismiss(str(value) if value is not None else None)
         else:
             self.dismiss(None)

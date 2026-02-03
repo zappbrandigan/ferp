@@ -268,6 +268,10 @@ TopBar {
     align: center middle;
 }
 
+#select_dialog {
+    align: center middle;
+}
+
 #bulk_rename_confirm_dialog {
     align: center middle;
 }
@@ -342,6 +346,16 @@ TopBar {
 #dialog_container #dialog_message {
     width: 100%;
     content-align: center middle;
+}
+
+#select_dialog #dialog_container {
+    height: 15;
+    width: 50;
+    background: transparent;
+
+    #select_container {
+        margin: 1 0 0 0;
+    }
 }
 
 #dialog_container #prompt_input, #dialog_container #input_container {
