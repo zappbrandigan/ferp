@@ -464,6 +464,7 @@ class Ferp(App):
         except (TypeError, ValueError):
             self.notify(
                 "Monday board id missing. Set integrations.monday.boardId in settings.json.",
+                title="Sync Error",
                 severity="error",
                 timeout=4,
             )
@@ -900,6 +901,7 @@ class Ferp(App):
         if error:
             self.notify(
                 f"Monday sync failed: {escape(str(error))}",
+                title="Sync Error",
                 severity="error",
                 timeout=4,
             )
@@ -913,11 +915,11 @@ class Ferp(App):
             f"\nGroups {group_count}\nPublishers {publisher_count}\nSkipped {skipped}"
         )
         title = (
-            f"Monday sync updated ({escape(str(board_name))})"
+            f"Synced: ({escape(str(board_name))})"
             if board_name
             else "Monday sync updated"
         )
-        self.notify(f"{title}. {details}", timeout=5)
+        self.notify(f"{title}. {details}", title="Cache Updated", timeout=5)
         self.update_cache_timestamp()
 
     def refresh_listing(self) -> None:
@@ -1308,5 +1310,10 @@ class Ferp(App):
                     self._render_monday_sync(result)
             elif event.state is WorkerState.ERROR:
                 error = worker.error or RuntimeError("Monday sync failed.")
-                self.notify(f"Monday sync failed: {error}", severity="error", timeout=4)
+                self.notify(
+                    f"Monday sync failed: {error}",
+                    title="Sync Error",
+                    severity="error",
+                    timeout=4,
+                )
             return

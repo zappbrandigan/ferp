@@ -117,7 +117,7 @@ TopBar {
         }
 
         #file_list_container:focus-within {
-            border: $secondary-lighten-3;
+            border: round $secondary-lighten-3;
             background: transparent;
         }
 
@@ -181,7 +181,7 @@ TopBar {
         }
 
         #scripts_panel:focus {
-            border: $secondary-lighten-3;
+            border: round $secondary-lighten-3;
             background: transparent;
         }
 
@@ -225,7 +225,7 @@ TopBar {
         }
 
         #output_panel_container:focus {
-            border: $secondary-lighten-3;
+            border: round $secondary-lighten-3;
         }
     }
 

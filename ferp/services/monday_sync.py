@@ -27,6 +27,7 @@ def sync_monday_board(
     query ($boardId: [ID!], $cursor: String) {
       boards(ids: $boardId) {
         name
+        description
         groups { id title }
         items_page(limit: 500, cursor: $cursor) {
           cursor
@@ -78,9 +79,10 @@ def sync_monday_board(
         if group.get("id")
     }
 
-    result: dict[str, list[dict[str, object]]] = {}
+    result: dict[str, Any] = {}
     publisher_count = 0
     skipped = 0
+    board_description = (board.get("description") or "").strip()
 
     def build_col_map(column_values: list[dict[str, Any]]) -> dict[str, str]:
         col_map: dict[str, str] = {}
@@ -142,6 +144,11 @@ def sync_monday_board(
         if not boards:
             break
         board = boards[0]
+
+    if board_description:
+        meta = result.setdefault("__meta__", {})
+        if isinstance(meta, dict):
+            meta["board_description"] = board_description
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
