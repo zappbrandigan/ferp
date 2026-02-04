@@ -18,6 +18,7 @@ MONDAY_SUBITEM_COLUMNS = (
     "Territory",
     "Status",
 )
+MONDAY_NAME_VARIANT_COLUMN = "Observed Name Variants"
 
 
 def sync_monday_board(
@@ -94,6 +95,12 @@ def sync_monday_board(
             col_map[title] = col.get("text") or ""
         return col_map
 
+    def split_name_variants(value: str) -> list[str]:
+        if not value:
+            return []
+        parts = [part.strip() for part in value.split(",")]
+        return [part for part in parts if part]
+
     while True:
         items_page = board.get("items_page") or {}
         items = items_page.get("items") or []
@@ -129,6 +136,9 @@ def sync_monday_board(
             row: dict[str, object] = {
                 name.lower(): col_map.get(name, "") for name in MONDAY_REQUIRED_COLUMNS
             }
+            row["observed_name_variants"] = split_name_variants(
+                col_map.get(MONDAY_NAME_VARIANT_COLUMN, "")
+            )
             if territory_mode == "Multiple" and subitem_rows:
                 row["multi_territory"] = subitem_rows
             elif territory_mode == "Split" and subitem_rows:
