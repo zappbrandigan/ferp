@@ -61,7 +61,6 @@ def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
     entry_path = Path(entry.path)
     try:
         is_dir = entry.is_dir(follow_symlinks=False)
-        stat_result = entry.stat(follow_symlinks=False)
     except OSError:
         return None
     name = entry.name
@@ -78,7 +77,6 @@ def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
         display_name=display_name,
         char_count=len(name) if is_dir else len(stem),
         type_label=type_label,
-        modified_ts=stat_result.st_mtime,
         is_dir=is_dir,
         search_blob=search_blob,
     )

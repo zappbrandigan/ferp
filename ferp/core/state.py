@@ -116,6 +116,7 @@ class FileTreeStateStore:
         history[directory] = selected
         self._update_state(selection_history=history)
 
+
     def _update_state(self, **changes: object) -> None:
         new_state = replace(self._state, **changes)
         if new_state == self._state:

@@ -509,6 +509,7 @@ class ScriptLifecycleController:
             file_tree_container.remove_class("dimmed")
 
     def _schedule_post_script_refresh(self) -> None:
+        self._app.suppress_watcher_refreshes(1.0)
         self._app.schedule_refresh_listing(
             delay=self._POST_SCRIPT_REFRESH_DELAY_S,
             suppress_focus=True,

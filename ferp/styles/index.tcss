@@ -71,6 +71,7 @@ TopBar {
     #main_pane {
         layout: horizontal;
         height: 1fr;
+        margin-bottom: 1;
         background: $background;
 
         /* ============================================================================
@@ -160,9 +161,6 @@ TopBar {
             width: 8;
         }
 
-        .file_tree_modified {
-            width: 18;
-        }
     }
 
     #details_pane {

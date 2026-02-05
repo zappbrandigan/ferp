@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -60,7 +61,12 @@ from ferp.services.scripts import build_execution_context
 from ferp.services.update_check import UpdateCheckResult, check_for_update
 from ferp.themes.themes import ALL_THEMES
 from ferp.widgets.dialogs import ConfirmDialog, InputDialog, SelectDialog
-from ferp.widgets.file_tree import FileTree, FileTreeFilterWidget, FileTreeHeader
+from ferp.widgets.file_tree import (
+    FileListContainer,
+    FileTree,
+    FileTreeFilterWidget,
+    FileTreeHeader,
+)
 from ferp.widgets.output_panel import ScriptOutputPanel
 from ferp.widgets.process_list import ProcessListScreen
 from ferp.widgets.readme_modal import ReadmeScreen
@@ -160,6 +166,7 @@ class Ferp(App):
         self._process_list_screen: ProcessListScreen | None = None
         self._pending_exit = False
         self._is_shutting_down = False
+        self._suppress_watcher_until = 0.0
         super().__init__()
         self.fs_controller = FileSystemController()
         self._file_tree_watcher = FileTreeWatcher(
@@ -274,11 +281,7 @@ class Ferp(App):
         )
         with Vertical(id="app_main_container"):
             yield Horizontal(
-                Vertical(
-                    FileTreeHeader(id="file_list_header"),
-                    FileTree(id="file_list", state_store=self.file_tree_store),
-                    id="file_list_container",
-                ),
+                self._build_file_list_container(),
                 Vertical(
                     ScriptManager(
                         self._resolve_script_config_paths(),
@@ -295,6 +298,15 @@ class Ferp(App):
                 state_store=self.file_tree_store,
             )
         yield Footer(id="app_footer")
+
+    def _build_file_list_container(self) -> Vertical:
+        container = FileListContainer(
+            FileTreeHeader(id="file_list_header"),
+            FileTree(id="file_list", state_store=self.file_tree_store),
+            id="file_list_container",
+        )
+        container.can_focus = True
+        return container
 
     def _resolve_script_config_paths(self) -> list[Path]:
         if not self._dev_config_enabled:
@@ -979,10 +991,20 @@ class Ferp(App):
         self._refresh_timer = self.set_timer(delay, self.refresh_listing)
 
     def _refresh_listing_from_watcher(self) -> None:
+        if time.monotonic() < self._suppress_watcher_until:
+            return
+        if self._refresh_timer is not None:
+            self._refresh_timer.stop()
+            self._refresh_timer = None
         if self._listing_in_progress:
             self._pending_refresh = True
             return
         self.refresh_listing()
+
+    def suppress_watcher_refreshes(self, seconds: float) -> None:
+        self._suppress_watcher_until = max(
+            self._suppress_watcher_until, time.monotonic() + seconds
+        )
 
     def _handle_directory_listing_result(self, result: DirectoryListingResult) -> None:
         if result.token != self._directory_listing_token:
@@ -1125,8 +1147,26 @@ class Ferp(App):
             screen.action_minimize()
             return
         focused = screen.focused
-        if focused is not None and focused.allow_maximize:
-            screen.action_maximize()
+        if focused is None:
+            return
+        candidate = focused
+        while candidate is not None and not candidate.allow_maximize:
+            candidate = candidate.parent
+        if candidate is None:
+            return
+        restore_focus = None
+        if candidate is not focused:
+            restore_focus = focused
+            try:
+                candidate.focus()
+            except Exception:
+                return
+        screen.action_maximize()
+        if restore_focus is not None:
+            try:
+                restore_focus.focus()
+            except Exception:
+                pass
 
     def update_cache_timestamp(self) -> None:
         cache_path = self._paths.cache_dir / "publishers_cache.json"

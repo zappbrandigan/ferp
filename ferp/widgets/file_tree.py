@@ -3,15 +3,13 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Pattern, Sequence, cast
 
 from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.events import Click
 from textual.timer import Timer
 from textual.widget import Widget
@@ -38,14 +36,8 @@ class FileListingEntry:
     display_name: str
     char_count: int
     type_label: str
-    modified_ts: float | None
     is_dir: bool
     search_blob: str
-
-
-@lru_cache(maxsize=2048)
-def _format_timestamp(timestamp: float) -> str:
-    return datetime.strftime(datetime.fromtimestamp(timestamp), "%x %I:%S %p")
 
 
 def _split_replace_input(value: str) -> tuple[str, str, str] | None:
@@ -116,10 +108,6 @@ class FileItem(ListItem):
                     "Chars", classes="file_tree_cell file_tree_chars file_tree_header"
                 ),
                 Label("Type", classes="file_tree_cell file_tree_type file_tree_header"),
-                Label(
-                    "Modified",
-                    classes="file_tree_cell file_tree_modified file_tree_header",
-                ),
                 classes="file_tree_row",
             )
         else:
@@ -139,26 +127,11 @@ class FileItem(ListItem):
                     classes="file_tree_cell file_tree_type",
                     markup=False,
                 ),
-                Label(
-                    self._format_modified(metadata),
-                    classes="file_tree_cell file_tree_modified",
-                ),
                 classes=f"file_tree_row {'file_tree_type_dir' if metadata.is_dir else 'file_tree_type_file'}",
             )
 
         super().__init__(row, classes=classes, **kwargs)
         self.disabled = is_header
-
-    @staticmethod
-    def _resolve_modified_ts(metadata: FileListingEntry) -> float | None:
-        return metadata.modified_ts
-
-    @classmethod
-    def _format_modified(cls, metadata: FileListingEntry) -> str:
-        modified_ts = cls._resolve_modified_ts(metadata)
-        if modified_ts is None:
-            return "--"
-        return _format_timestamp(modified_ts)
 
     def on_click(self, event: Click) -> None:
         if event.chain < 2:
@@ -186,9 +159,17 @@ class FileTreeHeader(Widget):
             Label("Name", classes="file_tree_name file_tree_header"),
             Label("Chars", classes="file_tree_chars file_tree_header"),
             Label("Type", classes="file_tree_type file_tree_header"),
-            Label("Modified", classes="file_tree_modified file_tree_header"),
             classes="file_tree_header_row",
         )
+
+
+class FileListContainer(Vertical):
+    def on_focus(self, event) -> None:
+        try:
+            file_tree = self.query_one("#file_list")
+        except Exception:
+            return
+        file_tree.focus()
 
 
 class FileTreeFilterWidget(Widget):
@@ -284,14 +265,12 @@ class FileTree(ListView):
         Binding("g", "cursor_top", "To top", show=False),
         Binding("G", "cursor_bottom", "To bottom", key_display="G", show=False),
         Binding("k", "cursor_up", "Cursor up", show=False),
-        Binding(
-            "K", "cursor_up_fast", "Cursor up (half-page)", key_display="K", show=False
-        ),
+        Binding("K", "cursor_up_fast", "Cursor up (fast)", key_display="K", show=False),
         Binding("j", "cursor_down", "Cursor down", show=False),
         Binding(
             "J",
             "cursor_down_fast",
-            "Cursor down (half-page)",
+            "Cursor down (fast)",
             key_display="J",
             show=False,
         ),
@@ -311,18 +290,18 @@ class FileTree(ListView):
             tooltip="Go to default startup path",
         ),
         Binding(
-            "r",
+            "e",
             "rename_entry",
             "Rename",
             show=False,
-            tooltip="Rename selected file or directory",
+            tooltip="Edit name of selected file or directory",
         ),
         Binding(
             "n",
             "new_file",
             "New File",
             show=False,
-            tooltip="Create new file in current directory",
+            tooltip="Create new raw file",
         ),
         Binding(
             "N",
@@ -761,6 +740,14 @@ class FileTree(ListView):
             self.border_title = title
         else:
             container.border_title = title
+            container.border_subtitle = ""
+
+    def _set_border_subtitle(self, subtitle: str) -> None:
+        try:
+            container = self.app.query_one("#file_list_container")
+        except Exception:
+            return
+        container.border_subtitle = subtitle
 
     def action_filter_entries(self) -> None:
         try:
@@ -774,9 +761,9 @@ class FileTree(ListView):
     def _handle_state_update(self, state: FileTreeState) -> None:
         self._current_listing_path = state.current_listing_path
         self._selection_history = dict(state.selection_history)
-        if state.filter_query == self._filter_query:
+        if state.filter_query != self._filter_query:
+            self._set_filter(state.filter_query, from_store=True)
             return
-        self._set_filter(state.filter_query, from_store=True)
 
     def _append_notice(self, message: str) -> None:
         notice = ListItem(
@@ -798,6 +785,7 @@ class FileTree(ListView):
 
             total = len(self._filtered_entries)
             if total == 0:
+                self._set_border_subtitle("")
                 if self._all_entries:
                     self._append_notice("No items match the current filter.")
                 else:
@@ -811,25 +799,21 @@ class FileTree(ListView):
             start = max(0, min(self._chunk_start, max_start))
             self._chunk_start = start
             end = min(start + self.CHUNK_SIZE, total)
-            if start > 0:
-                prev_start = max(0, start - self.CHUNK_SIZE)
-                prev_end = start
-                prev_label = f"Show previous {self.CHUNK_SIZE} (items {prev_start + 1}-{prev_end})"
-                self.append(ChunkNavigatorItem(prev_label, direction="prev"))
-
+            if total > self.CHUNK_SIZE:
+                self._set_border_subtitle(
+                    f"Showing {start + 1}-{end} of {total} | Press [ / ] to change chunks"
+                )
+            else:
+                self._set_border_subtitle("")
             for entry in self._filtered_entries[start:end]:
                 classes = "item_dir" if entry.is_dir else "item_file"
-                item = FileItem(entry.path, metadata=entry, classes=classes)
+                item = FileItem(
+                    entry.path,
+                    metadata=entry,
+                    classes=classes,
+                )
                 self.append(item)
                 self._current_chunk_items[entry.path] = item
-
-            if end < total:
-                next_end = min(total, end + self.CHUNK_SIZE)
-                next_label = (
-                    f"Showing items {start + 1}-{end} of {total}. "
-                    f"Press Enter to load {end + 1}-{next_end}"
-                )
-                self.append(ChunkNavigatorItem(next_label, direction="next"))
 
             self.call_after_refresh(self._restore_selection)
 
