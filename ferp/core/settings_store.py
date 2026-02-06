@@ -37,6 +37,13 @@ class SettingsStore:
         settings.setdefault("userPreferences", {})["startupPath"] = str(path)
         self.save(settings)
 
+    def update_script_namespace(
+        self, settings: dict[str, Any], namespace: str
+    ) -> None:
+        """Store the installed default scripts namespace."""
+        settings.setdefault("userPreferences", {})["scriptNamespace"] = namespace
+        self.save(settings)
+
     def log_preferences(self, settings: dict[str, Any]) -> tuple[int, int]:
         """Return (max_files, max_age_days) for transcript pruning."""
         logs = settings.setdefault("logs", {})
@@ -49,7 +56,8 @@ class SettingsStore:
         return max_files, max_age_days
 
     def _with_defaults(self, data: dict[str, Any]) -> dict[str, Any]:
-        data.setdefault("userPreferences", {})
+        preferences = data.setdefault("userPreferences", {})
+        preferences.setdefault("scriptNamespace", "")
         data.setdefault("logs", {})
         integrations = data.setdefault("integrations", {})
         integrations.setdefault("monday", {})

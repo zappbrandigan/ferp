@@ -95,7 +95,11 @@ class DeletePathResult:
 
 
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "userPreferences": {"theme": "slate-copper", "startupPath": str(Path().home())},
+    "userPreferences": {
+        "theme": "slate-copper",
+        "startupPath": str(Path().home()),
+        "scriptNamespace": "",
+    },
     "logs": {"maxFiles": 50, "maxAgeDays": 14},
     "integrations": {
         "monday": {
@@ -589,6 +593,7 @@ class Ferp(App):
                         "FERP_DEV_CONFIG=1; downloaded assets were discarded."
                     ),
                     "release_version": release_version,
+                    "namespace": namespace,
                 }
 
             core_config = self.scripts_dir / "core" / "config.json"
@@ -631,6 +636,7 @@ class Ferp(App):
             "release_status": "Scripts updated to latest release.",
             "release_detail": config_status,
             "release_version": release_version,
+            "namespace": namespace,
         }
 
     def _upgrade_app(self, pipx_path: str) -> dict[str, object]:
@@ -863,6 +869,10 @@ class Ferp(App):
         release_status = payload.get("release_status", "")
         release_detail = payload.get("release_detail", "")
         release_version = payload.get("release_version", "")
+        namespace = payload.get("namespace")
+
+        if isinstance(namespace, str) and namespace.strip():
+            self.settings_store.update_script_namespace(self.settings, namespace.strip())
 
         summary = "Default scripts updated."
         if release_version:

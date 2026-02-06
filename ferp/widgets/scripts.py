@@ -111,23 +111,38 @@ class ScriptManager(ListView):
         self.clear()
 
         if not any(path.exists() for path in self.config_paths):
+            self.border_subtitle = ""
             self.append(ListItem(Label("No config.json found")))
             return
 
         try:
             scripts = load_scripts_configs(self.config_paths)
         except ValueError as exc:
+            self.border_subtitle = ""
             self.append(ListItem(Label(f"Invalid config: {exc}")))
             return
 
         if not scripts:
+            self.border_subtitle = ""
             self.append(ListItem(Label("No scripts configured")))
             return
+        self._set_namespace_subtitle()
 
         for script in scripts:
             self.append(ScriptItem(script))
 
         self.call_after_refresh(self._focus_first_script)
+
+    def _set_namespace_subtitle(self) -> None:
+        namespace = ""
+        settings = getattr(self.app, "settings", None)
+        if isinstance(settings, dict):
+            preferences = settings.get("userPreferences", {})
+            if isinstance(preferences, dict):
+                value = preferences.get("scriptNamespace", "")
+                if isinstance(value, str):
+                    namespace = value.strip()
+        self.border_subtitle = f"Namespace: {namespace}" if namespace else ""
 
     def _focus_first_script(self) -> None:
         if not self.children:

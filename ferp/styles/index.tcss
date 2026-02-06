@@ -36,7 +36,7 @@ Input .input--cursor {
 TopBar {
     layout: horizontal;
     height: 1;
-    padding: 0 1 0 1;
+    padding: 0 2 0 2;
     margin-bottom: 1;
     color: $text;
     background: $primary;
@@ -72,6 +72,7 @@ TopBar {
         layout: horizontal;
         height: 1fr;
         margin-bottom: 1;
+        padding: 0 1 0 1;
         background: $background;
 
         /* ============================================================================
@@ -175,6 +176,7 @@ TopBar {
             height: 2fr;
             border: round $secondary;
             border-title-align: right;
+            border-subtitle-align: left;
             background: $background;
         }
 

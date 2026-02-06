@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.suggester import SuggestFromList
@@ -31,6 +32,75 @@ def _selection_list_values(selection_list: SelectionList) -> list[str]:
     if isinstance(selected, list):
         return [str(item) for item in selected]
     return []
+
+
+class PromptSelectionList(SelectionList):
+    FAST_CURSOR_STEP = 5
+    BINDINGS = [
+        Binding("g", "cursor_top", "To top", show=False),
+        Binding("G", "cursor_bottom", "To bottom", key_display="G", show=False),
+        Binding("k", "cursor_up", "Cursor up", show=False),
+        Binding("K", "cursor_up_fast", "Cursor up (fast)", key_display="K", show=False),
+        Binding("j", "cursor_down", "Cursor down", show=False),
+        Binding(
+            "J",
+            "cursor_down_fast",
+            "Cursor down (fast)",
+            key_display="J",
+            show=False,
+        ),
+    ]
+
+    def _option_count(self) -> int:
+        count = getattr(self, "option_count", None)
+        if isinstance(count, int):
+            return count
+        options = getattr(self, "options", None)
+        if options is not None:
+            try:
+                return len(options)
+            except TypeError:
+                pass
+        options = getattr(self, "_options", None)
+        if options is not None:
+            try:
+                return len(options)
+            except TypeError:
+                pass
+        return len(self.children)
+
+    def _set_index(self, index: int) -> None:
+        if hasattr(self, "index"):
+            try:
+                self.index = index
+                return
+            except Exception:
+                pass
+        if hasattr(self, "highlighted"):
+            try:
+                self.highlighted = index
+                return
+            except Exception:
+                pass
+
+    def action_cursor_down_fast(self) -> None:
+        for _ in range(self.FAST_CURSOR_STEP):
+            super().action_cursor_down()
+
+    def action_cursor_up_fast(self) -> None:
+        for _ in range(self.FAST_CURSOR_STEP):
+            super().action_cursor_up()
+
+    def action_cursor_top(self) -> None:
+        if self._option_count() > 0:
+            self._set_index(0)
+            if hasattr(self, "scroll_to"):
+                self.scroll_to(y=0)
+
+    def action_cursor_bottom(self) -> None:
+        count = self._option_count()
+        if count > 0:
+            self._set_index(count - 1)
 
 
 class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
@@ -74,7 +144,7 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
                 )
             )
             contents.append(
-                SelectionList(
+                PromptSelectionList(
                     *[(option, option) for option in field.options],
                     id=field.id,
                     classes="prompt_selection_list",
