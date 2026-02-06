@@ -9,15 +9,17 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 from platformdirs import user_cache_path, user_config_path, user_data_path
 from rich.markup import escape
 from textual import on
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, SystemCommand
 from textual.binding import Binding
+from textual.command import CommandPalette
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
+from textual.screen import Screen
 from textual.theme import Theme
 from textual.timer import Timer
 from textual.widgets import Footer
@@ -25,7 +27,7 @@ from textual.worker import Worker, WorkerState
 
 from ferp import __version__
 from ferp.core.bundle_installer import ScriptBundleInstaller
-from ferp.core.command_provider import FerpCommandProvider
+from ferp.core.command_provider import FerpCombinedCommandProvider, FerpCommandProvider
 from ferp.core.dependency_manager import ScriptDependencyManager
 from ferp.core.fs_controller import FileSystemController
 from ferp.core.fs_watcher import FileTreeWatcher
@@ -137,6 +139,18 @@ class Ferp(App):
             tooltip="Show/hide help panel",
         ),
     ]
+
+    def get_system_commands(self, screen: Screen[Any]) -> Iterable[SystemCommand]:
+        for command in super().get_system_commands(screen):
+            if command.title in {"Keys", "Maximize", "Screenshot"}:
+                continue
+            yield command
+
+    def action_command_palette(self) -> None:
+        self.push_screen(CommandPalette(providers=self._command_palette_providers()))
+
+    def _command_palette_providers(self) -> list[type]:
+        return [FerpCombinedCommandProvider]
 
     @property
     def current_path(self) -> Path:
@@ -388,13 +402,6 @@ class Ferp(App):
             InputDialog(prompt, default=default_value),
             after,
         )
-
-    def _command_refresh_file_tree(self) -> None:
-        self.refresh_listing()
-
-    def _command_reload_scripts(self) -> None:
-        scripts_panel = self.query_one(ScriptManager)
-        scripts_panel.load_scripts()
 
     def _command_open_latest_log(self) -> None:
         logs_dir = self._paths.logs_dir
@@ -872,7 +879,9 @@ class Ferp(App):
         namespace = payload.get("namespace")
 
         if isinstance(namespace, str) and namespace.strip():
-            self.settings_store.update_script_namespace(self.settings, namespace.strip())
+            self.settings_store.update_script_namespace(
+                self.settings, namespace.strip()
+            )
 
         summary = "Default scripts updated."
         if release_version:

@@ -1,10 +1,18 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Iterable, cast
 
-from textual.command import CommandListItem, SimpleCommand, SimpleProvider
+from textual.command import (
+    CommandListItem,
+    DiscoveryHit,
+    Hit,
+    Provider,
+    SimpleCommand,
+    SimpleProvider,
+)
 from textual.screen import Screen
 from textual.style import Style
+from textual.system_commands import SystemCommandsProvider
 
 if TYPE_CHECKING:
     from ferp.core.app import Ferp
@@ -15,28 +23,18 @@ class FerpCommandProvider(SimpleProvider):
 
     _COMMAND_DEFS: tuple[tuple[str, str, str], ...] = (
         (
-            "Install Script Bundle",
-            "Install a zipped FSCP script bundle into FERP.",
+            "Add Script Bundle",
+            "Add a custom .ferp script bundle.",
             "_command_install_script_bundle",
         ),
         (
-            "Install/Update Default Scripts",
-            "Update scripts from the bundled defaults and overwrite config.json.",
+            "Add/Update Default Scripts",
+            "Add or update scripts from an existing namespace. This will overwrite any custom script bundles.",
             "_command_install_default_scripts",
         ),
         (
-            "Refresh File Tree",
-            "Reload the current directory listing.",
-            "_command_refresh_file_tree",
-        ),
-        (
-            "Reload Script Catalog",
-            "Re-read script metadata from config/config.json.",
-            "_command_reload_scripts",
-        ),
-        (
             "Open Latest Log",
-            "Open the most recent transcript log file.",
+            "Open the log file for the most recent script run.",
             "_command_open_latest_log",
         ),
         (
@@ -51,17 +49,17 @@ class FerpCommandProvider(SimpleProvider):
         ),
         (
             "Set Startup Directory",
-            "Update the startup directory stored in settings.json.",
+            "Update the startup directory.",
             "_command_set_startup_directory",
         ),
         (
-            "Sync Monday Board Cache",
-            "Fetch the Monday board and refresh publishers_cache.json.",
+            "Sync Monday Board Data",
+            "Refresh data from the Monday board.",
             "_command_sync_monday_board",
         ),
         (
             "Upgrade FERP",
-            "Run pipx upgrade.",
+            "Upgrade FERP to the latest version.",
             "_command_upgrade_app",
         ),
     )
@@ -75,3 +73,37 @@ class FerpCommandProvider(SimpleProvider):
         super().__init__(screen, commands)
         if match_style is not None:
             self._SimpleProvider__match_style = match_style  # type: ignore[attr-defined]
+
+
+class FerpCombinedCommandProvider(Provider):
+    """Combines system, app, and screen providers for stable discovery ordering."""
+
+    def __init__(
+        self,
+        screen: Screen[Any],
+        match_style: Style | None = None,
+    ) -> None:
+        super().__init__(screen, match_style)
+        screen_commands = getattr(screen, "COMMANDS", None)
+        screen_providers: Iterable[type[Provider]] = (
+            sorted(screen_commands, key=lambda item: item.__name__)
+            if screen_commands
+            else ()
+        )
+        providers: list[Provider] = [
+            FerpCommandProvider(screen, match_style),
+            SystemCommandsProvider(screen, match_style),
+        ]
+        for provider_cls in screen_providers:
+            providers.append(provider_cls(screen, match_style))
+        self._providers = providers
+
+    async def discover(self) -> AsyncGenerator[DiscoveryHit | Hit, None]:
+        for provider in self._providers:
+            async for hit in provider.discover():
+                yield hit
+
+    async def search(self, query: str) -> AsyncGenerator[DiscoveryHit | Hit, None]:
+        for provider in self._providers:
+            async for hit in provider.search(query):
+                yield hit
