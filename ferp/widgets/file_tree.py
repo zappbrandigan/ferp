@@ -336,6 +336,12 @@ class FileTree(ListView):
             "[", "prev_chunk", "Prev chunk", show=False, tooltip="Load previous chunk"
         ),
         Binding("]", "next_chunk", "Next chunk", show=False, tooltip="Load next chunk"),
+        Binding(
+            "{", "first_chunk", "First chunk", show=False, tooltip="Jump to first chunk"
+        ),
+        Binding(
+            "}", "last_chunk", "Last chunk", show=False, tooltip="Jump to last chunk"
+        ),
         Binding("/", "filter_entries", "Filter", show=True, tooltip="Filter entries"),
     ]
 
@@ -873,6 +879,31 @@ class FileTree(ListView):
 
     def action_next_chunk(self) -> None:
         self._schedule_chunk_move(1)
+
+    def action_first_chunk(self) -> None:
+        total = len(self._filtered_entries)
+        if total == 0:
+            return
+        if total <= self.CHUNK_SIZE:
+            return
+        if self._chunk_start == 0:
+            return
+        self._chunk_start = 0
+        self._last_chunk_direction = "prev"
+        self._render_current_chunk()
+
+    def action_last_chunk(self) -> None:
+        total = len(self._filtered_entries)
+        if total == 0:
+            return
+        if total <= self.CHUNK_SIZE:
+            return
+        max_start = (total - 1) // self.CHUNK_SIZE * self.CHUNK_SIZE
+        if self._chunk_start == max_start:
+            return
+        self._chunk_start = max_start
+        self._last_chunk_direction = "next"
+        self._render_current_chunk()
 
     def _schedule_chunk_move(self, delta: int) -> None:
         self._pending_chunk_delta += delta
