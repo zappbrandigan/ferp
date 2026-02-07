@@ -57,7 +57,9 @@ class ScriptEnvironmentHost(TypedDict):
 class ScriptEnvironmentPaths(TypedDict):
     app_root: str
     cwd: str
+    cache_root: str
     cache_dir: str
+    settings_file: str
 
 
 class ScriptEnvironment(TypedDict):

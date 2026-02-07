@@ -43,19 +43,29 @@ class FerpCommandProvider(SimpleProvider):
             "_command_open_user_guide",
         ),
         (
+            "Pull Monday Board Data",
+            "Fetch data from the Monday board.",
+            "_command_sync_monday_board",
+        ),
+        (
             "Show Processes",
             "View and manage tracked script processes.",
             "_command_show_processes",
         ),
         (
+            "Set Monday API Token",
+            "Update the Monday API token.",
+            "_command_set_monday_api_token",
+        ),
+        (
+            "Set Monday Board ID",
+            "Update the Monday board id for the active namespace.",
+            "_command_set_monday_board_id",
+        ),
+        (
             "Set Startup Directory",
             "Update the startup directory.",
             "_command_set_startup_directory",
-        ),
-        (
-            "Sync Monday Board Data",
-            "Refresh data from the Monday board.",
-            "_command_sync_monday_board",
         ),
         (
             "Upgrade FERP",

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from ferp.domain.scripts import Script
+from ferp.domain.scripts import Script, TargetSelection
 
 
 @dataclass(frozen=True)
@@ -34,14 +34,19 @@ def build_execution_context(
             f"FSCP scripts must be Python files. Unsupported script: {full_path}"
         )
 
-    if script.target == "current_directory":
-        target_path = current_path
-    elif script.target in {"highlighted_file", "highlighted_directory"}:
-        if selected_path is None:
-            raise ValueError("Select a file or directory before running this script.")
+    allowed_targets = _normalize_targets(script.target)
+    allow_current = "current_directory" in allowed_targets
+    allow_file = "highlighted_file" in allowed_targets
+    allow_dir = "highlighted_directory" in allowed_targets
+
+    target_path: Path | None = None
+    if selected_path is not None and (allow_file or allow_dir):
         target_path = selected_path
-    else:
-        raise ValueError(f"Unsupported script target: {script.target}")
+    elif allow_current:
+        target_path = current_path
+
+    if target_path is None:
+        raise ValueError("Select a file or directory before running this script.")
 
     if not target_path.exists():
         raise FileNotFoundError(target_path)
@@ -49,15 +54,22 @@ def build_execution_context(
     target_kind: Literal["file", "directory"] = (
         "directory" if target_path.is_dir() else "file"
     )
-    if script.target == "highlighted_file" and target_kind != "file":
+    if target_path is selected_path:
+        if target_kind == "file" and not allow_file:
+            raise ValueError(
+                f"'{script.name}' expects a directory. Highlight a folder and try again."
+            )
+        if target_kind == "directory" and not allow_dir:
+            raise ValueError(
+                f"'{script.name}' expects a file. Highlight a file and try again."
+            )
+    elif target_path is current_path and not allow_current:
         raise ValueError(
-            f"'{script.name}' expects a file. Highlight a file and try again."
+            f"'{script.name}' expects a file or directory selection. "
+            "Highlight a target and try again."
         )
-    if script.target == "highlighted_directory" and target_kind != "directory":
-        raise ValueError(
-            f"'{script.name}' expects a directory. Highlight a folder and try again."
-        )
-    if script.target == "highlighted_file":
+
+    if target_kind == "file" and allow_file:
         allowed_extensions = _normalize_extensions(script.file_extensions)
         if allowed_extensions:
             name = target_path.name.lower()
@@ -88,3 +100,7 @@ def _normalize_extensions(extensions: list[str] | None) -> list[str]:
             cleaned = f".{cleaned}"
         normalized.append(cleaned)
     return normalized
+
+
+def _normalize_targets(targets: TargetSelection) -> set[str]:
+    return set(targets)

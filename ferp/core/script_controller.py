@@ -35,6 +35,8 @@ class ScriptLifecycleController:
             app.app_root,
             app._paths.cache_dir,
             self._handle_script_progress,
+            namespace_resolver=app._active_namespace,
+            settings_file=app._paths.settings_file,
         )
         self._progress_lines: list[str] = []
         self._progress_started_at: datetime | None = None

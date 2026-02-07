@@ -21,9 +21,7 @@ MONDAY_SUBITEM_COLUMNS = (
 MONDAY_NAME_VARIANT_COLUMN = "Observed Name Variants"
 
 
-def sync_monday_board(
-    api_token: str, board_id: int, cache_path: Path
-) -> dict[str, object]:
+def sync(api_token: str, board_id: int, cache_path: Path) -> dict[str, object]:
     query = """
     query ($boardId: [ID!], $cursor: String) {
       boards(ids: $boardId) {

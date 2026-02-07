@@ -8,6 +8,7 @@ from typing import Sequence
 
 from ferp import __version__
 from ferp.app import main as run_app
+from ferp.domain.scripts import normalize_targets
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -62,9 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bundle_parser.add_argument(
         "--target",
-        choices=["current_directory", "highlighted_file", "highlighted_directory"],
         default="current_directory",
-        help="Which path FER​P should send to the script (default: current_directory).",
+        help=(
+            "Which path FER​P should send to the script. "
+            "Use a comma-separated list to allow multiple targets "
+            "(default: current_directory)."
+        ),
     )
     bundle_parser.add_argument(
         "--dependency",
@@ -110,12 +114,16 @@ def handle_bundle(args: argparse.Namespace) -> None:
     if bundle_path.suffix.lower() != ".ferp":
         bundle_path = bundle_path.with_suffix(".ferp")
 
+    raw_target = args.target
+    target_values = [value.strip() for value in str(raw_target).split(",") if value]
+    target = normalize_targets(target_values or "current_directory")
+
     manifest: dict[str, object] = {
         "id": script_id,
         "name": script_name,
         "version": args.script_version,
         "entrypoint": script_path.name,
-        "target": args.target,
+        "target": list(target),
     }
 
     if readme_path:

@@ -64,8 +64,17 @@ def _read_os_version() -> str:
     return platform.release()
 
 
-def _build_environment(app_root: Path, cache_dir: Path) -> dict[str, Any]:
+def _build_environment(
+    app_root: Path,
+    cache_dir: Path,
+    namespace: str | None,
+    settings_file: Path,
+) -> dict[str, Any]:
     """Build the SDK environment payload for script initialization."""
+    cache_root = cache_dir
+    if namespace:
+        cache_dir = cache_root / namespace
+        cache_dir.mkdir(parents=True, exist_ok=True)
     return {
         "app": {
             "name": "ferp",
@@ -82,7 +91,9 @@ def _build_environment(app_root: Path, cache_dir: Path) -> dict[str, Any]:
         "paths": {
             "app_root": str(app_root),
             "cwd": str(Path.cwd()),
+            "cache_root": str(cache_root),
             "cache_dir": str(cache_dir),
+            "settings_file": str(settings_file),
         },
     }
 
@@ -143,6 +154,8 @@ class ScriptRunner:
         cache_dir: Path,
         progress_handler: Callable[[dict[str, Any]], None] | None = None,
         process_registry: ProcessRegistry | None = None,
+        namespace_resolver: Callable[[], str | None] | None = None,
+        settings_file: Path | None = None,
     ) -> None:
         self.app_root = app_root
         self.cache_dir = cache_dir
@@ -150,6 +163,8 @@ class ScriptRunner:
         self._lock = Lock()
         self._progress_handler = progress_handler
         self.process_registry = process_registry or ProcessRegistry()
+        self._namespace_resolver = namespace_resolver
+        self._settings_file = settings_file
 
     @property
     def active_script_name(self) -> str | None:
@@ -193,7 +208,13 @@ class ScriptRunner:
 
         try:
             host.start()
-            environment = _build_environment(self.app_root, self.cache_dir)
+            namespace = (
+                self._namespace_resolver() if self._namespace_resolver else None
+            )
+            settings_file = self._settings_file or (self.app_root / "settings.json")
+            environment = _build_environment(
+                self.app_root, self.cache_dir, namespace, settings_file
+            )
             init_payload = {
                 "target": {
                     "path": str(context.target_path),

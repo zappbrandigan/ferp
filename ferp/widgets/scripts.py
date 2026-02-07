@@ -7,7 +7,7 @@ from textual.containers import Horizontal
 from textual.widgets import Label, ListItem, ListView
 
 from ferp.core.messages import RunScriptRequest, ShowReadmeRequest
-from ferp.domain.scripts import Script, ScriptConfig
+from ferp.domain.scripts import Script, ScriptConfig, normalize_targets
 
 
 def script_from_config(cfg: ScriptConfig) -> Script:
@@ -16,7 +16,7 @@ def script_from_config(cfg: ScriptConfig) -> Script:
         name=cfg["name"],
         version=cfg["version"],
         script=cfg["script"],
-        target=cfg["target"],
+        target=normalize_targets(cfg["target"]),
         file_extensions=cfg.get("file_extensions"),
     )
 

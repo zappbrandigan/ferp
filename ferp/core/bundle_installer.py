@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from textual.worker import Worker, WorkerState
 
 from ferp.core.dependency_manager import ScriptDependencyManager
+from ferp.domain.scripts import TargetSelection, normalize_targets
 from ferp.widgets.scripts import ScriptManager
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ class ScriptBundleManifest:
     id: str
     name: str
     version: str
-    target: str
+    target: TargetSelection
     entrypoint: str
     readme: str | None
     dependencies: list[str]
@@ -162,16 +163,13 @@ class ScriptBundleInstaller:
             if key not in payload:
                 raise ValueError(f"Manifest missing required field '{key}'.")
 
-        target = str(payload["target"])
-        if target not in {
-            "current_directory",
-            "highlighted_file",
-            "highlighted_directory",
-        }:
+        try:
+            target = normalize_targets(payload["target"])
+        except ValueError as exc:
             raise ValueError(
-                "Manifest 'target' must be 'current_directory', "
+                "Manifest 'target' must be one or more of 'current_directory', "
                 "'highlighted_file', or 'highlighted_directory'."
-            )
+            ) from exc
 
         readme = payload.get("readme")
         if readme is not None:
@@ -228,7 +226,7 @@ class ScriptBundleInstaller:
             "name": manifest.name,
             "version": manifest.version,
             "script": rel_path,
-            "target": manifest.target,
+            "target": list(manifest.target),
         }
         if manifest.file_extensions:
             entry["file_extensions"] = manifest.file_extensions
