@@ -58,18 +58,6 @@ FERP is split into sections (called "panels"):
 
 The command palette lets you run app-level actions (like changing themes or refreshing your cache file). Open it using `Ctrl+p`, then start typing the command name (arrow up/down).
 
-**Available commands:**
-
-- Install Script Bundle (for advanced users installing custom scripts)
-- Install/Update Default Scripts (this is how you update your default FERP script bundle)
-- Upgrade FERP
-- Refresh File Tree
-- Reload Script Catalog
-- Open Latest Log
-- View Running/Past Processes
-- Set Startup Directory
-- Sync Monday Board Cache
-
 ---
 
 ## 5) Input Box Editing Shortcuts
@@ -91,15 +79,11 @@ home,ctrl+a        Go to the beginning of the input.
 end,ctrl+e         Go to the end of the input.
 shift+home         Select up to the input start.
 shift+end          Select up to the input end.
-delete,ctrl+d      Delete the character to the right of the cursor.
-enter              Submit the current value of the input.
+ctrl+d      Delete the character to the right of the cursor.
 ctrl+w             Delete the word to the left of the cursor.
 ctrl+u             Delete everything to the left of the cursor.
 ctrl+f             Delete the word to the right of the cursor.
 ctrl+k             Delete everything to the right of the cursor.
-ctrl+x             Cut selected text.
-ctrl+c             Copy selected text.
-ctrl+v             Paste text from the clipboard.
 ```
 
 ---

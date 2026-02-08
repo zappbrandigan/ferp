@@ -157,6 +157,18 @@ class TaskStore:
         self.save()
         self._emit()
 
+    def unmark_completed(self) -> None:
+        any_updated = False
+        for task in self._tasks:
+            if task.completed:
+                task.completed = False
+                task.completed_at = None
+                any_updated = True
+        if not any_updated:
+            return
+        self.save()
+        self._emit()
+
     def import_tasks(self, tasks: Iterable[Task]) -> None:
         """Replace the current list with provided tasks (used for testing)."""
         self._tasks = list(tasks)

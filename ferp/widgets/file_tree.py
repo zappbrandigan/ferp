@@ -6,10 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Pattern, Sequence, cast
 
+from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Vertical
 from textual.events import Click
 from textual.timer import Timer
 from textual.widget import Widget
@@ -87,51 +88,81 @@ def _replace_in_stem(
     return new_name, new_stem, count
 
 
+class FileRow(Widget):
+    CHARS_WIDTH = 8
+    TYPE_WIDTH = 8
+    GAP = 1
+
+    def __init__(
+        self,
+        *,
+        name: str,
+        chars: str,
+        type_label: str,
+        is_header: bool = False,
+        classes: str | None = None,
+    ) -> None:
+        row_classes = "file_tree_row"
+        if is_header:
+            row_classes = f"{row_classes} file_tree_header"
+        if classes:
+            row_classes = f"{row_classes} {classes}"
+        super().__init__(classes=row_classes)
+        self._name = name
+        self._chars = chars
+        self._type_label = type_label
+
+    @staticmethod
+    def _truncate(value: str, width: int) -> str:
+        if width <= 0:
+            return ""
+        if len(value) <= width:
+            return value
+        if width <= 3:
+            return value[:width]
+        return f"{value[: width - 3]}..."
+
+    def render(self) -> Text:
+        width = self.size.width
+        name_width = max(
+            1, width - (self.CHARS_WIDTH + self.TYPE_WIDTH + (self.GAP * 2))
+        )
+        name = self._truncate(self._name, name_width)
+        chars = self._truncate(self._chars, self.CHARS_WIDTH)
+        type_label = self._truncate(self._type_label, self.TYPE_WIDTH)
+
+        name_seg = name.ljust(name_width)
+        chars_seg = chars.ljust(self.CHARS_WIDTH)
+        type_seg = type_label.ljust(self.TYPE_WIDTH)
+        gap = " " * self.GAP
+
+        text = Text()
+        text.append(f"{name_seg}{gap}{chars_seg}{gap}{type_seg}")
+        text.stylize(self.rich_style)
+        return text
+
+
 class FileItem(ListItem):
     def __init__(
         self,
         path: Path,
         *,
-        metadata: FileListingEntry | None = None,
-        is_header: bool = False,
+        metadata: FileListingEntry,
         classes: str | None = None,
         **kwargs,
     ) -> None:
         self.path = path
-        self.is_header = is_header
+        self.is_header = False
         self.metadata = metadata
 
-        if is_header:
-            row = Horizontal(
-                Label("Name", classes="file_tree_cell file_tree_name file_tree_header"),
-                Label(
-                    "Chars", classes="file_tree_cell file_tree_chars file_tree_header"
-                ),
-                Label("Type", classes="file_tree_cell file_tree_type file_tree_header"),
-                classes="file_tree_row",
-            )
-        else:
-            if metadata is None:
-                raise ValueError("metadata required for non-header FileItems")
-            row = Horizontal(
-                Label(
-                    metadata.display_name,
-                    classes="file_tree_cell file_tree_name",
-                    markup=False,
-                ),
-                Label(
-                    str(metadata.char_count), classes="file_tree_cell file_tree_chars"
-                ),
-                Label(
-                    metadata.type_label,
-                    classes="file_tree_cell file_tree_type",
-                    markup=False,
-                ),
-                classes=f"file_tree_row {'file_tree_type_dir' if metadata.is_dir else 'file_tree_type_file'}",
-            )
+        row = FileRow(
+            name=metadata.display_name,
+            chars=str(metadata.char_count),
+            type_label=metadata.type_label,
+            classes="file_tree_type_dir" if metadata.is_dir else "file_tree_type_file",
+        )
 
         super().__init__(row, classes=classes, **kwargs)
-        self.disabled = is_header
 
     def on_click(self, event: Click) -> None:
         if event.chain < 2:
@@ -155,21 +186,13 @@ class FileTreeHeader(Widget):
     """Static header row for the file tree list."""
 
     def compose(self) -> ComposeResult:
-        yield Horizontal(
-            Label("Name", classes="file_tree_name file_tree_header"),
-            Label("Chars", classes="file_tree_chars file_tree_header"),
-            Label("Type", classes="file_tree_type file_tree_header"),
+        yield FileRow(
+            name="Name",
+            chars="Chars",
+            type_label="Type",
+            is_header=True,
             classes="file_tree_header_row",
         )
-
-
-class FileListContainer(Vertical):
-    def on_focus(self, event) -> None:
-        try:
-            file_tree = self.query_one("#file_list")
-        except Exception:
-            return
-        file_tree.focus()
 
 
 class FileTreeFilterWidget(Widget):
@@ -200,6 +223,13 @@ class FileTreeFilterWidget(Widget):
         self._input = self.query_one(Input)
 
     def show(self, value: str) -> None:
+        # Don't show filter widget if file tree is maximized, since the input won't be visible.
+        if focused := self.app.focused:
+            try:
+                if cast(Widget, focused.parent).is_maximized:
+                    return
+            except AttributeError:
+                pass
         self.display = "block"
         if self._input:
             self._input.value = value
@@ -255,7 +285,12 @@ class FileTreeFilterWidget(Widget):
         self._state_store.set_filter_query(_filter_query_for_input(self._pending_value))
 
 
+class FileTreeContainer(Vertical):
+    ALLOW_MAXIMIZE = True
+
+
 class FileTree(ListView):
+    ALLOW_MAXIMIZE = False
     CHUNK_SIZE = 50
     FILTER_TITLE_MAX = 24
     CHUNK_DEBOUNCE_S = 0.25

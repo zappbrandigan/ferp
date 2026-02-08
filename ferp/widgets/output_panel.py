@@ -5,12 +5,26 @@ from pathlib import Path
 from typing import Any
 
 from rich.markup import escape
-from textual.containers import Vertical
+from textual.binding import Binding
+from textual.containers import Vertical, VerticalScroll
 from textual.widgets import ProgressBar, Static
 
 from ferp.core.script_runner import ScriptResult
 from ferp.core.state import AppState, AppStateStore, ScriptRunState
 from ferp.widgets.panels import ContentPanel
+
+
+class OutputPanelContainer(VerticalScroll):
+    BINDINGS = [
+        Binding("c", "clear_output", "Clear output", show=True),
+    ]
+
+    def action_clear_output(self) -> None:
+        try:
+            panel = self.query_one(ScriptOutputPanel)
+        except Exception:
+            return
+        panel.action_clear_output()
 
 
 class ScriptOutputPanel(ContentPanel):
@@ -31,6 +45,8 @@ class ScriptOutputPanel(ContentPanel):
         self._state_store = state_store
         self._state_subscription = self._handle_state_update
         self._last_script_run: ScriptRunState | None = None
+        self._initial_message = initial_message
+        self._showing_initial = True
         self._progress_header: Static | None = None
         self._progress_message: Static | None = None
         self._progress_bar: ProgressBar | None = None
@@ -39,6 +55,7 @@ class ScriptOutputPanel(ContentPanel):
     def on_mount(self) -> None:
         super().on_mount()
         self._state_store.subscribe(self._state_subscription)
+        self._set_border_title("Status")
 
     def on_unmount(self) -> None:
         self._state_store.unsubscribe(self._state_subscription)
@@ -46,6 +63,7 @@ class ScriptOutputPanel(ContentPanel):
     def show_error(self, error: BaseException) -> None:
         self.remove_children()
         self.update_content("[bold $error]Error:[/bold $error]\n" + escape(str(error)))
+        self._showing_initial = False
 
     def show_result(
         self,
@@ -100,8 +118,10 @@ class ScriptOutputPanel(ContentPanel):
 
         self.remove_children()
         self.update_content("\n".join(lines))
+        self._showing_initial = False
 
     def _handle_state_update(self, state: AppState) -> None:
+        self._set_border_subtitle(state.status)
         script_run = state.script_run
         if self._last_script_run == script_run:
             return
@@ -110,18 +130,16 @@ class ScriptOutputPanel(ContentPanel):
 
     def _render_script_state(self, script_run: ScriptRunState) -> None:
         phase = script_run.phase
+        if phase == "idle":
+            return
         if phase == "running":
+            self._set_border_title("Process Output")
             self._render_progress(script_run)
             return
         if phase == "awaiting_input":
-            self._clear_progress()
-            self.remove_children()
-            prompt = script_run.input_prompt or "Input required"
-            self.update_content(
-                "[bold $primary]Input requested:[/bold $primary] " + escape(prompt)
-            )
             return
         if phase == "result" and script_run.result is not None:
+            self._set_border_title("Process Output")
             self._clear_progress()
             script_name = script_run.script_name or "Script"
             target = script_run.target_path or Path(".")
@@ -133,11 +151,41 @@ class ScriptOutputPanel(ContentPanel):
             )
             return
         if phase == "error" and script_run.error:
+            self._set_border_title("Process Output")
             self._clear_progress()
             self.remove_children()
             self.update_content(
                 "[bold $error]Error:[/bold $error]\n" + escape(script_run.error)
             )
+            return
+
+    def _set_border_title(self, title: str) -> None:
+        try:
+            container = self.app.query_one("#output_panel_container")
+        except Exception:
+            self.border_title = title
+        else:
+            container.border_title = title
+
+    def _set_border_subtitle(self, subtitle: str) -> None:
+        try:
+            container = self.app.query_one("#output_panel_container")
+        except Exception:
+            self.border_subtitle = subtitle
+        else:
+            container.border_subtitle = subtitle
+
+    def action_clear_output(self) -> None:
+        self._clear_progress()
+        self.remove_children()
+        self.update_content(self._initial_message)
+        self._set_border_title("Status")
+        self._showing_initial = True
+
+    def set_initial_message(self, message: str) -> None:
+        self._initial_message = message
+        if self._showing_initial:
+            self.update_content(self._initial_message)
 
     def _render_progress(self, script_run: ScriptRunState) -> None:
         script_name = script_run.script_name or "Script"

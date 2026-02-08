@@ -21,7 +21,9 @@ class ReadmeScreen(ModalScreen):
         self._markdown: MarkdownViewer | None = None
 
     def compose(self):
-        markdown = MarkdownViewer(self._content, id="readme_content")
+        markdown = MarkdownViewer(
+            self._content, id="readme_content", show_table_of_contents=False
+        )
         self._markdown = markdown
         yield Vertical(
             VerticalScroll(markdown, id="readme_scroll"),

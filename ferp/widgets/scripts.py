@@ -2,8 +2,9 @@ import json
 from pathlib import Path
 from typing import Sequence
 
+from rich.text import Text
 from textual.binding import Binding
-from textual.containers import Horizontal
+from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView
 
 from ferp.core.messages import RunScriptRequest, ShowReadmeRequest
@@ -54,22 +55,99 @@ def load_scripts_configs(paths: Sequence[Path]) -> list[Script]:
     return sorted(scripts_by_id.values(), key=lambda script: script.name.lower())
 
 
+class ScriptRow(Widget):
+    COMPONENT_CLASSES = {
+        "script_category",
+        "script_name",
+        "script_version",
+    }
+
+    def __init__(
+        self,
+        *,
+        category: str,
+        name: str,
+        version: str,
+        raw_name: str | None = None,
+    ) -> None:
+        super().__init__(id="script_item", classes="script_row")
+        self._category = category
+        self._name = name
+        self._raw_name = raw_name
+        self._version = version
+
+    def render(self) -> Text:
+        width = self.size.width
+        category = (self._category or "General") + ":"
+        name_value = self._name or ""
+        if not name_value.strip():
+            name_value = self._raw_name or ""
+        prefix = f"{category}:"
+        if name_value.startswith(prefix):
+            name_value = name_value[len(prefix) :].lstrip()
+
+        version_value = f"v{self._version}" if self._version else "v?"
+
+        left_plain = f"{category} {name_value}"
+        right_plain = version_value
+        if width <= 0:
+            spacer = " "
+        else:
+            pad = width - len(left_plain) - len(right_plain)
+            spacer = " " * max(1, pad)
+
+        line = f"{left_plain}{spacer}{right_plain}"
+        text = Text(line)
+
+        category_start = 0
+        category_end = len(category)
+        name_start = len(category) + 1
+        name_end = name_start + len(name_value)
+        version_start = len(line) - len(right_plain)
+        version_end = len(line)
+
+        text.stylize(
+            self.get_component_rich_style("script_category"),
+            category_start,
+            category_end,
+        )
+        if name_value:
+            text.stylize(
+                self.get_component_rich_style("script_name"),
+                name_start,
+                name_end,
+            )
+        text.stylize(
+            self.get_component_rich_style("script_version"),
+            version_start,
+            version_end,
+        )
+        return text
+
+
 class ScriptItem(ListItem):
     def __init__(self, script: Script) -> None:
-        category, name = (
-            script.name.split(":", 1)
-            if ":" in script.name
-            else ("General", script.name)
+        category, name = self._split_name(script.name)
+        row = ScriptRow(
+            category=category,
+            name=name,
+            raw_name=script.name,
+            version=script.version,
         )
-        super().__init__(
-            Horizontal(
-                Label(f"{category}:", classes="script_category"),
-                Label(name, classes="script_name"),
-                Label(f"v{script.version}", classes="script_version"),
-                id="script_item",
-            )
-        )
+        super().__init__(row)
         self.script = script
+
+    @staticmethod
+    def _split_name(raw_name: str | None) -> tuple[str, str]:
+        if not raw_name:
+            return "General", "(unnamed)"
+        if ":" not in raw_name:
+            return "General", raw_name
+        category, name = raw_name.split(":", 1)
+        name = name.strip()
+        if not name:
+            return "General", raw_name
+        return category.strip() or "General", name
 
 
 class ScriptManager(ListView):

@@ -91,11 +91,11 @@ TopBar {
             background: $secondary;
         }
 
-        ListItem Horizontal {
+        ListItem .file_tree_row {
             color: $text-primary;
         }
 
-        ListItem.-highlight Horizontal {
+        ListItem.-highlight .file_tree_row {
             color: $text;
         }
 
@@ -120,7 +120,7 @@ TopBar {
 
         #file_list_container:focus-within {
             border: round $secondary-lighten-3;
-            background: transparent;
+            background-tint: white 2%;
         }
 
         #file_list {
@@ -137,21 +137,21 @@ TopBar {
         }
 
         .file_tree_header {
-            text-style: bold underline;
-        }
-
-        .file_tree_type_dir {
-            color: $text-primary;
             text-style: bold;
-        }
-
-        .file_tree_type_file {
-            color: $text-accent;
         }
 
         .file_tree_row {
             width: 100%;
             height: 1;
+        }
+
+        .file_tree_row.file_tree_type_dir {
+            color: $text-primary;
+            text-style: bold;
+        }
+
+        .file_tree_row.file_tree_type_file {
+            color: $text-accent;
         }
 
         .file_tree_name {
@@ -182,31 +182,31 @@ TopBar {
 
         #scripts_panel:focus {
             border: round $secondary-lighten-3;
-            background: transparent;
+            background-tint: white 2%;
         }
 
         #script_item {
             height: 1;
-            padding: 0 1;
+            padding: 0 1 0 1;
         }
 
-        .script_category {
+        ScriptRow > .script_category {
             color: $text-accent;
         }
 
-        ScriptItem.-highlight .script_category {
+        ScriptItem.-highlight ScriptRow > .script_category {
             color: $text;
         }
 
-        .script_name {
+        ScriptRow > .script_name {
             width: 1fr;
             background: transparent;
+            color: $text;
         }
 
-        .script_version {
+        ScriptRow > .script_version {
             color: $text;
-            text-style: italic;
-            opacity: 0.5;
+            text-style: italic dim; 
         }
 
         /* ============================================================================
@@ -216,7 +216,9 @@ TopBar {
             height: 1fr;
             border: round $secondary;
             border-title-align: right;
+            border-subtitle-align: left;
             color: $text;
+            background: $background;
         }
 
         #output_panel {
@@ -226,6 +228,7 @@ TopBar {
 
         #output_panel_container:focus {
             border: round $secondary-lighten-3;
+            background-tint: white 2%;
         }
     }
 
@@ -449,7 +452,7 @@ SelectionList .selection-list--button-highlighted {
 }
 
 #readme_modal{
-    max-width: 150;
+    max-width: 100;
     max-height: 50;
 }
 
@@ -544,6 +547,10 @@ TaskListScreen {
 .task_item_text {
     width: 1fr;
     layout: horizontal;
+    color: $text;
+}
+
+ListItem.-highlight .task_item_text {
     color: $text;
 }
 

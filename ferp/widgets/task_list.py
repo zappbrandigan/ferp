@@ -65,7 +65,7 @@ class TaskEditModal(ModalScreen[str | None]):
         area = self._area or self.query_one(Input)
         text = area.value.strip()
         if not text:
-            self._set_status("[red]Task text required[/red]")
+            self._set_status("[$warning]Task text required[/]")
             return
         self._set_status("")
         self.dismiss(text)
@@ -116,7 +116,7 @@ class TaskListItem(ListItem):
 
     def on_mount(self) -> None:
         self._text_widget.update(
-            self._render_text_markup(self._task_model, highlighted=False)
+            self._render_text_markup(self._task_model, highlighted=self._highlighted)
         )
         self._meta_widget.update(self._render_meta(self._task_model))
 
@@ -190,12 +190,17 @@ class TaskListScreen(ModalScreen[None]):
         Binding("escape", "close", "Close", show=True),
         Binding("q", "close", "Close", show=False),
         Binding("space", "toggle_task", "Toggle completion", show=True),
-        Binding("delete", "delete_task", "Delete task", show=True),
-        Binding("e", "edit_task", "Edit task", show=True),
-        Binding("t", "capture_task", "Add task", show=True),
+        Binding("t", "capture_task", "Add ", show=True),
+        Binding("e", "edit_task", "Edit", show=True),
+        Binding("delete", "delete_task", "Delete", show=True),
         Binding("j", "cursor_down", "Next", show=False),
         Binding("k", "cursor_up", "Previous", show=False),
-        Binding("C", "clear_completed", "Clear completed", show=True),
+        Binding("J", "cursor_down_fast", "Next (fast)", key_display="J", show=False),
+        Binding("K", "cursor_up_fast", "Previous (fast)", key_display="K", show=False),
+        Binding("g", "cursor_top", "Top", show=False),
+        Binding("G", "cursor_bottom", "Bottom", key_display="G", show=False),
+        Binding("c", "clear_completed", "Clear completed", show=True),
+        Binding("u", "unmark_completed", "Unmark all", show=True),
     ]
 
     def __init__(self, store: TaskStore, *, state_store: TaskListStateStore) -> None:
@@ -208,6 +213,7 @@ class TaskListScreen(ModalScreen[None]):
         self._index_assignment_token = 0
         self._filter_input: Input | None = None
         self._pending_focus_list = True
+        self._fast_cursor_step = 5
 
     def compose(self):
         placeholder = ListItem(
@@ -275,6 +281,8 @@ class TaskListScreen(ModalScreen[None]):
 
     def _refresh_task_list(self, *, focus_list: bool = True) -> None:
         list_view = self.query_one(ListView)
+        previous_index = list_view.index
+        previous_id = self._state_store.state.highlighted_task_id
 
         tasks = self._apply_tag_filter(self._store.sorted())
         if not tasks:
@@ -297,6 +305,9 @@ class TaskListScreen(ModalScreen[None]):
         if reusable_items is not None:
             for item, task in zip(reusable_items, tasks):
                 item.update_task(task)
+            if list_view.index is None:
+                target = self._resolve_target_index(tasks, previous_id, previous_index)
+                self._queue_index_assignment(list_view, target, focus_list=focus_list)
             if focus_list:
                 list_view.focus()
             return
@@ -306,7 +317,8 @@ class TaskListScreen(ModalScreen[None]):
         self._state_store.set_highlighted_task_id(None)
         for task in tasks:
             list_view.append(TaskListItem(task))
-        self._queue_index_assignment(list_view, 0, focus_list=focus_list)
+        target = self._resolve_target_index(tasks, previous_id, previous_index)
+        self._queue_index_assignment(list_view, target, focus_list=focus_list)
 
     def _selected_task(self) -> TodoTask | None:
         list_view = self.query_one(ListView)
@@ -341,6 +353,20 @@ class TaskListScreen(ModalScreen[None]):
                 return child
         return None
 
+    @staticmethod
+    def _resolve_target_index(
+        tasks: list[TodoTask],
+        previous_id: str | None,
+        previous_index: int | None,
+    ) -> int:
+        if previous_id:
+            for idx, task in enumerate(tasks):
+                if task.id == previous_id:
+                    return idx
+        if previous_index is not None:
+            return max(0, min(previous_index, len(tasks) - 1))
+        return 0
+
     def _queue_index_assignment(
         self, list_view: ListView, target: int | None, *, focus_list: bool = True
     ) -> None:
@@ -367,6 +393,33 @@ class TaskListScreen(ModalScreen[None]):
         if not self._has_selectable_items(list_view):
             return
         list_view.action_cursor_up()
+
+    def action_cursor_down_fast(self) -> None:
+        list_view = self.query_one(ListView)
+        if not self._has_selectable_items(list_view):
+            return
+        for _ in range(self._fast_cursor_step):
+            list_view.action_cursor_down()
+
+    def action_cursor_up_fast(self) -> None:
+        list_view = self.query_one(ListView)
+        if not self._has_selectable_items(list_view):
+            return
+        for _ in range(self._fast_cursor_step):
+            list_view.action_cursor_up()
+
+    def action_cursor_top(self) -> None:
+        list_view = self.query_one(ListView)
+        if not self._has_selectable_items(list_view):
+            return
+        list_view.index = 0
+        list_view.scroll_to(y=0)
+
+    def action_cursor_bottom(self) -> None:
+        list_view = self.query_one(ListView)
+        if not self._has_selectable_items(list_view):
+            return
+        list_view.index = len(list_view.children) - 1
 
     def _apply_index(self, list_view: ListView, target: int | None) -> None:
         children = list_view.children
@@ -442,6 +495,16 @@ class TaskListScreen(ModalScreen[None]):
                 self._store.clear_completed()
 
         self.app.push_screen(ConfirmDialog("Clear all completed tasks?"), after)
+
+    def action_unmark_completed(self) -> None:
+        if not any(task.completed for task in self._store.all()):
+            return
+
+        def after(choice: bool | None) -> None:
+            if choice:
+                self._store.unmark_completed()
+
+        self.app.push_screen(ConfirmDialog("Unmark all completed tasks?"), after)
 
     def action_close(self) -> None:
         self.dismiss(None)

@@ -17,7 +17,7 @@ from textual import on
 from textual.app import App, ComposeResult, SystemCommand
 from textual.binding import Binding
 from textual.command import CommandPalette
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.theme import Theme
@@ -64,12 +64,12 @@ from ferp.services.update_check import UpdateCheckResult, check_for_update
 from ferp.themes.themes import ALL_THEMES
 from ferp.widgets.dialogs import ConfirmDialog, InputDialog, SelectDialog
 from ferp.widgets.file_tree import (
-    FileListContainer,
     FileTree,
+    FileTreeContainer,
     FileTreeFilterWidget,
     FileTreeHeader,
 )
-from ferp.widgets.output_panel import ScriptOutputPanel
+from ferp.widgets.output_panel import OutputPanelContainer, ScriptOutputPanel
 from ferp.widgets.process_list import ProcessListScreen
 from ferp.widgets.readme_modal import ReadmeScreen
 from ferp.widgets.scripts import ScriptManager
@@ -103,7 +103,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "scriptNamespace": "",
     },
     "logs": {"maxFiles": 50, "maxAgeDays": 14},
-    "integrations": {"monday": {}},
+    "integrations": {},
 }
 
 
@@ -282,11 +282,14 @@ class Ferp(App):
         return self._resolve_start_path(None)
 
     def compose(self) -> ComposeResult:
-        output_panel = ScriptOutputPanel(state_store=self.state_store)
-        scroll_container = VerticalScroll(
+        output_panel = ScriptOutputPanel(
+            state_store=self.state_store,
+            initial_message=self._build_output_panel_message(),
+        )
+        scroll_container = OutputPanelContainer(
             output_panel, can_focus=True, id="output_panel_container", can_maximize=True
         )
-        scroll_container.border_title = "Process Output"
+        scroll_container.border_title = "Status"
         yield TopBar(
             app_title=Ferp.TITLE,
             app_version=__version__,
@@ -294,7 +297,11 @@ class Ferp(App):
         )
         with Vertical(id="app_main_container"):
             yield Horizontal(
-                self._build_file_list_container(),
+                FileTreeContainer(
+                    FileTreeHeader(id="file_list_header"),
+                    FileTree(id="file_list", state_store=self.file_tree_store),
+                    id="file_list_container",
+                ),
                 Vertical(
                     ScriptManager(
                         self._resolve_script_config_paths(),
@@ -312,14 +319,52 @@ class Ferp(App):
             )
         yield Footer(id="app_footer")
 
-    def _build_file_list_container(self) -> Vertical:
-        container = FileListContainer(
-            FileTreeHeader(id="file_list_header"),
-            FileTree(id="file_list", state_store=self.file_tree_store),
-            id="file_list_container",
+    def _refresh_output_panel_message(self) -> None:
+        try:
+            panel = self.query_one(ScriptOutputPanel)
+        except Exception:
+            return
+        panel.set_initial_message(self._build_output_panel_message())
+
+    def _build_output_panel_message(self) -> str:
+        preferences = self.settings.get("userPreferences", {})
+        theme = str(preferences.get("theme") or "default").strip() or "default"
+        startup_path = str(preferences.get("startupPath") or "").strip()
+        if not startup_path:
+            startup_path = str(self.resolve_startup_path())
+        namespace = str(preferences.get("scriptNamespace") or "").strip() or "default"
+
+        lines = [
+            "[bold $primary]User Preferences:[/]",
+            f"  [bold $text-accent]- Theme:[/] {theme}",
+            f"  [bold $text-accent]- Start Path:[/] {startup_path}",
+            f"  [bold $text-accent]- Namespace:[/] {namespace}",
+            "",
+            "[bold $primary]Integrations:[/]",
+        ]
+
+        integrations = self.settings.get("integrations")
+        if not isinstance(integrations, dict) or not integrations:
+            lines.append("  - None Configured")
+            return "\n".join(lines)
+
+        monday_settings = self._monday_settings() or {}
+        monday_board_id = str(monday_settings.get("boardId") or "").strip()
+        monday_token = self._monday_token()
+        monday_board_state = "set ✅" if monday_board_id else "missing ❌"
+        monday_token_state = "set ✅" if monday_token else "missing ❌"
+        lines.append(
+            f"  [bold $text-accent]- Monday:[/] boardId {monday_board_state}, apiToken {monday_token_state}"
         )
-        container.can_focus = True
-        return container
+
+        chrome_settings = integrations.get("chrome", {})
+        chrome_path = ""
+        if isinstance(chrome_settings, dict):
+            chrome_path = str(chrome_settings.get("path") or "").strip()
+        chrome_state = "set ✅" if chrome_path else "missing ❌"
+        lines.append(f"  [bold $text-accent]- Chrome:[/] path {chrome_state}")
+
+        return "\n".join(lines)
 
     def _resolve_script_config_paths(self) -> list[Path]:
         if not self._dev_config_enabled:
@@ -355,6 +400,7 @@ class Ferp(App):
 
     def on_theme_changed(self, theme: Theme) -> None:
         self.settings_store.update_theme(self.settings, theme.name)
+        self._refresh_output_panel_message()
 
     def _command_install_script_bundle(self) -> None:
         prompt = "Path to the script bundle (.ferp)"
@@ -461,6 +507,7 @@ class Ferp(App):
                 return
             self.settings_store.update_startup_path(self.settings, path)
             self.notify(f"Startup directory updated: {path}", timeout=3)
+            self._refresh_output_panel_message()
 
         self.push_screen(InputDialog(prompt, default=default_value), after)
 
@@ -525,6 +572,7 @@ class Ferp(App):
                 self._set_monday_token(token_value)
                 self.settings_store.save(self.settings)
                 start_sync(token_value, board_id)
+                self._refresh_output_panel_message()
 
             self.push_screen(InputDialog(prompt), after)
 
@@ -552,6 +600,7 @@ class Ferp(App):
                 self.call_after_refresh(
                     lambda: prompt_for_token_and_sync(board_id_value_local)
                 )
+                self._refresh_output_panel_message()
 
             self.push_screen(InputDialog(prompt), after)
             return
@@ -618,6 +667,7 @@ class Ferp(App):
                 title="Monday Config",
                 timeout=3,
             )
+            self._refresh_output_panel_message()
 
         self.push_screen(InputDialog(prompt), after)
 
@@ -633,6 +683,7 @@ class Ferp(App):
             self._set_monday_token(token_value)
             self.settings_store.save(self.settings)
             self.notify("Monday API token updated.", title="Monday Config", timeout=3)
+            self._refresh_output_panel_message()
 
         self.push_screen(InputDialog(prompt), after)
 
@@ -1032,6 +1083,7 @@ class Ferp(App):
             self.settings_store.update_script_namespace(
                 self.settings, namespace.strip()
             )
+            self._refresh_output_panel_message()
 
         summary = "Default scripts updated."
         if release_version:
@@ -1319,7 +1371,7 @@ class Ferp(App):
         if focused is None:
             return
         candidate = focused
-        while candidate is not None and not candidate.allow_maximize:
+        while candidate is not None and not getattr(candidate, "allow_maximize", False):
             candidate = candidate.parent
         if candidate is None:
             return
@@ -1330,7 +1382,8 @@ class Ferp(App):
                 candidate.focus()
             except Exception:
                 return
-        screen.action_maximize()
+
+        screen.maximize(candidate, container=True)
         if restore_focus is not None:
             try:
                 restore_focus.focus()

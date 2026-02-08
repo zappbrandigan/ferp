@@ -63,14 +63,7 @@ class TopBar(Container):
         if not self.current_path:
             self.status_label.update("")
             return
-
-        status = {
-            "ready": f"[dim]Ready - [/dim]{self.current_path}",
-            "running": f"[$foreground]Running[/] - {self.current_path}",
-        }
-        self.status_label.update(
-            status["ready"] if self.status == "Ready" else status["running"]
-        )
+        self.status_label.update(f"[dim]{self.current_path}[/dim]")
 
     def _update_cache_status(self) -> None:
         if self.cache_updated_at == EPOCH:

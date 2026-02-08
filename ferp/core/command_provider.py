@@ -111,7 +111,12 @@ class FerpCombinedCommandProvider(Provider):
     async def discover(self) -> AsyncGenerator[DiscoveryHit | Hit, None]:
         for provider in self._providers:
             async for hit in provider.discover():
-                yield hit
+                if hit.prompt not in [
+                    "Add Script Bundle",
+                    "Set Monday API Token",
+                    "Set Monday Board ID",
+                ]:
+                    yield hit
 
     async def search(self, query: str) -> AsyncGenerator[DiscoveryHit | Hit, None]:
         for provider in self._providers:

@@ -58,7 +58,7 @@ class TaskCaptureModal(ModalScreen[None]):
         self._on_submit(text)
         area.value = ""
         if self._status:
-            self._status.update("[green]Task saved[/]")
+            self._status.update("[$success]Task saved[/]")
         if self._clear_timer:
             self._clear_timer.stop()
         self._clear_timer = self.set_timer(1.5, self._clear_status)
