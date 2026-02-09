@@ -366,6 +366,22 @@ class Ferp(App):
 
         return "\n".join(lines)
 
+    def _set_main_controls_disabled(self, disabled: bool) -> None:
+        script_manager = self.query_one(ScriptManager)
+        script_manager.disabled = disabled
+        if disabled:
+            script_manager.add_class("dimmed")
+        else:
+            script_manager.remove_class("dimmed")
+
+        file_tree = self.query_one(FileTree)
+        file_tree_container = self.query_one("#file_list_container")
+        file_tree.disabled = disabled
+        if disabled:
+            file_tree_container.add_class("dimmed")
+        else:
+            file_tree_container.remove_class("dimmed")
+
     def _resolve_script_config_paths(self) -> list[Path]:
         if not self._dev_config_enabled:
             return [self._paths.config_file]
@@ -622,6 +638,7 @@ class Ferp(App):
                 )
                 return
             self.notify("Upgrading FERP via pipx...", timeout=5)
+            self._set_main_controls_disabled(True)
             self.run_worker(
                 lambda: self._upgrade_app(pipx_path),
                 group="app_upgrade",
@@ -1072,6 +1089,7 @@ class Ferp(App):
                 severity="error",
                 timeout=4,
             )
+            self._set_main_controls_disabled(False)
             return
         config_path = payload.get("config_path", "")
         release_status = payload.get("release_status", "")
@@ -1098,6 +1116,7 @@ class Ferp(App):
 
         scripts_panel = self.query_one(ScriptManager)
         scripts_panel.load_scripts()
+        self._set_main_controls_disabled(False)
 
     def _prompt_default_scripts_namespace(self, options: list[str]) -> None:
         prompt = "Select a namespace to install"
@@ -1116,6 +1135,7 @@ class Ferp(App):
                 self.notify("Updating default scripts (dry run)...", timeout=5)
             else:
                 self.notify("Updating default scripts...", timeout=5)
+            self._set_main_controls_disabled(True)
             self.run_worker(
                 lambda ns=namespace: self._install_default_scripts(ns),
                 group="default_scripts_update",
@@ -1466,6 +1486,8 @@ class Ferp(App):
                 result = worker.result
                 if isinstance(result, dict):
                     self._render_default_scripts_update(result)
+                else:
+                    self._set_main_controls_disabled(False)
             elif event.state is WorkerState.ERROR:
                 error = worker.error or RuntimeError("Default script update failed.")
                 self.notify(
@@ -1473,6 +1495,7 @@ class Ferp(App):
                     severity="error",
                     timeout=4,
                 )
+                self._set_main_controls_disabled(False)
             return
         if worker.group == "app_upgrade":
             if event.state is WorkerState.SUCCESS:
@@ -1488,6 +1511,7 @@ class Ferp(App):
                             else "FERP is already up to date."
                         )
                         self.notify(message, timeout=5)
+                        self._set_main_controls_disabled(False)
                         return
                     check_error = result.get("check_error")
                     if check_error:
@@ -1511,9 +1535,13 @@ class Ferp(App):
                             else f"Upgrade failed{detail}."
                         )
                         self.notify(message, severity="error", timeout=6)
+                        self._set_main_controls_disabled(False)
+                else:
+                    self._set_main_controls_disabled(False)
             elif event.state is WorkerState.ERROR:
                 error = worker.error or RuntimeError("Upgrade failed.")
                 self.notify(f"Upgrade failed: {error}", severity="error", timeout=6)
+                self._set_main_controls_disabled(False)
             return
         if worker.group == "delete_path":
             if event.state is WorkerState.SUCCESS:
