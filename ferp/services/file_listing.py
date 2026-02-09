@@ -50,11 +50,32 @@ def _sort_key(entry: os.DirEntry[str]) -> tuple[int, str]:
 
 def snapshot_directory(path: Path) -> tuple[str, ...]:
     try:
-        stat_result = path.stat()
+        with os.scandir(path) as scan:
+            entries = []
+            for entry in scan:
+                entry_path = Path(entry.path)
+                if _should_skip_entry(entry_path, path):
+                    continue
+                entries.append(entry)
     except OSError:
         return tuple()
-    signature = f"{stat_result.st_mtime_ns}:{stat_result.st_size}:{stat_result.st_ino}"
-    return (signature,)
+
+    signatures: list[str] = []
+    for entry in sorted(entries, key=_sort_key):
+        try:
+            stat_result = entry.stat(follow_symlinks=False)
+            is_dir = entry.is_dir(follow_symlinks=False)
+        except OSError:
+            continue
+        signature = (
+            f"{entry.name}:"
+            f"{int(is_dir)}:"
+            f"{stat_result.st_mtime_ns}:"
+            f"{stat_result.st_size}:"
+            f"{stat_result.st_ino}"
+        )
+        signatures.append(signature)
+    return tuple(signatures)
 
 
 def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
@@ -85,6 +106,8 @@ def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
 def _should_skip_entry(entry: Path, directory: Path) -> bool:
     name = entry.name
     if name.startswith("."):
+        return True
+    if sys.platform == "win32" and name.startswith("~$"):
         return True
     if name.casefold() == "desktop.ini":
         return True

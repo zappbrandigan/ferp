@@ -4,8 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Callable
 
-
-_SKIP_FILE_PREFIXES = ("._", "~$")
+_SKIP_FILE_PREFIXES = (".", "~$")
 
 
 def collect_files(
@@ -14,11 +13,12 @@ def collect_files(
     recursive: bool,
     *,
     check_cancel: Callable[[], None] | None = None,
+    case_sensitive: bool = False,
 ) -> list[Path]:
     """Collect files matching pattern from a root file or directory.
 
     When recursive is enabled, skips any paths under directories that start with "_".
-    Skips files with common placeholder prefixes (e.g., "._", "~$").
+    Skips files with common placeholder prefixes (e.g., ".", "~$").
     """
     if root.is_file():
         if root.name.startswith(_SKIP_FILE_PREFIXES):
@@ -26,7 +26,7 @@ def collect_files(
         return [root]
     if recursive:
         files: list[Path] = []
-        for path in root.rglob(pattern):
+        for path in root.rglob(pattern, case_sensitive=case_sensitive):
             if check_cancel is not None:
                 check_cancel()
             if (
