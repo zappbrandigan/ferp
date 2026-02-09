@@ -171,6 +171,10 @@ class FileItem(ListItem):
         if isinstance(parent, FileTree):
             parent._activate_item(self)
 
+    def render(self) -> Text:
+        # Prevent fallback ListItem text (e.g., "FileItem.item_file") during refresh.
+        return Text("")
+
 
 class ChunkNavigatorItem(ListItem):
     """Interactive row to navigate between file list chunks."""
