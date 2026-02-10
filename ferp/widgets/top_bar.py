@@ -63,7 +63,7 @@ class TopBar(Container):
         if not self.current_path:
             self.status_label.update("")
             return
-        self.status_label.update(f"[dim]{self.current_path}[/dim]")
+        self.status_label.update(f"{self.current_path}")
 
     def _update_cache_status(self) -> None:
         if self.cache_updated_at == EPOCH:

@@ -63,17 +63,10 @@ def snapshot_directory(path: Path) -> tuple[str, ...]:
     signatures: list[str] = []
     for entry in sorted(entries, key=_sort_key):
         try:
-            stat_result = entry.stat(follow_symlinks=False)
             is_dir = entry.is_dir(follow_symlinks=False)
         except OSError:
             continue
-        signature = (
-            f"{entry.name}:"
-            f"{int(is_dir)}:"
-            f"{stat_result.st_mtime_ns}:"
-            f"{stat_result.st_size}:"
-            f"{stat_result.st_ino}"
-        )
+        signature = f"{entry.name}:{int(is_dir)}"
         signatures.append(signature)
     return tuple(signatures)
 

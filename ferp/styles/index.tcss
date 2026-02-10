@@ -120,7 +120,7 @@ TopBar {
 
         #file_list_container:focus-within {
             border: round $secondary-lighten-3;
-            background-tint: white 2%;
+            background-tint: $foreground 3%;
         }
 
         #file_list {
@@ -182,7 +182,7 @@ TopBar {
 
         #scripts_panel:focus {
             border: round $secondary-lighten-3;
-            background-tint: white 2%;
+            background-tint: $foreground 3%;
         }
 
         #script_item {
@@ -228,7 +228,7 @@ TopBar {
 
         #output_panel_container:focus {
             border: round $secondary-lighten-3;
-            background-tint: white 2%;
+            background-tint: $foreground 3%;
         }
     }
 
@@ -642,4 +642,10 @@ ListItem.-highlight .task_item_text {
 .process_row.-highlight .process_row_title,
 .process_row.-highlight .process_row_meta {
     color: $text;
+}
+
+.item_loading {
+    height: 1fr;
+    width: 100%;
+    color: $primary;
 }
