@@ -336,16 +336,16 @@ class Ferp(App):
 
         lines = [
             "[bold $primary]User Preferences:[/]",
-            f"  [bold $text-accent]- Theme:[/] {theme}",
-            f"  [bold $text-accent]- Start Path:[/] {startup_path}",
-            f"  [bold $text-accent]- Namespace:[/] {namespace}",
+            f"  [bold $text-accent]Theme:[/] {theme}",
+            f"  [bold $text-accent]Start Path:[/] {startup_path}",
+            f"  [bold $text-accent]Namespace:[/] {namespace}",
             "",
             "[bold $primary]Integrations:[/]",
         ]
 
         integrations = self.settings.get("integrations")
         if not isinstance(integrations, dict) or not integrations:
-            lines.append("  - None Configured")
+            lines.append("  None Configured")
             return "\n".join(lines)
 
         monday_settings = self._monday_settings() or {}
@@ -354,7 +354,7 @@ class Ferp(App):
         monday_board_state = "set ✅" if monday_board_id else "missing ❌"
         monday_token_state = "set ✅" if monday_token else "missing ❌"
         lines.append(
-            f"  [bold $text-accent]- Monday:[/] boardId {monday_board_state}, apiToken {monday_token_state}"
+            f"  [bold $text-accent]Monday:[/] boardId {monday_board_state}, apiToken {monday_token_state}"
         )
 
         chrome_settings = integrations.get("chrome", {})
@@ -362,7 +362,7 @@ class Ferp(App):
         if isinstance(chrome_settings, dict):
             chrome_path = str(chrome_settings.get("path") or "").strip()
         chrome_state = "set ✅" if chrome_path else "missing ❌"
-        lines.append(f"  [bold $text-accent]- Chrome:[/] path {chrome_state}")
+        lines.append(f"  [bold $text-accent]Chrome:[/] path {chrome_state}")
 
         return "\n".join(lines)
 
@@ -1168,7 +1168,7 @@ class Ferp(App):
             f"\nGroups {group_count}\nPublishers {publisher_count}\nSkipped {skipped}"
         )
         title = (
-            f"Synced: ({escape(str(board_name))})"
+            f"Synced: {escape(str(board_name))}"
             if board_name
             else "Monday sync updated"
         )
