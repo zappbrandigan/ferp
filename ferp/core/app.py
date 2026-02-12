@@ -187,6 +187,12 @@ class Ferp(App):
             refresh_callback=self._refresh_listing_from_watcher,
             missing_callback=self._handle_missing_directory,
             snapshot_func=snapshot_directory,
+            worker_factory=lambda fn: self.run_worker(
+                fn,
+                group="watcher_snapshot",
+                thread=True,
+                exclusive=True,
+            ),
             timer_factory=self.set_timer,
         )
         self.script_controller = ScriptLifecycleController(self)
@@ -1435,6 +1441,17 @@ class Ferp(App):
                 file_tree = self.query_one(FileTree)
                 file_tree.show_error(self.current_path, str(error))
                 self._finalize_directory_listing()
+            return
+        if worker.group == "watcher_snapshot":
+            watcher = self._file_tree_watcher
+            if watcher is None:
+                return
+            if event.state is WorkerState.SUCCESS:
+                result = worker.result
+                if result is not None:
+                    watcher.handle_snapshot_result(result)
+            elif event.state is WorkerState.ERROR:
+                watcher.handle_snapshot_error()
             return
         if worker.group == "update_check":
             if event.state is WorkerState.SUCCESS:

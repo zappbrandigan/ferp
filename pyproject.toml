@@ -55,4 +55,4 @@ dev = [
 version = { attr = "ferp.__version__.__version__" }
 
 [tool.setuptools.package-data]
-ferp = ["styles/*.tcss", "fscp/protocol/schemas/**/*.json"]
+ferp = ["styles/*.tcss", "fscp/protocol/schemas/**/*.json", "resources/USERS_GUIDE.md"]

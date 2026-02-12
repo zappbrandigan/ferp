@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
@@ -11,6 +12,13 @@ if TYPE_CHECKING:
     from watchdog.observers import Observer as WatchdogObserver
 else:
     from watchdog.observers import Observer as WatchdogObserver
+
+
+@dataclass(frozen=True)
+class SnapshotResult:
+    directory: Path
+    exists: bool
+    signature: tuple[str, ...] | None
 
 
 class DirectoryChangeHandler(FileSystemEventHandler):
@@ -33,6 +41,7 @@ class FileTreeWatcher:
         refresh_callback: Callable[[], None],
         missing_callback: Callable[[Path], None] | None = None,
         snapshot_func: Callable[[Path], tuple[str, ...]],
+        worker_factory: Callable[[Callable[[], SnapshotResult]], object],
         timer_factory: Callable[[float, Callable[[], None]], Timer],
         debounce_seconds: float = 2.0,
     ) -> None:
@@ -40,6 +49,7 @@ class FileTreeWatcher:
         self._refresh_callback = refresh_callback
         self._missing_callback = missing_callback
         self._snapshot_func = snapshot_func
+        self._worker_factory = worker_factory
         self._timer_factory = timer_factory
         self._debounce_seconds = debounce_seconds
 
@@ -49,6 +59,8 @@ class FileTreeWatcher:
         self._current_directory: Path | None = None
         self._refresh_timer: Timer | None = None
         self._last_snapshot: tuple[str, ...] | None = None
+        self._snapshot_inflight = False
+        self._pending_refresh = False
 
     def start(self, directory: Path) -> None:
         """Ensure the watcher is running and observing the provided directory."""
@@ -121,24 +133,62 @@ class FileTreeWatcher:
 
     def _queue_refresh(self) -> None:
         if self._refresh_timer is not None:
-            return
+            self._refresh_timer.stop()
+            self._refresh_timer = None
         self._refresh_timer = self._timer_factory(
             self._debounce_seconds, self._complete_refresh
         )
 
     def _complete_refresh(self) -> None:
         self._refresh_timer = None
+        if self._snapshot_inflight:
+            self._pending_refresh = True
+            return
+
         directory = self._current_directory
-        if directory is None or not directory.exists():
-            if directory is not None and self._missing_callback is not None:
-                self._missing_callback(directory)
+        if directory is None:
             return
 
-        signature = self._snapshot_func(directory)
-        if signature == self._last_snapshot:
+        self._snapshot_inflight = True
+        self._worker_factory(lambda target=directory: self._snapshot_worker(target))
+
+    def _snapshot_worker(self, target: Path) -> SnapshotResult:
+        exists = target.exists()
+        signature: tuple[str, ...] | None
+        if not exists:
+            signature = None
+        else:
+            try:
+                signature = self._snapshot_func(target)
+            except Exception:
+                signature = tuple()
+        return SnapshotResult(target, exists, signature)
+
+    def handle_snapshot_result(self, result: SnapshotResult) -> None:
+        self._snapshot_inflight = False
+
+        if result.directory != self._current_directory:
+            if self._pending_refresh:
+                self._pending_refresh = False
+                self._queue_refresh()
             return
 
-        self._refresh_callback()
+        if not result.exists:
+            if self._missing_callback is not None:
+                self._missing_callback(result.directory)
+        else:
+            if result.signature != self._last_snapshot:
+                self._refresh_callback()
+
+        if self._pending_refresh:
+            self._pending_refresh = False
+            self._queue_refresh()
+
+    def handle_snapshot_error(self) -> None:
+        self._snapshot_inflight = False
+        if self._pending_refresh:
+            self._pending_refresh = False
+            self._queue_refresh()
 
     def _notify_from_thread(self) -> None:
         self._call_from_thread(self._queue_refresh)
