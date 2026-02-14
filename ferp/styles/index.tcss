@@ -19,7 +19,7 @@ Button {
     border: inner $error-darken-2;
 }
 
-Input .input--cursor {
+Input .input--cursor, #prompt_textarea .text-area--cursor {
     background: transparent;
     color: $text-muted;
     opacity: 0.6;
@@ -30,6 +30,15 @@ Input .input--cursor {
     color: $text-muted; 
     opacity: 0.6;
     text-style: italic;
+}
+
+#prompt_textarea {
+    margin-top: 1;
+    height: 10;
+}
+
+#prompt_textarea:focus {
+    border: tall $secondary;
 }
 
 

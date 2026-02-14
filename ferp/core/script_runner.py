@@ -116,6 +116,7 @@ class ScriptInputRequest:
     fields: list[dict[str, Any]] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
     show_text_input: bool = True
+    text_input_style: Literal["single_line", "multiline"] = "single_line"
 
 
 @dataclass(frozen=True)
@@ -401,6 +402,9 @@ class ScriptRunner:
                 show_text_input = payload.get("show_text_input", True)
                 if not isinstance(show_text_input, bool):
                     show_text_input = True
+                text_input_style = payload.get("text_input_style", "single_line")
+                if text_input_style not in {"single_line", "multiline"}:
+                    text_input_style = "single_line"
                 return ScriptInputRequest(
                     id=str(raw_id),
                     prompt=str(payload.get("prompt", "")),
@@ -410,6 +414,7 @@ class ScriptRunner:
                     fields=fields,
                     suggestions=suggestions,
                     show_text_input=show_text_input,
+                    text_input_style=text_input_style,
                 )
 
         raise RuntimeError("FSCP host entered input state without payload.")

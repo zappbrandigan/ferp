@@ -9,7 +9,7 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.suggester import SuggestFromList
 from textual.widget import Widget
-from textual.widgets import Button, Checkbox, Input, Label, SelectionList
+from textual.widgets import Button, Checkbox, Input, Label, SelectionList, TextArea
 
 
 @dataclass(frozen=True)
@@ -114,6 +114,7 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
         boolean_fields: Iterable[BooleanField] | None = None,
         selection_fields: Iterable[SelectionField] | None = None,
         show_text_input: bool = True,
+        text_input_style: str = "single_line",
     ) -> None:
         super().__init__(id=id)
         self._message = message
@@ -122,19 +123,31 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
         self._bool_fields = list(boolean_fields or [])
         self._selection_fields = list(selection_fields or [])
         self._show_text_input = show_text_input
+        self._text_input_style = text_input_style
 
     def compose(self) -> ComposeResult:
         contents: list[Widget] = [Label(self._message, id="dialog_message")]
         if self._show_text_input:
-            suggester = None
-            if self._suggestions:
-                suggester = SuggestFromList(
-                    self._suggestions,
-                    case_sensitive=False,
+            if self._text_input_style == "multiline":
+                text_area = TextArea(
+                    self._default,
+                    id="prompt_textarea",
                 )
-            contents.append(
-                Input(value=self._default, id="prompt_input", suggester=suggester)
-            )
+                if hasattr(text_area, "placeholder"):
+                    text_area.placeholder = (
+                        "Enter one query per line. Use /regex/ for regex."
+                    )
+                contents.append(text_area)
+            else:
+                suggester = None
+                if self._suggestions:
+                    suggester = SuggestFromList(
+                        self._suggestions,
+                        case_sensitive=False,
+                    )
+                contents.append(
+                    Input(value=self._default, id="prompt_input", suggester=suggester)
+                )
         for field in self._selection_fields:
             contents.append(
                 Label(
@@ -171,7 +184,10 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
 
     def on_mount(self) -> None:
         if self._show_text_input:
-            self.query_one(Input).focus()
+            if self._text_input_style == "multiline":
+                self.query_one(TextArea).focus()
+            else:
+                self.query_one(Input).focus()
         for field in self._selection_fields:
             selection_list = self.query_one(f"#{field.id}", SelectionList)
             if field.values:
@@ -198,7 +214,13 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
     def _collect_state(self) -> dict[str, str | bool | list[str]]:
         state: dict[str, str | bool | list[str]] = {}
         if self._show_text_input:
-            state["value"] = self.query_one(Input).value.strip()
+            if self._text_input_style == "multiline":
+                widget = self.query_one(TextArea)
+                state["value"] = str(
+                    getattr(widget, "text", getattr(widget, "value", ""))
+                ).strip()
+            else:
+                state["value"] = self.query_one(Input).value.strip()
         else:
             state["value"] = ""
         for field in self._bool_fields:

@@ -16,6 +16,7 @@
             "secret": { "type": "boolean" },
             "mode": { "enum": ["input", "confirm"] },
             "show_text_input": { "type": "boolean" },
+            "text_input_style": { "enum": ["single_line", "multiline"] },
             "suggestions": {
               "type": "array",
               "items": { "type": "string" }

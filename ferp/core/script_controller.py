@@ -283,6 +283,7 @@ class ScriptLifecycleController:
             boolean_fields=bool_fields,
             selection_fields=selection_fields,
             show_text_input=request.show_text_input,
+            text_input_style=request.text_input_style,
             id="prompt_dialog",
         )
 

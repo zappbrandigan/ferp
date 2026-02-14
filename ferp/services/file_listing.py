@@ -98,9 +98,7 @@ def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
 
 def _should_skip_entry(entry: Path, directory: Path) -> bool:
     name = entry.name
-    if name.startswith("."):
-        return True
-    if sys.platform == "win32" and name.startswith("~$"):
+    if name.startswith((".", "~$")):
         return True
     if name.casefold() == "desktop.ini":
         return True

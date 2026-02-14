@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -61,6 +62,8 @@ class FileTreeWatcher:
         self._last_snapshot: tuple[str, ...] | None = None
         self._snapshot_inflight = False
         self._pending_refresh = False
+        self._notify_lock = threading.Lock()
+        self._notify_pending = False
 
     def start(self, directory: Path) -> None:
         """Ensure the watcher is running and observing the provided directory."""
@@ -191,4 +194,21 @@ class FileTreeWatcher:
             self._queue_refresh()
 
     def _notify_from_thread(self) -> None:
-        self._call_from_thread(self._queue_refresh)
+        with self._notify_lock:
+            if self._notify_pending:
+                return
+            self._notify_pending = True
+
+        def _queue_and_release() -> None:
+            try:
+                self._queue_refresh()
+            finally:
+                with self._notify_lock:
+                    self._notify_pending = False
+
+        try:
+            self._call_from_thread(_queue_and_release)
+        except Exception:
+            with self._notify_lock:
+                self._notify_pending = False
+            raise

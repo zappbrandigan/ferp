@@ -169,6 +169,7 @@ class ScriptAPI:
         fields: Sequence[Mapping[str, Any]] | None = None,
         suggestions: Sequence[str] | None = None,
         show_text_input: bool | None = None,
+        text_input_style: Literal["single_line", "multiline"] | None = None,
     ) -> str:
         self._ensure_running()
         request_id = id or f"input-{next(self._request_counter)}"
@@ -187,6 +188,8 @@ class ScriptAPI:
             request["suggestions"] = list(suggestions)
         if show_text_input is not None:
             request["show_text_input"] = show_text_input
+        if text_input_style is not None:
+            request["text_input_style"] = text_input_style
 
         self._transport.send(MessageType.REQUEST_INPUT, request)
         return self._transport.wait_for_input(request_id)
@@ -202,6 +205,7 @@ class ScriptAPI:
         fields: Sequence[BoolField | MultiSelectField] | None = None,
         suggestions: Sequence[str] | None = None,
         show_text_input: bool | None = None,
+        text_input_style: Literal["single_line", "multiline"] | None = None,
     ) -> Dict[str, str | bool | list[str]]: ...
 
     @overload
@@ -215,6 +219,7 @@ class ScriptAPI:
         fields: Sequence[BoolField | MultiSelectField] | None = None,
         suggestions: Sequence[str] | None = None,
         show_text_input: bool | None = None,
+        text_input_style: Literal["single_line", "multiline"] | None = None,
         payload_type: type[_InputPayloadT],
     ) -> _InputPayloadT: ...
 
@@ -228,6 +233,7 @@ class ScriptAPI:
         fields: Sequence[BoolField | MultiSelectField] | None = None,
         suggestions: Sequence[str] | None = None,
         show_text_input: bool | None = None,
+        text_input_style: Literal["single_line", "multiline"] | None = None,
         payload_type: type[_InputPayloadT] | None = None,
     ) -> Dict[str, str | bool | list[str]] | _InputPayloadT:
         if fields:
@@ -241,6 +247,7 @@ class ScriptAPI:
             fields=fields,
             suggestions=suggestions,
             show_text_input=show_text_input,
+            text_input_style=text_input_style,
         )
         payload = json.loads(raw)
         if not isinstance(payload, dict):
