@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
+_BUMP_ORDER = {"patch": 0, "minor": 1, "major": 2}
 
 
 def _parse_semver(value: str) -> tuple[int, int, int]:
@@ -79,6 +80,20 @@ def _load_config_paths(root: Path) -> list[Path]:
     return config_paths
 
 
+def _namespace_id_for_config(path: Path, root: Path) -> str:
+    if path.parent == root:
+        return "core"
+    return path.parent.name
+
+
+def _merge_bump(current: str | None, incoming: str) -> str:
+    if current is None:
+        return incoming
+    if _BUMP_ORDER.get(incoming, 0) > _BUMP_ORDER.get(current, 0):
+        return incoming
+    return current
+
+
 def _release_notes(changes: list[dict]) -> str:
     lines = ["## Script updates", ""]
     for change in changes:
@@ -146,6 +161,7 @@ def main() -> int:
 
     changes: list[dict] = []
     bumped_paths: set[Path] = set()
+    namespace_bumps: dict[str, str] = {}
     for script_id, bump in args.bump:
         resolved = scripts_by_id.get(script_id)
         if not resolved:
@@ -162,6 +178,11 @@ def main() -> int:
             return 2
         entry["version"] = new_version
         bumped_paths.add(config_path)
+        namespace_id = _namespace_id_for_config(config_path, submodule_root)
+        bump_level = bump if bump in _BUMP_ORDER else "patch"
+        namespace_bumps[namespace_id] = _merge_bump(
+            namespace_bumps.get(namespace_id), bump_level
+        )
         changes.append(
             {
                 "id": script_id,
@@ -189,6 +210,23 @@ def main() -> int:
     if not bumped_paths:
         print("No config files updated.", file=sys.stderr)
         return 2
+
+    if namespace_bumps:
+        for config_path in bumped_paths:
+            data, _scripts = configs[config_path]
+            namespace_id = _namespace_id_for_config(config_path, submodule_root)
+            bump_level = namespace_bumps.get(namespace_id)
+            if not bump_level:
+                continue
+            current_version = str(data.get("version") or "").strip()
+            base_version = current_version or "0.0.0"
+            try:
+                new_version = _bump_version(base_version, bump_level)
+            except ValueError:
+                new_version = "0.0.1"
+            if new_version != current_version:
+                data["version"] = new_version
+
     for path in bumped_paths:
         data, _scripts = configs[path]
         path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

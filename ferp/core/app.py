@@ -56,6 +56,8 @@ from ferp.services.file_listing import (
 )
 from ferp.services.monday import sync_monday_board
 from ferp.services.releases import (
+    ScriptUpdateResult,
+    check_for_script_updates,
     fetch_namespace_index,
     update_scripts_from_namespace_release,
 )
@@ -101,6 +103,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "theme": "slate-copper",
         "startupPath": str(Path().home()),
         "scriptNamespace": "",
+        "scriptVersions": {"core": "", "namespaces": {}},
     },
     "logs": {"maxFiles": 50, "maxAgeDays": 14},
     "integrations": {},
@@ -724,6 +727,27 @@ class Ferp(App):
             thread=True,
         )
 
+    def _check_for_script_updates(self) -> None:
+        namespace = self._active_namespace()
+        if not namespace:
+            return
+        stored_core, stored_namespaces = self._script_versions()
+        stored_namespace = stored_namespaces.get(namespace)
+        cache_path = self._paths.cache_dir / "scripts_update_check.json"
+        self.run_worker(
+            lambda: check_for_script_updates(
+                SCRIPTS_REPO_URL,
+                cache_path,
+                ttl_seconds=2 * 60 * 60,
+                namespace=namespace,
+                stored_core=stored_core,
+                stored_namespace=stored_namespace,
+            ),
+            group="script_update_check",
+            exclusive=True,
+            thread=True,
+        )
+
     def _fetch_default_script_namespaces(self) -> dict[str, object]:
         try:
             release_version, index_payload = fetch_namespace_index(SCRIPTS_REPO_URL)
@@ -748,7 +772,7 @@ class Ferp(App):
     def _install_default_scripts(self, namespace: str) -> dict[str, str | bool]:
         try:
             dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
-            release_version = update_scripts_from_namespace_release(
+            release_version, version_info = update_scripts_from_namespace_release(
                 SCRIPTS_REPO_URL,
                 self.scripts_dir,
                 namespace=namespace,
@@ -794,6 +818,16 @@ class Ferp(App):
                 self._paths.config_file, python_executable=sys.executable
             )
             dependency_manager.install_for_scripts()
+            if version_info.core_version or version_info.namespace_versions.get(
+                namespace
+            ):
+                self.settings_store.update_script_versions(
+                    self.settings,
+                    core_version=version_info.core_version,
+                    namespace=namespace,
+                    namespace_version=version_info.namespace_versions.get(namespace),
+                )
+                self._refresh_output_panel_message()
         except Exception as exc:
             return {
                 "error": str(exc),
@@ -1021,6 +1055,22 @@ class Ferp(App):
         preferences = self.settings.get("userPreferences", {})
         namespace = str(preferences.get("scriptNamespace") or "").strip()
         return namespace or None
+
+    def _script_versions(self) -> tuple[str | None, dict[str, str]]:
+        preferences = self.settings.get("userPreferences", {})
+        versions = preferences.get("scriptVersions", {})
+        if not isinstance(versions, dict):
+            return None, {}
+        core_version = str(versions.get("core") or "").strip() or None
+        namespaces = versions.get("namespaces", {})
+        namespace_versions: dict[str, str] = {}
+        if isinstance(namespaces, dict):
+            for key, value in namespaces.items():
+                key_text = str(key).strip()
+                version = str(value or "").strip()
+                if key_text and version:
+                    namespace_versions[key_text] = version
+        return core_version, namespace_versions
 
     def _monday_settings(self) -> dict[str, Any] | None:
         integrations = self.settings.get("integrations", {})
@@ -1462,6 +1512,42 @@ class Ferp(App):
                     and result.is_update
                 ):
                     self.notify("A new verion of FERP is avaiable.", timeout=6)
+            if event.state in (WorkerState.SUCCESS, WorkerState.ERROR):
+                self._check_for_script_updates()
+            return
+        if worker.group == "script_update_check":
+            if event.state is WorkerState.SUCCESS:
+                result = worker.result
+                if isinstance(result, ScriptUpdateResult):
+                    if result.ok and result.is_update:
+                        details: list[str] = []
+                        if result.core_update:
+                            details.append("core bundle")
+                        if result.namespace_update:
+                            details.append(result.namespace)
+                        suffix = ", ".join(details)
+                        message = (
+                            f"Default scripts update available ({suffix})."
+                            if suffix
+                            else "Default scripts update available."
+                        )
+                        self.notify(message, timeout=6)
+                    if result.ok:
+                        if result.stored_core is None and result.latest_core:
+                            self.settings_store.update_script_versions(
+                                self.settings,
+                                core_version=result.latest_core,
+                            )
+                        if (
+                            result.stored_namespace is None
+                            and result.latest_namespace
+                            and result.namespace
+                        ):
+                            self.settings_store.update_script_versions(
+                                self.settings,
+                                namespace=result.namespace,
+                                namespace_version=result.latest_namespace,
+                            )
             return
         if self.bundle_installer.handle_worker_state(event):
             return
