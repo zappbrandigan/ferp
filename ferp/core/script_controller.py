@@ -303,9 +303,11 @@ class ScriptLifecycleController:
             self._input_screen = None
             value = data.get("value", "")
             payload_value = str(value)
-            payload = json.dumps(data) if (
-                bool_fields or selection_fields or select_fields
-            ) else payload_value
+            payload = (
+                json.dumps(data)
+                if (bool_fields or selection_fields or select_fields)
+                else payload_value
+            )
             self._start_worker(lambda: self._runner.provide_input(payload))
 
         self._input_screen = dialog
@@ -534,9 +536,10 @@ class ScriptLifecycleController:
         self._app._maybe_exit_after_script()
 
     def _set_controls_disabled(self, disabled: bool) -> None:
+        visual_mode = self._app.visual_mode
         script_manager = self._app.query_one(ScriptManager)
-        script_manager.disabled = disabled
-        if disabled:
+        script_manager.disabled = disabled or visual_mode
+        if disabled or visual_mode:
             script_manager.add_class("dimmed")
         else:
             script_manager.remove_class("dimmed")

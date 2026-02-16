@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Sequence
 
 from textual.message import Message
 
@@ -47,3 +48,19 @@ class RenamePathRequest(Message):
     def __init__(self, target: Path) -> None:
         super().__init__()
         self.target = target
+
+
+class BulkDeleteRequest(Message):
+    def __init__(self, targets: Sequence[Path]) -> None:
+        super().__init__()
+        self.targets = tuple(targets)
+
+
+class BulkPasteRequest(Message):
+    def __init__(
+        self, sources: Sequence[Path], destination: Path, *, move: bool
+    ) -> None:
+        super().__init__()
+        self.sources = tuple(sources)
+        self.destination = destination
+        self.move = move

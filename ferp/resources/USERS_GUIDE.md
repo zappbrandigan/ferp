@@ -99,6 +99,22 @@ Tip: You can move quickly without using the mouse. The full list of navigation k
 
 ---
 
+## 6b) Visual Mode (Multi‑Select)
+
+Visual mode lets you select multiple items in the File Navigator without running scripts.
+
+- **v**: Toggle visual mode (scripts and output panels are disabled while active).
+- **s**: Toggle selection for the highlighted item.
+- **Shift+s**: Select a range from the last anchor to the highlighted item.
+- **c**: Copy selected items.
+- **x**: Move selected items (cut).
+- **p**: Paste into the current directory.
+- **delete**: Delete selected items.
+
+Selections are cleared when you exit visual mode.
+
+---
+
 ## 7) Running a Script (Automation)
 
 Scripts are pre‑approved tasks like "rename files," "backup a folder," or "convert a file."

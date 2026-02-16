@@ -19,6 +19,8 @@ class PathActionController:
         refresh_listing: Callable[[], None],
         fs_controller: FileSystemController,
         delete_handler: Callable[[Path], None],
+        bulk_delete_handler: Callable[[list[Path]], None],
+        bulk_paste_handler: Callable[[list[tuple[Path, Path]], bool, bool], None],
     ) -> None:
         self._present_input = present_input
         self._present_confirm = present_confirm
@@ -26,6 +28,8 @@ class PathActionController:
         self._refresh_listing = refresh_listing
         self._fs = fs_controller
         self._delete_handler = delete_handler
+        self._bulk_delete_handler = bulk_delete_handler
+        self._bulk_paste_handler = bulk_paste_handler
 
     def create_path(self, base: Path, *, is_directory: bool) -> None:
         parent = base if base.is_dir() else base.parent
@@ -76,6 +80,24 @@ class PathActionController:
             after,
         )
 
+    def delete_paths(self, targets: list[Path]) -> None:
+        existing = [target for target in targets if target.exists()]
+        if not existing:
+            return
+        if len(existing) == 1:
+            self.delete_path(existing[0])
+            return
+
+        def after(confirmed: bool | None) -> None:
+            if not confirmed:
+                return
+            self._bulk_delete_handler(existing)
+
+        self._present_confirm(
+            ConfirmDialog(f"Delete {len(existing)} items?"),
+            after,
+        )
+
     def rename_path(self, target: Path) -> None:
         if not target.exists():
             return
@@ -122,3 +144,56 @@ class PathActionController:
             InputDialog("Enter new name", default=default_name),
             after,
         )
+
+    def paste_paths(
+        self,
+        sources: list[Path],
+        destination: Path,
+        *,
+        move: bool,
+    ) -> None:
+        if not destination.exists() or not destination.is_dir():
+            self._show_error(RuntimeError("Destination must be an existing directory."))
+            return
+
+        unique_sources: list[Path] = []
+        seen: set[Path] = set()
+        for source in sources:
+            if source in seen:
+                continue
+            seen.add(source)
+            unique_sources.append(source)
+
+        missing = [source for source in unique_sources if not source.exists()]
+        if missing:
+            sample = ", ".join(path.name for path in missing[:3])
+            suffix = "..." if len(missing) > 3 else ""
+            self._show_error(RuntimeError(f"Missing source item(s): {sample}{suffix}"))
+            return
+
+        plan: list[tuple[Path, Path]] = []
+        conflicts: list[Path] = []
+        for source in unique_sources:
+            destination_path = destination / source.name
+            if destination_path.resolve() == source.resolve():
+                continue
+            if destination_path.exists():
+                conflicts.append(destination_path)
+            plan.append((source, destination_path))
+
+        if not plan:
+            self._show_error(RuntimeError("Nothing to paste."))
+            return
+
+        def perform(overwrite: bool) -> None:
+            self._bulk_paste_handler(plan, move, overwrite)
+
+        if conflicts:
+            prompt = f"Overwrite {len(conflicts)} existing item(s) in destination?"
+            self._present_confirm(
+                ConfirmDialog(prompt),
+                lambda confirmed: perform(True) if confirmed else None,
+            )
+            return
+
+        perform(False)

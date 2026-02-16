@@ -32,6 +32,8 @@ from ferp.core.dependency_manager import ScriptDependencyManager
 from ferp.core.fs_controller import FileSystemController
 from ferp.core.fs_watcher import FileTreeWatcher
 from ferp.core.messages import (
+    BulkDeleteRequest,
+    BulkPasteRequest,
     CreatePathRequest,
     DeletePathRequest,
     DirectorySelectRequest,
@@ -96,6 +98,14 @@ class AppPaths:
 class DeletePathResult:
     target: Path
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class BulkPathResult:
+    action: str
+    count: int
+    destination: Path | None
+    errors: list[str]
 
 
 DEFAULT_SETTINGS: dict[str, Any] = {
@@ -183,6 +193,7 @@ class Ferp(App):
         self._pending_exit = False
         self._is_shutting_down = False
         self._suppress_watcher_until = 0.0
+        self._visual_mode = False
         super().__init__()
         self.fs_controller = FileSystemController()
         self._file_tree_watcher = FileTreeWatcher(
@@ -211,6 +222,8 @@ class Ferp(App):
             refresh_listing=self.schedule_refresh_listing,
             fs_controller=self.fs_controller,
             delete_handler=self._start_delete_path,
+            bulk_delete_handler=self._start_delete_paths,
+            bulk_paste_handler=self._start_paste_paths,
         )
 
     def _prepare_paths(self) -> AppPaths:
@@ -360,8 +373,12 @@ class Ferp(App):
         monday_settings = self._monday_settings() or {}
         monday_board_id = str(monday_settings.get("boardId") or "").strip()
         monday_token = self._monday_token()
-        monday_board_state = "set ✅" if monday_board_id else "missing ❌"
-        monday_token_state = "set ✅" if monday_token else "missing ❌"
+        monday_board_state = (
+            "[$success]set[/]" if monday_board_id else "[$error]missing[/]"
+        )
+        monday_token_state = (
+            "[$success]set[/]" if monday_token else "[$error]missing[/]"
+        )
         lines.append(
             f"  [bold $text-accent]Monday:[/] boardId {monday_board_state}, apiToken {monday_token_state}"
         )
@@ -370,7 +387,7 @@ class Ferp(App):
         chrome_path = ""
         if isinstance(chrome_settings, dict):
             chrome_path = str(chrome_settings.get("path") or "").strip()
-        chrome_state = "set ✅" if chrome_path else "missing ❌"
+        chrome_state = "[$success]set[/]" if chrome_path else "[$error]missing[/]"
         lines.append(f"  [bold $text-accent]Chrome:[/] path {chrome_state}")
 
         return "\n".join(lines)
@@ -390,6 +407,47 @@ class Ferp(App):
             file_tree_container.add_class("dimmed")
         else:
             file_tree_container.remove_class("dimmed")
+
+    def _set_details_disabled(self, disabled: bool) -> None:
+        script_manager = self.query_one(ScriptManager)
+        output_container = self.query_one("#output_panel_container")
+        details_pane = self.query_one("#details_pane")
+
+        script_manager.disabled = disabled
+        output_container.disabled = disabled
+
+        if disabled:
+            details_pane.add_class("dimmed")
+        else:
+            details_pane.remove_class("dimmed")
+
+    @property
+    def visual_mode(self) -> bool:
+        return self._visual_mode
+
+    def action_toggle_visual_mode(self) -> None:
+        self._visual_mode = not self._visual_mode
+        file_tree = self.query_one(FileTree)
+        script_manager = self.query_one(ScriptManager)
+        output_container = self.query_one("#output_panel_container")
+        details_pane = self.query_one("#details_pane")
+
+        if self._visual_mode:
+            self._set_details_disabled(True)
+            file_tree.focus()
+            file_tree._update_border_title()
+            return
+
+        file_tree.clear_visual_state()
+        file_tree._update_border_title()
+        if self.script_controller.is_running:
+            output_container.disabled = False
+            details_pane.remove_class("dimmed")
+            script_manager.disabled = True
+            script_manager.add_class("dimmed")
+            return
+
+        self._set_details_disabled(False)
 
     def _resolve_script_config_paths(self) -> list[Path]:
         if not self._dev_config_enabled:
@@ -927,9 +985,21 @@ class Ferp(App):
     def handle_delete_path(self, event: DeletePathRequest) -> None:
         self.path_actions.delete_path(event.target)
 
+    @on(BulkDeleteRequest)
+    def handle_bulk_delete(self, event: BulkDeleteRequest) -> None:
+        self.path_actions.delete_paths(list(event.targets))
+
     @on(RenamePathRequest)
     def handle_rename_path(self, event: RenamePathRequest) -> None:
         self.path_actions.rename_path(event.target)
+
+    @on(BulkPasteRequest)
+    def handle_bulk_paste(self, event: BulkPasteRequest) -> None:
+        self.path_actions.paste_paths(
+            list(event.sources),
+            event.destination,
+            move=event.move,
+        )
 
     @on(ShowReadmeRequest)
     def show_readme(self, event: ShowReadmeRequest) -> None:
@@ -1136,6 +1206,82 @@ class Ferp(App):
         except OSError as exc:
             return DeletePathResult(target=target, error=str(exc))
         return DeletePathResult(target=target, error=None)
+
+    def _start_delete_paths(self, targets: list[Path]) -> None:
+        if not targets:
+            return
+        file_tree = self.query_one(FileTree)
+        file_tree.set_pending_delete_index(file_tree.index)
+        self.notify(f"Deleting {len(targets)} items...", timeout=2)
+        self._stop_file_tree_watch()
+        self.run_worker(
+            lambda: self._delete_paths_worker(targets),
+            group="delete_paths",
+            thread=True,
+        )
+
+    def _delete_paths_worker(self, targets: list[Path]) -> BulkPathResult:
+        errors: list[str] = []
+        for target in targets:
+            try:
+                self.fs_controller.delete_path(target)
+            except OSError as exc:
+                label = target.name or str(target)
+                errors.append(f"{label}: {exc}")
+        return BulkPathResult(
+            action="delete",
+            count=len(targets),
+            destination=None,
+            errors=errors,
+        )
+
+    def _start_paste_paths(
+        self,
+        plan: list[tuple[Path, Path]],
+        move: bool,
+        overwrite: bool,
+    ) -> None:
+        if not plan:
+            return
+        action = "Moving" if move else "Copying"
+        self.notify(f"{action} {len(plan)} items...", timeout=2)
+        self._stop_file_tree_watch()
+        self.run_worker(
+            lambda: self._paste_paths_worker(plan, move, overwrite),
+            group="bulk_paste",
+            thread=True,
+        )
+
+    def _paste_paths_worker(
+        self,
+        plan: list[tuple[Path, Path]],
+        move: bool,
+        overwrite: bool,
+    ) -> BulkPathResult:
+        errors: list[str] = []
+        for source, destination in plan:
+            try:
+                if move:
+                    self.fs_controller.move_path(
+                        source,
+                        destination,
+                        overwrite=overwrite,
+                    )
+                else:
+                    self.fs_controller.copy_path(
+                        source,
+                        destination,
+                        overwrite=overwrite,
+                    )
+            except OSError as exc:
+                label = source.name or str(source)
+                errors.append(f"{label}: {exc}")
+        return BulkPathResult(
+            action="move" if move else "copy",
+            count=len(plan),
+            destination=plan[0][1].parent if plan else None,
+            errors=errors,
+        )
 
     def _render_default_scripts_update(self, payload: dict[str, Any]) -> None:
         error = payload.get("error")
@@ -1668,6 +1814,55 @@ class Ferp(App):
                 self.notify(f"Delete failed: {error}", severity="error", timeout=3)
                 file_tree = self.query_one(FileTree)
                 file_tree.set_pending_delete_index(None)
+                self._start_file_tree_watch()
+            return
+        if worker.group == "delete_paths":
+            if event.state is WorkerState.SUCCESS:
+                result = worker.result
+                if isinstance(result, BulkPathResult):
+                    if result.errors:
+                        self.notify(
+                            f"Delete completed with {len(result.errors)} error(s).",
+                            severity="error",
+                            timeout=4,
+                        )
+                        file_tree = self.query_one(FileTree)
+                        file_tree.set_pending_delete_index(None)
+                        self._start_file_tree_watch()
+                        return
+                    self.notify(f"Deleted {result.count} items.", timeout=3)
+                    self.refresh_listing()
+            elif event.state is WorkerState.ERROR:
+                error = worker.error or RuntimeError("Delete failed.")
+                self.notify(f"Delete failed: {error}", severity="error", timeout=3)
+                file_tree = self.query_one(FileTree)
+                file_tree.set_pending_delete_index(None)
+                self._start_file_tree_watch()
+            return
+        if worker.group == "bulk_paste":
+            if event.state is WorkerState.SUCCESS:
+                result = worker.result
+                if isinstance(result, BulkPathResult):
+                    if result.errors:
+                        self.notify(
+                            f"{result.action.title()} completed with {len(result.errors)} error(s).",
+                            severity="error",
+                            timeout=4,
+                        )
+                        self._start_file_tree_watch()
+                        return
+                    dest_label = ""
+                    if result.destination is not None:
+                        dest_label = result.destination.name or str(result.destination)
+                    detail = f" to '{escape(dest_label)}'" if dest_label else ""
+                    self.notify(
+                        f"{result.action.title()}d {result.count} items{detail}.",
+                        timeout=3,
+                    )
+                    self.refresh_listing()
+            elif event.state is WorkerState.ERROR:
+                error = worker.error or RuntimeError("Paste failed.")
+                self.notify(f"Paste failed: {error}", severity="error", timeout=3)
                 self._start_file_tree_watch()
             return
         if worker.group == "bulk_rename":

@@ -17,6 +17,8 @@ from textual.widget import Widget
 from textual.widgets import Input, Label, ListItem, ListView, LoadingIndicator
 
 from ferp.core.messages import (
+    BulkDeleteRequest,
+    BulkPasteRequest,
     CreatePathRequest,
     DeletePathRequest,
     DirectorySelectRequest,
@@ -358,6 +360,49 @@ class FileTree(ListView):
             tooltip="Delete selected file or directory",
         ),
         Binding(
+            "v",
+            "toggle_visual_mode",
+            "Visual mode",
+            show=True,
+            tooltip="Toggle visual selection mode",
+        ),
+        Binding(
+            "s",
+            "toggle_select",
+            "Select",
+            show=False,
+            tooltip="Toggle selection (visual mode)",
+        ),
+        Binding(
+            "S",
+            "select_range",
+            "Select range",
+            key_display="Shift+S",
+            show=False,
+            tooltip="Select range (visual mode)",
+        ),
+        Binding(
+            "c",
+            "copy_selection",
+            "Copy",
+            show=False,
+            tooltip="Copy selected items (visual mode)",
+        ),
+        Binding(
+            "x",
+            "move_selection",
+            "Move",
+            show=False,
+            tooltip="Move selected items (visual mode)",
+        ),
+        Binding(
+            "p",
+            "paste_selection",
+            "Paste",
+            show=False,
+            tooltip="Paste copied/moved items (visual mode)",
+        ),
+        Binding(
             "ctrl+f",
             "open_finder",
             "Open in FS",
@@ -402,6 +447,11 @@ class FileTree(ListView):
         self._listing_changed = False
         self._suppress_focus_once = False
         self._current_chunk_items: dict[Path, FileItem] = {}
+        self._selected_paths: set[Path] = set()
+        self._selection_anchor: Path | None = None
+        self._visual_clipboard_paths: list[Path] = []
+        self._visual_clipboard_mode: str | None = None
+        self._subtitle_base = ""
 
     def set_pending_delete_index(self, index: int | None) -> None:
         self._pending_delete_index = index
@@ -589,7 +639,10 @@ class FileTree(ListView):
             self._all_entries = list(entries)
             if previous_path != path:
                 self._state_store.set_last_selected_path(None)
+                self._clear_selection()
                 self._set_filter("")
+            else:
+                self._prune_selection({entry.path for entry in self._all_entries})
             self._apply_filter()
             self._update_border_title()
             self._chunk_start = 0
@@ -779,6 +832,8 @@ class FileTree(ListView):
                 title = f'{title} (filter: "{truncated}" - invalid regex)'
             else:
                 title = f'{title} (filter: "{truncated}")'
+        if self._is_visual_mode():
+            title = f"{title} · [$text-accent]Visual[/]"
         try:
             container = self.app.query_one("#file_list_container")
         except Exception:
@@ -792,7 +847,27 @@ class FileTree(ListView):
             container = self.app.query_one("#file_list_container")
         except Exception:
             return
+        self._subtitle_base = subtitle
+        selected_count = len(self._selected_paths)
+        staged_count = len(self._visual_clipboard_paths)
+        staged_label = ""
+        if staged_count:
+            staged_mode = self._visual_clipboard_mode or "copy"
+            staged_label = f"[$text-accent]Staged: {staged_count} {staged_mode}[/]"
+        if selected_count:
+            if subtitle:
+                subtitle = f"{subtitle} | [$text-accent]Selected: {selected_count}[/]"
+            else:
+                subtitle = f"[$text-accent]Selected: {selected_count}[/]"
+        if staged_label:
+            if subtitle:
+                subtitle = f"{subtitle} | {staged_label}"
+            else:
+                subtitle = staged_label
         container.border_subtitle = subtitle
+
+    def _refresh_border_subtitle(self) -> None:
+        self._set_border_subtitle(self._subtitle_base)
 
     def action_filter_entries(self) -> None:
         try:
@@ -809,6 +884,56 @@ class FileTree(ListView):
         if state.filter_query != self._filter_query:
             self._set_filter(state.filter_query, from_store=True)
             return
+
+    def _is_visual_mode(self) -> bool:
+        return bool(getattr(self.app, "visual_mode", False))
+
+    def clear_visual_state(self) -> None:
+        self._clear_selection()
+        self.clear_visual_clipboard()
+
+    def clear_visual_clipboard(self) -> None:
+        self._visual_clipboard_paths = []
+        self._visual_clipboard_mode = None
+        self._refresh_border_subtitle()
+
+    def _clear_selection(self) -> None:
+        if not self._selected_paths and self._selection_anchor is None:
+            return
+        self._selected_paths = set()
+        self._selection_anchor = None
+        self._apply_selection_to_items()
+        self._refresh_border_subtitle()
+
+    def _apply_selection_to_items(self) -> None:
+        for path, item in self._current_chunk_items.items():
+            if path in self._selected_paths:
+                item.add_class("item_selected")
+            else:
+                item.remove_class("item_selected")
+
+    def _set_selected_paths(self, paths: set[Path], *, anchor: Path | None) -> None:
+        self._selected_paths = paths
+        self._selection_anchor = anchor
+        self._apply_selection_to_items()
+        self._refresh_border_subtitle()
+
+    def _prune_selection(self, valid_paths: set[Path]) -> None:
+        if not self._selected_paths and self._selection_anchor is None:
+            return
+        self._selected_paths = {
+            path for path in self._selected_paths if path in valid_paths
+        }
+        if self._selection_anchor not in valid_paths:
+            self._selection_anchor = None
+        self._apply_selection_to_items()
+        self._refresh_border_subtitle()
+
+    def _selected_or_highlighted(self) -> list[Path]:
+        if self._selected_paths:
+            return sorted(self._selected_paths, key=lambda path: str(path))
+        path = self._selected_path()
+        return [path] if path else []
 
     def _append_notice(self, message: str) -> None:
         notice = ListItem(
@@ -852,6 +977,8 @@ class FileTree(ListView):
                 self._set_border_subtitle("")
             for entry in self._filtered_entries[start:end]:
                 classes = "item_dir" if entry.is_dir else "item_file"
+                if entry.path in self._selected_paths:
+                    classes = f"{classes} item_selected"
                 item = FileItem(
                     entry.path,
                     metadata=entry,
@@ -1000,6 +1127,10 @@ class FileTree(ListView):
         if self.children:
             self.index = len(self.children) - 1
 
+    def action_toggle_visual_mode(self) -> None:
+        app = cast("Ferp", self.app)
+        app.action_toggle_visual_mode()
+
     def _visible_item_count(self) -> int:
         if not self.children:
             return 0
@@ -1018,6 +1149,87 @@ class FileTree(ListView):
             return item.path
         return None
 
+    def _range_paths(self, anchor: Path, target: Path) -> list[Path] | None:
+        entries = [entry.path for entry in self._filtered_entries]
+        index_map = {path: idx for idx, path in enumerate(entries)}
+        if anchor not in index_map or target not in index_map:
+            return None
+        start = min(index_map[anchor], index_map[target])
+        end = max(index_map[anchor], index_map[target])
+        return entries[start : end + 1]
+
+    def action_toggle_select(self) -> None:
+        if not self._is_visual_mode():
+            return
+        path = self._selected_path()
+        if path is None:
+            return
+        selected = set(self._selected_paths)
+        anchor = self._selection_anchor
+        if path in selected:
+            selected.remove(path)
+            if anchor == path:
+                anchor = None
+        else:
+            selected.add(path)
+            anchor = path
+        self._set_selected_paths(selected, anchor=anchor)
+
+    def action_select_range(self) -> None:
+        if not self._is_visual_mode():
+            return
+        path = self._selected_path()
+        if path is None:
+            return
+        anchor = self._selection_anchor or path
+        range_paths = self._range_paths(anchor, path)
+        if range_paths is None:
+            self._set_selected_paths({path}, anchor=path)
+            return
+        selected = set(self._selected_paths)
+        selected.update(range_paths)
+        self._set_selected_paths(selected, anchor=anchor)
+
+    def action_copy_selection(self) -> None:
+        if not self._is_visual_mode():
+            return
+        paths = self._selected_or_highlighted()
+        if not paths:
+            return
+        self._visual_clipboard_paths = paths
+        self._visual_clipboard_mode = "copy"
+        self._refresh_border_subtitle()
+        self.app.notify(f"Copied {len(paths)} item(s).", timeout=2)
+
+    def action_move_selection(self) -> None:
+        if not self._is_visual_mode():
+            return
+        paths = self._selected_or_highlighted()
+        if not paths:
+            return
+        self._visual_clipboard_paths = paths
+        self._visual_clipboard_mode = "move"
+        self._refresh_border_subtitle()
+        self.app.notify(f"Move staged for {len(paths)} item(s).", timeout=2)
+
+    def action_paste_selection(self) -> None:
+        if not self._is_visual_mode():
+            return
+        if not self._visual_clipboard_paths or not self._visual_clipboard_mode:
+            self.app.notify("Nothing to paste.", timeout=2)
+            return
+        staged_paths = list(self._visual_clipboard_paths)
+        staged_mode = self._visual_clipboard_mode
+        self.clear_visual_clipboard()
+        app = cast(AppWithPath, self.app)
+        self.post_message(
+            BulkPasteRequest(
+                staged_paths,
+                app.current_path,
+                move=staged_mode == "move",
+            )
+        )
+
     def action_new_file(self) -> None:
         app = cast(AppWithPath, self.app)
         base = app.current_path
@@ -1029,6 +1241,11 @@ class FileTree(ListView):
         self.post_message(CreatePathRequest(base, is_directory=True))
 
     def action_delete_entry(self) -> None:
+        if self._is_visual_mode() and self._selected_paths:
+            targets = sorted(self._selected_paths)
+            self._clear_selection()
+            self.post_message(BulkDeleteRequest(targets))
+            return
         path = self._selected_path()
         if path is None:
             return

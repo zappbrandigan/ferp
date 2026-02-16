@@ -108,6 +108,26 @@ TopBar {
             color: $text;
         }
 
+        ListItem.item_selected:dark {
+            background: $panel-lighten-1;
+        }
+
+        ListItem.item_selected {
+            background: $panel-darken-1;
+        }
+
+        ListItem.-highlight.item_selected {
+            background: $secondary-lighten-3;
+        }
+
+        ListItem.item_selected .file_tree_row {
+            color: $text;
+        }
+
+        ListItem.-highlight.item_selected .file_tree_row {
+            color: $text;
+        }
+
         .file_tree_header {
             text-style: bold;
         }
