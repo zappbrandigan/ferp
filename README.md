@@ -2,15 +2,14 @@
 <img style="width: 50%" src="ferp/resources/ferp-logo.png">
 </p>
 
-<p align="center">
-<a href="https://pypi.org/project/ferp/">
+<p align="center" style="display:flex; justify-content:center; gap:6px; flex-wrap:wrap;">
   <img alt="Release" src="https://img.shields.io/pypi/v/ferp?label=release&style=for-the-badge&color=olive">
-</a>
-<img alt="Python" src="https://img.shields.io/pypi/pyversions/ferp?style=for-the-badge">
-<img alt="License" src="https://img.shields.io/pypi/l/YOUR_PACKAGE?style=for-the-badge">
-<img alt="CI" src="https://img.shields.io/github/actions/workflow/status/zappbrandigan/ferp/publish.yml?style=for-the-badge">
-<img alt="Status" src="https://img.shields.io/badge/scope-internal-orange?style=for-the-badge">
+  <img alt="Python" src="https://img.shields.io/pypi/pyversions/ferp?style=for-the-badge">
+  <img alt="License" src="https://img.shields.io/pypi/l/ferp?style=for-the-badge">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/zappbrandigan/ferp/publish.yml?style=for-the-badge">
+  <img alt="Status" src="https://img.shields.io/badge/scope-internal-orange?style=for-the-badge">
 </p>
+
 
 ---
 
