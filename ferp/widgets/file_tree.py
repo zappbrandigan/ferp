@@ -403,6 +403,28 @@ class FileTree(ListView):
             tooltip="Paste copied/moved items (visual mode)",
         ),
         Binding(
+            "a",
+            "select_all",
+            "Select all",
+            show=False,
+            tooltip="Select all visible items (visual mode)",
+        ),
+        Binding(
+            "A",
+            "deselect_all",
+            "Deselect all",
+            key_display="Shift+A",
+            show=False,
+            tooltip="Clear all selections (visual mode)",
+        ),
+        Binding(
+            "escape",
+            "clear_staging",
+            "Clear staged",
+            show=False,
+            tooltip="Clear staged items (visual mode)",
+        ),
+        Binding(
             "ctrl+f",
             "open_finder",
             "Open in FS",
@@ -1131,18 +1153,6 @@ class FileTree(ListView):
         app = cast("Ferp", self.app)
         app.action_toggle_visual_mode()
 
-    def _visible_item_count(self) -> int:
-        if not self.children:
-            return 0
-
-        first = self.children[0]
-        row_height = first.size.height
-
-        if row_height <= 0:
-            return 0
-
-        return self.size.height // row_height
-
     def _selected_path(self) -> Path | None:
         item = self.highlighted_child
         if isinstance(item, FileItem) and not item.is_header:
@@ -1199,7 +1209,7 @@ class FileTree(ListView):
         self._visual_clipboard_paths = paths
         self._visual_clipboard_mode = "copy"
         self._refresh_border_subtitle()
-        self.app.notify(f"Copied {len(paths)} item(s).", timeout=2)
+        # self.app.notify(f"Copied {len(paths)} item(s).", timeout=2)
 
     def action_move_selection(self) -> None:
         if not self._is_visual_mode():
@@ -1210,7 +1220,7 @@ class FileTree(ListView):
         self._visual_clipboard_paths = paths
         self._visual_clipboard_mode = "move"
         self._refresh_border_subtitle()
-        self.app.notify(f"Move staged for {len(paths)} item(s).", timeout=2)
+        # self.app.notify(f"Move staged for {len(paths)} item(s).", timeout=2)
 
     def action_paste_selection(self) -> None:
         if not self._is_visual_mode():
@@ -1229,6 +1239,30 @@ class FileTree(ListView):
                 move=staged_mode == "move",
             )
         )
+
+    def action_select_all(self) -> None:
+        if not self._is_visual_mode():
+            return
+        if not self._filtered_entries:
+            return
+        paths = {entry.path for entry in self._filtered_entries}
+        anchor = self._selected_path()
+        if anchor is None and self._filtered_entries:
+            anchor = self._filtered_entries[0].path
+        self._set_selected_paths(paths, anchor=anchor)
+
+    def action_deselect_all(self) -> None:
+        if not self._is_visual_mode():
+            return
+        self._clear_selection()
+
+    def action_clear_staging(self) -> None:
+        if not self._is_visual_mode():
+            return
+        if not self._visual_clipboard_paths:
+            return
+        self.clear_visual_clipboard()
+        # self.app.notify("Cleared staged items.", timeout=2)
 
     def action_new_file(self) -> None:
         app = cast(AppWithPath, self.app)

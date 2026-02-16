@@ -110,6 +110,11 @@ Visual mode lets you select multiple items in the File Navigator without running
 - **x**: Move selected items (cut).
 - **p**: Paste into the current directory.
 - **delete**: Delete selected items.
+- **a**: Select all visible items.
+- **Shift+a**: Deselect all items.
+- **escape**: Clear staged items.
+
+> Note: If the File Navigator is maximized, the first `escape` will un‑maximize it. Press `escape` again to clear staged items.
 
 Selections are cleared when you exit visual mode.
 

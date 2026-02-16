@@ -786,6 +786,8 @@ class Ferp(App):
         )
 
     def _check_for_script_updates(self) -> None:
+        if self._dev_config_enabled:
+            return
         namespace = self._active_namespace()
         if not namespace:
             return

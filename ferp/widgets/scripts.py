@@ -271,15 +271,3 @@ class ScriptManager(ListView):
     def action_cursor_bottom(self) -> None:
         if len(self.children) > 1:
             self.index = len(self.children) - 1
-
-    def _visible_item_count(self) -> int:
-        if not self.children:
-            return 0
-
-        first = self.children[0]
-        row_height = first.size.height
-
-        if row_height <= 0:
-            return 0
-
-        return (self.size.height // row_height) - 1
