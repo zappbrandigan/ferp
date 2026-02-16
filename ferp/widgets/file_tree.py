@@ -694,6 +694,16 @@ class FileTree(ListView):
             return
 
         query = self._filter_query.casefold()
+        negate = query.startswith("!")
+        if negate:
+            query = query[1:].strip()
+            if not query:
+                self._filtered_entries = self._all_entries
+                return
+            self._filtered_entries = [
+                entry for entry in self._all_entries if query not in entry.search_blob
+            ]
+            return
         self._filtered_entries = [
             entry for entry in self._all_entries if query in entry.search_blob
         ]
@@ -735,8 +745,6 @@ class FileTree(ListView):
         else:
             matcher = re.compile(re.escape(pattern), re.IGNORECASE)
             replacement = _escape_regex_replacement(replacement)
-
-        # Regex replacements must use Python's \g<name> or \g<number> syntax.
 
         sources = {entry.path for entry in self._filtered_entries if not entry.is_dir}
         if not sources:

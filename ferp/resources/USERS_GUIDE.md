@@ -120,6 +120,21 @@ Selections are cleared when you exit visual mode.
 
 ---
 
+## 6c) Filter Widget
+
+Use the filter widget to quickly narrow the File Navigator list.
+
+- Press `/` in the File Navigator to open the filter box.
+- Text search matches the name and type column (e.g., `dir`, `pdf`, `report`).
+- Prefix with `!` to exclude matches (e.g., `!dir` to hide directories).
+- Prefix with `/` to use a regex (regex searches file names only).
+- Use `pattern/replacement` to batch-rename files matching the filter (file extensions will not be modified).
+- Use `/regex/replacement` for regex-based renames (regex runs on file stems).
+
+> Note: Use `\1` or `\g<1>` notation to reference the first captured group.
+
+---
+
 ## 7) Running a Script (Automation)
 
 Scripts are pre‑approved tasks like "rename files," "backup a folder," or "convert a file."
