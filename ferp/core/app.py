@@ -1858,7 +1858,7 @@ class Ferp(App):
                         dest_label = result.destination.name or str(result.destination)
                     detail = f" to '{escape(dest_label)}'" if dest_label else ""
                     self.notify(
-                        f"{result.action.title()}d {result.count} items{detail}.",
+                        f"{result.action.title()} complete: {result.count} items{detail}.",
                         timeout=3,
                     )
                     self.refresh_listing()

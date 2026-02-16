@@ -177,6 +177,16 @@ class PathActionController:
             destination_path = destination / source.name
             if destination_path.resolve() == source.resolve():
                 continue
+            if source.is_dir():
+                try:
+                    destination_path.resolve().relative_to(source.resolve())
+                except ValueError:
+                    pass
+                else:
+                    self._show_error(
+                        RuntimeError("Cannot paste a folder inside itself.")
+                    )
+                    return
             if destination_path.exists():
                 conflicts.append(destination_path)
             plan.append((source, destination_path))
