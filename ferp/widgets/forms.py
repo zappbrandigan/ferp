@@ -9,7 +9,15 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.suggester import SuggestFromList
 from textual.widget import Widget
-from textual.widgets import Button, Checkbox, Input, Label, SelectionList, TextArea
+from textual.widgets import (
+    Button,
+    Checkbox,
+    Input,
+    Label,
+    Select,
+    SelectionList,
+    TextArea,
+)
 
 
 @dataclass(frozen=True)
@@ -25,6 +33,14 @@ class SelectionField:
     label: str
     options: list[str]
     values: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class SelectField:
+    id: str
+    label: str
+    options: list[str]
+    value: str | None = None
 
 
 def _selection_list_values(selection_list: SelectionList) -> list[str]:
@@ -113,6 +129,7 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
         suggestions: Iterable[str] | None = None,
         boolean_fields: Iterable[BooleanField] | None = None,
         selection_fields: Iterable[SelectionField] | None = None,
+        select_fields: Iterable[SelectField] | None = None,
         show_text_input: bool = True,
         text_input_style: str = "single_line",
     ) -> None:
@@ -122,6 +139,7 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
         self._suggestions = list(suggestions or [])
         self._bool_fields = list(boolean_fields or [])
         self._selection_fields = list(selection_fields or [])
+        self._select_fields = list(select_fields or [])
         self._show_text_input = show_text_input
         self._text_input_style = text_input_style
 
@@ -163,6 +181,24 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
                     classes="prompt_selection_list",
                 )
             )
+        for field in self._select_fields:
+            contents.append(
+                Label(
+                    field.label,
+                    id=f"{field.id}_label",
+                    classes="selection_list_subtitle",
+                )
+            )
+            default = field.value or (field.options[0] if field.options else "")
+            contents.append(
+                Select(
+                    [(option, option) for option in field.options],
+                    value=default,
+                    allow_blank=False,
+                    id=field.id,
+                    classes="prompt_select",
+                )
+            )
         contents.append(
             Horizontal(
                 *(
@@ -202,6 +238,9 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
             if self._selection_fields:
                 self.query_one(SelectionList).focus()
                 return
+            if self._select_fields:
+                self.query_one(Select).focus()
+                return
             if self._bool_fields:
                 self.query_one(Checkbox).focus()
                 return
@@ -229,6 +268,10 @@ class PromptDialog(ModalScreen[dict[str, str | bool | list[str]] | None]):
         for field in self._selection_fields:
             selection_list = self.query_one(f"#{field.id}", SelectionList)
             state[field.id] = _selection_list_values(selection_list)
+        for field in self._select_fields:
+            select = self.query_one(f"#{field.id}", Select)
+            value = select.value
+            state[field.id] = str(value) if value is not None else ""
         return state
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

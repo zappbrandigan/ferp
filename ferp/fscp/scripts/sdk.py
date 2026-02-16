@@ -83,6 +83,14 @@ class MultiSelectField(TypedDict):
     default: Sequence[str]
 
 
+class SelectField(TypedDict):
+    id: str
+    type: Literal["select"]
+    label: str
+    options: Sequence[str]
+    default: str
+
+
 _InputPayloadT = TypeVar("_InputPayloadT", bound=Mapping[str, object])
 
 
@@ -202,7 +210,7 @@ class ScriptAPI:
         default: str | None = None,
         secret: bool = False,
         id: str | None = None,
-        fields: Sequence[BoolField | MultiSelectField] | None = None,
+        fields: Sequence[BoolField | MultiSelectField | SelectField] | None = None,
         suggestions: Sequence[str] | None = None,
         show_text_input: bool | None = None,
         text_input_style: Literal["single_line", "multiline"] | None = None,
@@ -216,7 +224,7 @@ class ScriptAPI:
         default: str | None = None,
         secret: bool = False,
         id: str | None = None,
-        fields: Sequence[BoolField | MultiSelectField] | None = None,
+        fields: Sequence[BoolField | MultiSelectField | SelectField] | None = None,
         suggestions: Sequence[str] | None = None,
         show_text_input: bool | None = None,
         text_input_style: Literal["single_line", "multiline"] | None = None,
@@ -230,7 +238,7 @@ class ScriptAPI:
         default: str | None = None,
         secret: bool = False,
         id: str | None = None,
-        fields: Sequence[BoolField | MultiSelectField] | None = None,
+        fields: Sequence[BoolField | MultiSelectField | SelectField] | None = None,
         suggestions: Sequence[str] | None = None,
         show_text_input: bool | None = None,
         text_input_style: Literal["single_line", "multiline"] | None = None,
@@ -275,7 +283,7 @@ class ScriptAPI:
 
     def _validate_fields(
         self,
-        fields: Sequence[BoolField | MultiSelectField],
+        fields: Sequence[BoolField | MultiSelectField | SelectField],
     ) -> None:
         for field in fields:
             field_id = field.get("id")
@@ -314,15 +322,31 @@ class ScriptAPI:
                         f"Multi-select field '{field_id}' default values must be strings."
                     )
                 continue
+            if field_type == "select":
+                options = field.get("options")
+                default = field.get("default")
+                if not isinstance(options, Sequence) or not options:
+                    raise ValueError(
+                        f"Select field '{field_id}' must define non-empty 'options'."
+                    )
+                if any(not isinstance(item, str) or not item for item in options):
+                    raise ValueError(
+                        f"Select field '{field_id}' options must be strings."
+                    )
+                if default is not None and not isinstance(default, str):
+                    raise ValueError(
+                        f"Select field '{field_id}' default must be a string."
+                    )
+                continue
             raise ValueError(
-                "request_input_json only supports bool or multi_select fields; "
+                "request_input_json only supports bool, multi_select, or select fields; "
                 f"received {field_type!r}."
             )
 
     def _validate_payload_fields(
         self,
         payload: Dict[str, Any],
-        fields: Sequence[BoolField | MultiSelectField],
+        fields: Sequence[BoolField | MultiSelectField | SelectField],
     ) -> None:
         value = payload.get("value")
         if not isinstance(value, str):
@@ -349,6 +373,13 @@ class ScriptAPI:
                 if any(not isinstance(item, str) for item in values):
                     raise ValueError(
                         f"request_input_json field '{field_id}' must contain strings."
+                    )
+                continue
+            if field_type == "select":
+                value = payload[field_id]
+                if not isinstance(value, str):
+                    raise ValueError(
+                        f"request_input_json field '{field_id}' must be a string."
                     )
                 continue
             raise ValueError(

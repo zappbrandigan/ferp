@@ -383,6 +383,19 @@ TopBar {
     }
 }
 
+#dialog_container .prompt_select {
+    height: 5;
+    margin: 0 15 0 15;
+    width: 100%;
+    border: round $secondary;
+    background: transparent;
+}
+
+#dialog_container .prompt_select:focus {
+    border: round $secondary-lighten-3;
+    background: transparent;
+}
+
 #dialog_container #prompt_flags {
     height: 1;
     align: center middle;

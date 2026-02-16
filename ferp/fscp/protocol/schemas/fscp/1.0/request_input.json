@@ -28,9 +28,9 @@
                 "required": ["id", "type", "label"],
                 "properties": {
                   "id": { "type": "string" },
-                  "type": { "enum": ["bool", "multi_select"] },
+                  "type": { "enum": ["bool", "multi_select", "select"] },
                   "label": { "type": "string" },
-                  "default": { "type": ["boolean", "array"] },
+                  "default": { "type": ["boolean", "array", "string"] },
                   "options": {
                     "type": "array",
                     "items": { "type": "string" }
