@@ -862,7 +862,6 @@ class FileTree(ListView):
             self.border_title = title
         else:
             container.border_title = title
-            container.border_subtitle = ""
 
     def _set_border_subtitle(self, subtitle: str) -> None:
         try:

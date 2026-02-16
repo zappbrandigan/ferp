@@ -1,5 +1,5 @@
 <p align="center">
-<img style="width: 50%" src="https://raw.githubusercontent.com/zappbrandigan/ferp/refs/heads/main/ferp/resources/ferp-logo.png">
+<img src="https://raw.githubusercontent.com/zappbrandigan/ferp/refs/heads/main/ferp/resources/ferp-logo.png">
 </p>
 
 <p align="center" style="display:flex; justify-content:center; gap:6px; flex-wrap:wrap;">
