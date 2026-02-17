@@ -94,6 +94,7 @@ FERP is keyboard‑first. Common actions:
 
 - **Arrow keys**: Move selection up/down.
 - **Enter**: Open a folder or display a help file for a script.
+- **i**: Show metadata for the highlighted file in the output panel.
 
 Tip: You can move quickly without using the mouse. The full list of navigation keys are available in the app.
 
@@ -132,6 +133,15 @@ Use the filter widget to quickly narrow the File Navigator list.
 - Use `/regex/replacement` for regex-based renames (regex runs on file stems).
 
 > Note: Use `\1` or `\g<1>` notation to reference the first captured group.
+
+---
+
+## 6d) Favorites (Quick Jumps)
+
+Favorites let you mark locations and jump back quickly.
+
+- **f**: Toggle favorite for the highlighted item (or current directory).
+- **Shift+f**: Open the favorites list and jump to a saved path.
 
 ---
 

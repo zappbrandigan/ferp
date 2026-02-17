@@ -51,6 +51,7 @@ from ferp.core.state import AppStateStore, FileTreeStateStore, TaskListStateStor
 from ferp.core.task_store import Task, TaskStore
 from ferp.core.transcript_logger import TranscriptLogger
 from ferp.fscp.host.process_registry import ProcessRecord
+from ferp.services.file_info import FileInfoResult, build_file_info
 from ferp.services.file_listing import (
     DirectoryListingResult,
     collect_directory_listing,
@@ -114,6 +115,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "startupPath": str(Path().home()),
         "scriptNamespace": "",
         "scriptVersions": {"core": "", "namespaces": {}},
+        "favorites": [],
     },
     "logs": {"maxFiles": 50, "maxAgeDays": 14},
     "integrations": {},
@@ -771,6 +773,61 @@ class Ferp(App):
 
         self.push_screen(InputDialog(prompt), after)
 
+    def toggle_favorite(self, path: Path) -> None:
+        favorites = self._favorites()
+        entry = str(path)
+        if entry in favorites:
+            favorites = [item for item in favorites if item != entry]
+            self._set_favorites(favorites)
+            self.notify(f"Removed favorite: {path.name}", timeout=2)
+            return
+        favorites.append(entry)
+        self._set_favorites(favorites)
+        self.notify(f"Added favorite: {path.name}", timeout=2)
+
+    def open_favorites_dialog(self) -> None:
+        favorites = self._favorites()
+        if not favorites:
+            self.notify("No favorites yet.", timeout=2)
+            return
+
+        def after(value: str | None) -> None:
+            if not value:
+                return
+            selected = Path(value).expanduser()
+            if not selected.exists():
+                updated = [item for item in favorites if item != value]
+                self._set_favorites(updated)
+                self.notify("Favorite path missing; removed.", timeout=3)
+                return
+            if selected.is_dir():
+                self._request_navigation(selected)
+                return
+            parent = selected.parent
+            self.file_tree_store.update_selection_history(parent, selected)
+            if parent == self.current_path:
+                self.file_tree_store.set_last_selected_path(selected)
+                self.refresh_listing()
+                return
+            self._request_navigation(parent)
+
+        self.push_screen(
+            SelectDialog("Jump to favorite", favorites),
+            after,
+        )
+
+    def request_file_info(self, path: Path) -> None:
+        if self.script_controller.is_running:
+            return
+        if not path.exists():
+            self.notify("File not found.", severity="error", timeout=3)
+            return
+        self.run_worker(
+            lambda target=path: build_file_info(target),
+            group="file_info",
+            thread=True,
+        )
+
     def _check_for_updates(self) -> None:
         cache_path = self._paths.cache_dir / "update_check.json"
         self.run_worker(
@@ -1143,6 +1200,23 @@ class Ferp(App):
                 if key_text and version:
                     namespace_versions[key_text] = version
         return core_version, namespace_versions
+
+    def _favorites(self) -> list[str]:
+        preferences = self.settings.get("userPreferences", {})
+        favorites = preferences.get("favorites", [])
+        if not isinstance(favorites, list):
+            return []
+        normalized: list[str] = []
+        for entry in favorites:
+            text = str(entry).strip()
+            if text:
+                normalized.append(text)
+        return normalized
+
+    def _set_favorites(self, favorites: list[str]) -> None:
+        preferences = self.settings.setdefault("userPreferences", {})
+        preferences["favorites"] = favorites
+        self.settings_store.save(self.settings)
 
     def _monday_settings(self) -> dict[str, Any] | None:
         integrations = self.settings.get("integrations", {})
@@ -1866,6 +1940,43 @@ class Ferp(App):
                 error = worker.error or RuntimeError("Paste failed.")
                 self.notify(f"Paste failed: {error}", severity="error", timeout=3)
                 self._start_file_tree_watch()
+            return
+        if worker.group == "file_info":
+            if event.state is WorkerState.SUCCESS:
+                result = worker.result
+                if isinstance(result, FileInfoResult):
+                    panel = self.query_one(ScriptOutputPanel)
+                    if result.error:
+                        panel.show_info(
+                            "File Info",
+                            [
+                                "[bold $error]Error:[/bold $error]",
+                                escape(result.error),
+                            ],
+                        )
+                        return
+                    lines = [
+                        f"[bold $text-primary]{escape(key)}:[/bold $text-primary] {escape(value)}"
+                        for key, value in result.data.items()
+                    ]
+                    if result.pdf_data:
+                        lines.append("")
+                        lines.append("[bold $secondary]PDF Metadata[/bold $secondary]")
+                        lines.extend(
+                            f"[bold $text-primary]{escape(key)}:[/bold $text-primary] {escape(value)}"
+                            for key, value in result.pdf_data.items()
+                        )
+                    panel.show_info("File Info", lines)
+            elif event.state is WorkerState.ERROR:
+                error = worker.error or RuntimeError("File info failed.")
+                panel = self.query_one(ScriptOutputPanel)
+                panel.show_info(
+                    "File Info",
+                    [
+                        "[bold $error]Error:[/bold $error]",
+                        escape(str(error)),
+                    ],
+                )
             return
         if worker.group == "bulk_rename":
             if event.state is WorkerState.SUCCESS:

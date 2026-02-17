@@ -81,6 +81,7 @@ class SettingsStore:
         preferences = data.setdefault("userPreferences", {})
         preferences.setdefault("scriptNamespace", "")
         preferences.setdefault("scriptVersions", {"core": "", "namespaces": {}})
+        preferences.setdefault("favorites", [])
         data.setdefault("logs", {})
         integrations = data.setdefault("integrations", {})
         integrations.setdefault("monday", {})

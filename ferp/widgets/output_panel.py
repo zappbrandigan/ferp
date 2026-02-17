@@ -65,6 +65,13 @@ class ScriptOutputPanel(ContentPanel):
         self.update_content("[bold $error]Error:[/bold $error]\n" + escape(str(error)))
         self._showing_initial = False
 
+    def show_info(self, title: str, lines: list[str]) -> None:
+        self._clear_progress()
+        self.remove_children()
+        self.update_content("\n".join(lines))
+        self._set_border_title(title)
+        self._showing_initial = False
+
     def show_result(
         self,
         script_name: str,

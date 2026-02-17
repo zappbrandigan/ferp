@@ -382,7 +382,7 @@ TopBar {
 
 #select_dialog #dialog_container {
     height: 15;
-    width: 50;
+    width: 100;
     background: transparent;
 
     #select_container {

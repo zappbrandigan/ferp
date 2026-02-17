@@ -403,6 +403,28 @@ class FileTree(ListView):
             tooltip="Paste copied/moved items (visual mode)",
         ),
         Binding(
+            "f",
+            "toggle_favorite",
+            "Favorite",
+            show=False,
+            tooltip="Toggle favorite for highlighted item",
+        ),
+        Binding(
+            "F",
+            "open_favorites",
+            "Favorites",
+            key_display="Shift+F",
+            show=False,
+            tooltip="Open favorites list",
+        ),
+        Binding(
+            "i",
+            "show_info",
+            "Info",
+            show=False,
+            tooltip="Show file info",
+        ),
+        Binding(
             "a",
             "select_all",
             "Select all",
@@ -1246,6 +1268,22 @@ class FileTree(ListView):
                 move=staged_mode == "move",
             )
         )
+
+    def action_toggle_favorite(self) -> None:
+        app = cast("Ferp", self.app)
+        path = self._selected_path() or app.current_path
+        app.toggle_favorite(path)
+
+    def action_open_favorites(self) -> None:
+        app = cast("Ferp", self.app)
+        app.open_favorites_dialog()
+
+    def action_show_info(self) -> None:
+        app = cast("Ferp", self.app)
+        path = self._selected_path()
+        if path is None:
+            return
+        app.request_file_info(path)
 
     def action_select_all(self) -> None:
         if not self._is_visual_mode():
