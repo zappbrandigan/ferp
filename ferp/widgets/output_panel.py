@@ -62,14 +62,17 @@ class ScriptOutputPanel(ContentPanel):
 
     def show_error(self, error: BaseException) -> None:
         self.remove_children()
-        self.update_content("[bold $error]Error:[/bold $error]\n" + escape(str(error)))
+        lines = ["[bold $error]Error:[/bold $error]", escape(str(error))]
+        self.update_content(self._join_lines_with_limit(lines))
+        self._reset_scroll()
         self._showing_initial = False
 
     def show_info(self, title: str, lines: list[str]) -> None:
         self._clear_progress()
         self.remove_children()
-        self.update_content("\n".join(lines))
+        self.update_content(self._join_lines_with_limit(lines))
         self._set_border_title(title)
+        self._reset_scroll()
         self._showing_initial = False
 
     def show_result(
@@ -124,7 +127,8 @@ class ScriptOutputPanel(ContentPanel):
             )
 
         self.remove_children()
-        self.update_content("\n".join(lines))
+        self.update_content(self._join_lines_with_limit(lines))
+        self._reset_scroll()
         self._showing_initial = False
 
     def _handle_state_update(self, state: AppState) -> None:
@@ -161,9 +165,12 @@ class ScriptOutputPanel(ContentPanel):
             self._set_border_title("Process Output")
             self._clear_progress()
             self.remove_children()
-            self.update_content(
-                "[bold $error]Error:[/bold $error]\n" + escape(script_run.error)
-            )
+            lines = [
+                "[bold $error]Error:[/bold $error]",
+                escape(script_run.error),
+            ]
+            self.update_content(self._join_lines_with_limit(lines))
+            self._reset_scroll()
             return
 
     def _set_border_title(self, title: str) -> None:
@@ -187,6 +194,7 @@ class ScriptOutputPanel(ContentPanel):
         self.remove_children()
         self.update_content(self._initial_message)
         self._set_border_title("Status")
+        self._reset_scroll()
         self._showing_initial = True
 
     def set_initial_message(self, message: str) -> None:
@@ -249,9 +257,20 @@ class ScriptOutputPanel(ContentPanel):
         self._progress_bar = None
         self._progress_status = None
 
+    def _reset_scroll(self) -> None:
+        try:
+            container = self.app.query_one("#output_panel_container", VerticalScroll)
+        except Exception:
+            return
+        container.scroll_to(y=0, animate=False)
+
     def _format_pair(self, key: Any, value: Any) -> str:
         label = f"[bold $text-primary]{escape(str(key))}:[/bold $text-primary]"
-        body = escape(self._stringify_value(value))
+        max_value_chars = max(
+            0,
+            self._MAX_VALUE_CHARS - len(label) - 1 - len(self._TRUNCATION_SUFFIX),
+        )
+        body = escape(self._stringify_value(value, max_value_chars))
         return f"{label} {body}"
 
     def _result_header(
@@ -279,21 +298,46 @@ class ScriptOutputPanel(ContentPanel):
         }
         return header_text, status_to_style.get(status, "$success")
 
-    def _stringify_value(self, value: Any) -> str:
+    def _stringify_value(self, value: Any, max_chars: int) -> str:
         if value is None:
             return "null"
         if isinstance(value, (str, int, float, bool)):
-            return self._truncate_value(str(value))
+            return self._truncate_value(str(value), max_chars)
         if isinstance(value, (dict, list)):
             try:
                 return self._truncate_value(
-                    json.dumps(value, indent=2, ensure_ascii=True)
+                    json.dumps(value, indent=2, ensure_ascii=True),
+                    max_chars,
                 )
             except (TypeError, ValueError):
-                return self._truncate_value(str(value))
-        return self._truncate_value(str(value))
+                return self._truncate_value(str(value), max_chars)
+        return self._truncate_value(str(value), max_chars)
 
-    def _truncate_value(self, value: str) -> str:
-        if len(value) <= self._MAX_VALUE_CHARS:
+    def _truncate_value(self, value: str, max_chars: int) -> str:
+        if max_chars <= 0:
+            return self._TRUNCATION_SUFFIX.lstrip("\n")
+        if len(value) <= max_chars:
             return value
-        return value[: self._MAX_VALUE_CHARS] + self._TRUNCATION_SUFFIX
+        return value[:max_chars] + self._TRUNCATION_SUFFIX
+
+    def _join_lines_with_limit(self, lines: list[str]) -> str:
+        if not lines:
+            return ""
+        limit = self._MAX_VALUE_CHARS
+        suffix_line = self._TRUNCATION_SUFFIX.lstrip("\n")
+        total = 0
+        out: list[str] = []
+        for line in lines:
+            line_len = len(line)
+            extra = 1 if out else 0
+            if total + extra + line_len > limit:
+                if not out:
+                    escaped = escape(line)
+                    if len(escaped) > limit:
+                        escaped = escaped[:limit]
+                    return escaped + self._TRUNCATION_SUFFIX
+                out.append(suffix_line)
+                break
+            out.append(line)
+            total += extra + line_len
+        return "\n".join(out)

@@ -62,6 +62,8 @@ Each script lives under `scripts/<id>/` (the directory name matches the fully-qu
 - `script.py` contains the executable FSCP script.
 - `readme.md` provides the optional documentation shown inside FER​P.
 
+Namespaces are only required for bundled/default scripts and for the repo dev setup. Custom scripts can stay in the single user `config.json` without a namespace.
+
 ### Dev toggle for script config
 
 During development you can point FER​P at the repo copy of `ferp/scripts/config.json` instead of the user config file:
@@ -70,7 +72,7 @@ During development you can point FER​P at the repo copy of `ferp/scripts/confi
 FERP_DEV_CONFIG=1 textual run --dev ferp/app.py
 ```
 
-When enabled, FER​P reads the config directly from the repository and skips the one-time copy into the user config directory.
+When enabled, FER​P reads the repo configs directly: `ferp/scripts/config.json` plus any `ferp/scripts/<namespace>/config.json` files, and skips the one-time copy into the user config directory.
 Script update notifications are suppressed while `FERP_DEV_CONFIG=1` is set.
 
 Scripts that log data with `debug` level are skipped by default. You can enable these logs by adding the debug flag:

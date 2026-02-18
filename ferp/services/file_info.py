@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +13,7 @@ class FileInfoResult:
     path: Path
     data: dict[str, str]
     pdf_data: dict[str, str] | None = None
+    excel_data: dict[str, str] | None = None
     error: str | None = None
 
 
@@ -29,11 +31,23 @@ def build_file_info(path: Path) -> FileInfoResult:
     }
 
     pdf_info: dict[str, str] | None = None
+    excel_info: dict[str, str] | None = None
     if path.is_file() and path.suffix.lower() == ".pdf":
         pdf_info = {}
         _append_pdf_metadata(path, pdf_info)
+    elif path.is_file():
+        excel_info = {}
+        _append_excel_document_id(path, excel_info)
+        if not excel_info:
+            excel_info = None
 
-    return FileInfoResult(path=path, data=info, pdf_data=pdf_info, error=None)
+    return FileInfoResult(
+        path=path,
+        data=info,
+        pdf_data=pdf_info,
+        excel_data=excel_info,
+        error=None,
+    )
 
 
 def _file_type_label(path: Path) -> str:
@@ -101,6 +115,38 @@ def _append_pdf_metadata(path: Path, info: dict[str, str]) -> None:
         info.update(xmp_fields)
 
 
+def _append_excel_document_id(path: Path, info: dict[str, str]) -> None:
+    if path.suffix.lower() not in {".xlsx", ".xlsm", ".xltx", ".xltm"}:
+        return
+    try:
+        with zipfile.ZipFile(path) as archive:
+            try:
+                raw = archive.read("docProps/custom.xml")
+            except KeyError:
+                return
+    except Exception:
+        return
+
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return
+
+    cp_ns = "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties"
+    vt_ns = "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"
+    for prop in root.findall(f".//{{{cp_ns}}}property"):
+        if prop.get("name") != "ferp:DocumentID":
+            continue
+        value = ""
+        for child in prop:
+            if child.tag.startswith(f"{{{vt_ns}}}") and child.text:
+                value = child.text.strip()
+                break
+        if value:
+            info["DocumentID"] = value
+        return
+
+
 def _extract_xmp_text(reader: Any) -> str | None:
     try:
         xmp = getattr(reader, "xmp_metadata", None)
@@ -131,19 +177,12 @@ def _extract_dublin_core(xmp_text: str) -> dict[str, str]:
 
     dc_ns = "http://purl.org/dc/elements/1.1/"
     fields = (
-        "title",
         "creator",
-        "subject",
-        "description",
         "publisher",
         "contributor",
-        "date",
-        "type",
         "format",
         "identifier",
         "source",
-        "language",
-        "relation",
         "coverage",
         "rights",
     )
@@ -184,14 +223,10 @@ def _extract_xmp_fields(xmp_text: str) -> dict[str, str]:
     }
     fields = {
         "xmp:CreatorTool": "XMP CreatorTool",
-        "xmp:CreateDate": "XMP CreateDate",
-        "xmp:ModifyDate": "XMP ModifyDate",
         "pdf:Producer": "XMP Producer",
         "pdf:Keywords": "XMP Keywords",
         "xmpMM:DocumentID": "XMP DocumentID",
         "xmpMM:InstanceID": "XMP InstanceID",
-        "xmpMM:OriginalDocumentID": "XMP OriginalDocumentID",
-        "xmpTPg:NPages": "XMP Pages",
     }
     results: dict[str, str] = {}
     for field, label in fields.items():

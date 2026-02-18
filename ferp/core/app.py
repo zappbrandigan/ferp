@@ -1966,6 +1966,13 @@ class Ferp(App):
                             f"[bold $text-primary]{escape(key)}:[/bold $text-primary] {escape(value)}"
                             for key, value in result.pdf_data.items()
                         )
+                    if result.excel_data:
+                        lines.append("")
+                        lines.append("[bold $secondary]Excel Metadata[/bold $secondary]")
+                        lines.extend(
+                            f"[bold $text-primary]{escape(key)}:[/bold $text-primary] {escape(value)}"
+                            for key, value in result.excel_data.items()
+                        )
                     panel.show_info("File Info", lines)
             elif event.state is WorkerState.ERROR:
                 error = worker.error or RuntimeError("File info failed.")
