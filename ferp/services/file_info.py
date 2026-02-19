@@ -177,14 +177,8 @@ def _extract_dublin_core(xmp_text: str) -> dict[str, str]:
 
     dc_ns = "http://purl.org/dc/elements/1.1/"
     fields = (
-        "creator",
         "publisher",
-        "contributor",
-        "format",
         "identifier",
-        "source",
-        "coverage",
-        "rights",
     )
     results: dict[str, str] = {}
     for field in fields:
@@ -219,12 +213,10 @@ def _extract_xmp_fields(xmp_text: str) -> dict[str, str]:
         "xmp": "http://ns.adobe.com/xap/1.0/",
         "pdf": "http://ns.adobe.com/pdf/1.3/",
         "xmpMM": "http://ns.adobe.com/xap/1.0/mm/",
-        "xmpTPg": "http://ns.adobe.com/xap/1.0/t/pg/",
     }
     fields = {
         "xmp:CreatorTool": "XMP CreatorTool",
         "pdf:Producer": "XMP Producer",
-        "pdf:Keywords": "XMP Keywords",
         "xmpMM:DocumentID": "XMP DocumentID",
         "xmpMM:InstanceID": "XMP InstanceID",
     }
@@ -250,22 +242,27 @@ def _extract_ferp_summary(xmp_text: str) -> dict[str, str]:
 
     ferp_ns = "https://tulbox.app/ferp/xmp/1.0"
     rdf_ns = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-    results: dict[str, str] = {}
+    ferp_items: list[tuple[str, str]] = []
     admin = root.find(f".//{{{ferp_ns}}}administrator")
     if admin is not None:
         values = _collect_xmp_values(admin)
         if values:
-            results["Stamp Administrator"] = values[0]
+            ferp_items.append(("Stamp Administrator", values[0]))
+    catalog_code = root.find(f".//{{{ferp_ns}}}catalogCode")
+    if catalog_code is not None:
+        values = _collect_xmp_values(catalog_code)
+        if values:
+            ferp_items.append(("Stamp Catalog Code", values[0]))
     added_date = root.find(f".//{{{ferp_ns}}}dataAddedDate")
     if added_date is not None:
         values = _collect_xmp_values(added_date)
         if values:
-            results["Stamp Data Added"] = values[0]
+            ferp_items.append(("Stamp Data Added", values[0]))
     spec_version = root.find(f".//{{{ferp_ns}}}stampSpecVersion")
     if spec_version is not None:
         values = _collect_xmp_values(spec_version)
         if values:
-            results["Stamp Spec Version"] = values[0]
+            ferp_items.append(("Stamp Spec Version", values[0]))
 
     agreements_elem = root.find(f".//{{{ferp_ns}}}agreements")
     agreement_items: list[ET.Element] = []
@@ -279,5 +276,11 @@ def _extract_ferp_summary(xmp_text: str) -> dict[str, str]:
             for pub in agreement.findall(f".//{{{ferp_ns}}}publishers//{{{rdf_ns}}}li"):
                 publishers.extend(_collect_xmp_values(pub))
         if publishers:
-            results["Stamp Publishers"] = ", ".join(sorted(set(publishers)))
+            ferp_items.append(("Stamp Publishers", ", ".join(sorted(set(publishers)))))
+
+    if not ferp_items:
+        return {}
+
+    results: dict[str, str] = dict(ferp_items)
+    results["---"] = "---"
     return results
