@@ -27,6 +27,7 @@ from ferp.core.messages import (
 )
 from ferp.core.protocols import AppWithPath
 from ferp.core.state import FileTreeState, FileTreeStateStore
+from ferp.core.worker_groups import WorkerGroup
 from ferp.widgets.dialogs import BulkRenameConfirmDialog
 
 if TYPE_CHECKING:
@@ -835,10 +836,13 @@ class FileTree(ListView):
             self._set_filter("")
             app._stop_file_tree_watch()
             self.show_loading(app.current_path)
-            app.notify(f"Renaming {len(plan)} file(s)...", timeout=2)
+            app.notify(
+                f"Renaming {len(plan)} file(s)...",
+                timeout=app.notify_timeouts.quick,
+            )
             app.run_worker(
                 lambda rename_plan=plan: self._bulk_rename_worker(rename_plan),
-                group="bulk_rename",
+                group=WorkerGroup.BULK_RENAME,
                 thread=True,
             )
 
@@ -1238,7 +1242,7 @@ class FileTree(ListView):
         self._visual_clipboard_paths = paths
         self._visual_clipboard_mode = "copy"
         self._refresh_border_subtitle()
-        # self.app.notify(f"Copied {len(paths)} item(s).", timeout=2)
+        # self.app.notify(f"Copied {len(paths)} item(s).", timeout=app.notify_timeouts.quick)
 
     def action_move_selection(self) -> None:
         if not self._is_visual_mode():
@@ -1249,13 +1253,17 @@ class FileTree(ListView):
         self._visual_clipboard_paths = paths
         self._visual_clipboard_mode = "move"
         self._refresh_border_subtitle()
-        # self.app.notify(f"Move staged for {len(paths)} item(s).", timeout=2)
+        # self.app.notify(f"Move staged for {len(paths)} item(s).", timeout=app.notify_timeouts.quick)
 
     def action_paste_selection(self) -> None:
         if not self._is_visual_mode():
             return
         if not self._visual_clipboard_paths or not self._visual_clipboard_mode:
-            self.app.notify("Nothing to paste.", timeout=2)
+            app = cast("Ferp", self.app)
+            app.notify(
+                "Nothing to paste.",
+                timeout=app.notify_timeouts.quick,
+            )
             return
         staged_paths = list(self._visual_clipboard_paths)
         staged_mode = self._visual_clipboard_mode
@@ -1307,7 +1315,7 @@ class FileTree(ListView):
         if not self._visual_clipboard_paths:
             return
         self.clear_visual_clipboard()
-        # self.app.notify("Cleared staged items.", timeout=2)
+        # self.app.notify("Cleared staged items.", timeout=app.notify_timeouts.quick)
 
     def action_new_file(self) -> None:
         app = cast(AppWithPath, self.app)

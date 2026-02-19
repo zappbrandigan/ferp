@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
+from ferp.core.errors import FerpError
+
 MONDAY_REQUIRED_COLUMNS = (
     "Publisher",
     "Territory",
@@ -63,13 +65,20 @@ def sync(api_token: str, board_id: int, cache_path: Path) -> dict[str, object]:
             messages = "; ".join(
                 error.get("message", "Unknown error") for error in body["errors"]
             )
-            raise RuntimeError(f"Monday API error: {messages}")
+            raise FerpError(
+                code="monday_api_error",
+                message="Monday API error.",
+                detail=messages,
+            )
         return body.get("data", {})
 
     data = fetch_page(None)
     boards = data.get("boards") or []
     if not boards:
-        raise RuntimeError("Monday board not found.")
+        raise FerpError(
+            code="monday_board_not_found",
+            message="Monday board not found.",
+        )
 
     board = boards[0]
     group_map = {

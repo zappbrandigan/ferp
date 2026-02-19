@@ -13,6 +13,8 @@ from ferp.core.script_runner import (
     ScriptRunner,
     ScriptStatus,
 )
+from ferp.core.worker_groups import WorkerGroup
+from ferp.core.worker_registry import worker_handler
 from ferp.domain.scripts import Script
 from ferp.services.scripts import ScriptExecutionContext
 from ferp.widgets.dialogs import ConfirmDialog
@@ -104,7 +106,7 @@ class ScriptLifecycleController:
         try:
             self._abort_worker = self._app.run_worker(
                 abort,
-                group="script_abort",
+                group=WorkerGroup.SCRIPT_ABORT,
                 exclusive=True,
                 thread=True,
             )
@@ -113,11 +115,12 @@ class ScriptLifecycleController:
             raise
         return True
 
+    @worker_handler((WorkerGroup.SCRIPTS, WorkerGroup.SCRIPT_ABORT))
     def handle_worker_state(self, event: Worker.StateChanged) -> bool:
         worker = event.worker
-        if worker.group not in {"scripts", "script_abort"}:
+        if worker.group not in {WorkerGroup.SCRIPTS, WorkerGroup.SCRIPT_ABORT}:
             return False
-        if worker.group == "scripts":
+        if worker.group == WorkerGroup.SCRIPTS:
             if self._active_worker is None:
                 if not self._script_running:
                     return True
@@ -128,7 +131,7 @@ class ScriptLifecycleController:
         if state is WorkerState.RUNNING:
             return True
 
-        if worker.group == "script_abort":
+        if worker.group == WorkerGroup.SCRIPT_ABORT:
             if state is WorkerState.SUCCESS:
                 result = worker.result
                 if isinstance(result, ScriptResult):
@@ -232,7 +235,7 @@ class ScriptLifecycleController:
         try:
             worker = app.run_worker(
                 runner_fn,
-                group="scripts",
+                group=WorkerGroup.SCRIPTS,
                 exclusive=True,
                 thread=True,
             )

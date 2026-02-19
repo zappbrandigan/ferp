@@ -1,3 +1,6 @@
 APP_NAME = "ferp"
 APP_AUTHOR = "zappbrandigan"
 SCRIPTS_REPO_URL = "https://github.com/zappbrandigan/ferp-scripts"
+SETTINGS_FILENAME = "settings.json"
+TASKS_FILENAME = "tasks.json"
+SCRIPTS_CONFIG_FILENAME = "config.json"

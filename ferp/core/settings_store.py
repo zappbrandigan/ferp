@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from pydantic import ValidationError
+
+from ferp.core.settings_model import SettingsModel
 
 
 class SettingsStore:
@@ -15,12 +20,17 @@ class SettingsStore:
         """Read settings from disk, injecting expected sections."""
         if self._path.exists():
             try:
-                data = json.loads(self._path.read_text())
+                raw = json.loads(self._path.read_text())
             except (OSError, json.JSONDecodeError):
-                data = {}
+                raw = {}
         else:
-            data = {}
-        return self._with_defaults(data)
+            raw = {}
+        migrated = self._migrate(raw)
+        normalized = self._normalize(migrated)
+        if self._should_persist_upgrade(raw, normalized):
+            self._backup_raw_settings()
+            self.save(normalized)
+        return normalized
 
     def save(self, settings: dict[str, Any]) -> None:
         """Persist settings to disk."""
@@ -77,15 +87,42 @@ class SettingsStore:
         )
         return max_files, max_age_days
 
-    def _with_defaults(self, data: dict[str, Any]) -> dict[str, Any]:
-        preferences = data.setdefault("userPreferences", {})
-        preferences.setdefault("scriptNamespace", "")
-        preferences.setdefault("scriptVersions", {"core": "", "namespaces": {}})
-        preferences.setdefault("favorites", [])
-        data.setdefault("logs", {})
-        integrations = data.setdefault("integrations", {})
-        integrations.setdefault("monday", {})
+    def _normalize(self, data: dict[str, Any]) -> dict[str, Any]:
+        try:
+            model = SettingsModel.model_validate(data or {})
+        except ValidationError:
+            model = SettingsModel()
+        return model.model_dump()
+
+    def _migrate(self, data: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(data, dict):
+            return {}
+        version = data.get("schemaVersion")
+        if not isinstance(version, int):
+            version = 0
+        if version < 1:
+            data = dict(data)
+            data["schemaVersion"] = 1
         return data
+
+    def _should_persist_upgrade(
+        self, raw: dict[str, Any], normalized: dict[str, Any]
+    ) -> bool:
+        if not isinstance(raw, dict):
+            return True
+        if raw.get("schemaVersion") != normalized.get("schemaVersion"):
+            return True
+        return raw != normalized
+
+    def _backup_raw_settings(self) -> None:
+        if not self._path.exists():
+            return
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        backup_path = self._path.with_name(f"{self._path.stem}.bak-{timestamp}.json")
+        try:
+            backup_path.write_text(self._path.read_text())
+        except OSError:
+            pass
 
     def _coerce_positive_int(
         self,

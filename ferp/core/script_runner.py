@@ -14,8 +14,10 @@ from multiprocessing.connection import Connection
 from pathlib import Path
 from runpy import run_path
 from threading import Lock
-from typing import Any, Callable, IO, Literal, cast
+from typing import IO, Any, Callable, Literal, cast
 
+from ferp.core.config import get_runtime_config
+from ferp.core.paths import SETTINGS_FILENAME
 from ferp.fscp.host import Host
 from ferp.fscp.host.managed_process import WorkerFn
 from ferp.fscp.host.process_registry import (
@@ -52,7 +54,7 @@ def _read_app_version() -> str:
 
 
 def _read_build_label() -> str:
-    if os.environ.get("FERP_DEV_CONFIG") == "1":
+    if get_runtime_config().dev_config:
         return "dev"
     return "release"
 
@@ -139,6 +141,7 @@ class HostSession:
 def _script_worker_entry(script_path: str, app_root: str, conn: Connection) -> None:
     os.chdir(app_root)
     configure_connection(conn)
+
     class _NullWriter(io.TextIOBase):
         def write(self, _s: str) -> int:
             return 0
@@ -223,7 +226,7 @@ class ScriptRunner:
         try:
             host.start()
             namespace = self._namespace_resolver() if self._namespace_resolver else None
-            settings_file = self._settings_file or (self.app_root / "settings.json")
+            settings_file = self._settings_file or (self.app_root / SETTINGS_FILENAME)
             environment = _build_environment(
                 self.app_root, self.cache_dir, namespace, settings_file
             )

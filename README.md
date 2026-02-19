@@ -81,6 +81,44 @@ Scripts that log data with `debug` level are skipped by default. You can enable 
 FERP_DEV_CONFIG=1 FERP_SCRIPT_LOG_LEVEL=debug textual run --dev ferp/app.py
 ```
 
+## Configuration
+
+FERP uses two configuration layers:
+
+- **Runtime config (env)**: `FERP_*` environment variables (preferred for automation).
+- **User settings (file)**: `settings.json` in the user config directory (managed by the app).
+
+Precedence order: **env -> settings.json -> defaults**.
+
+Runtime env vars:
+
+- `FERP_DEV_CONFIG=1` to read script configs from the repo during development.
+- `FERP_SCRIPT_LOG_LEVEL=debug` to include debug logs from FSCP scripts.
+
+You can inspect the resolved configuration with:
+
+```bash
+ferp print-config
+```
+
+Settings are versioned with `schemaVersion` and automatically normalized on load.
+If an upgrade is detected, a backup is created next to `settings.json` with a
+`settings.bak-YYYYMMDDHHMMSS.json` suffix.
+
+Logs are separated by type under the user data directory:
+
+- `logs/host/host.log` for UI/host application logs.
+- `logs/scripts/` for per-script transcript logs.
+
+### Error Codes
+
+When operations fail, FER​P emits structured error codes for easier support and
+troubleshooting. Example codes you may see:
+
+- `release_metadata_failed`, `release_asset_download_failed`
+- `namespaces_missing_list`, `namespaces_missing_namespace`
+- `monday_api_error`, `monday_board_not_found`
+
 ## Authoring FSCP Scripts
 
 Python scripts executed from FER​P speak the [FSCP](./ferp/fscp) protocol. See

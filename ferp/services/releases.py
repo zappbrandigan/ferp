@@ -10,6 +10,7 @@ from pathlib import Path
 
 import requests
 
+from ferp.core.errors import FerpError
 from ferp.services.update_check import is_newer
 
 _GITHUB_HEADERS = {
@@ -25,7 +26,10 @@ def update_scripts_from_release(
 
     zip_url = payload.get("zipball_url")
     if not zip_url:
-        raise RuntimeError("Latest release is missing a zipball URL.")
+        raise FerpError(
+            code="release_missing_zip",
+            message="Latest release is missing a zipball URL.",
+        )
 
     tag_name = str(payload.get("tag_name") or "").strip()
 
@@ -37,14 +41,21 @@ def update_scripts_from_release(
             response.raise_for_status()
             archive_path.write_bytes(response.content)
         except requests.RequestException as exc:
-            raise RuntimeError("Failed to download release archive.") from exc
+            raise FerpError(
+                code="release_download_failed",
+                message="Failed to download release archive.",
+                detail=str(exc),
+            ) from exc
 
         extract_dir = tmp_path / "extract"
         try:
             with zipfile.ZipFile(archive_path) as archive:
                 archive.extractall(extract_dir)
         except zipfile.BadZipFile as exc:
-            raise RuntimeError("Release archive is not a valid zip file.") from exc
+            raise FerpError(
+                code="release_bad_zip",
+                message="Release archive is not a valid zip file.",
+            ) from exc
 
         source_dir = _find_release_payload_dir(extract_dir)
         if not dry_run:
@@ -81,16 +92,26 @@ def fetch_namespace_index(repo_url: str) -> tuple[str, dict]:
 
     index_url = assets.get("namespaces.json")
     if not index_url:
-        raise RuntimeError("Latest release is missing namespaces.json.")
+        raise FerpError(
+            code="release_missing_namespaces",
+            message="Latest release is missing namespaces.json.",
+        )
 
     try:
         response = requests.get(index_url, timeout=30)
         response.raise_for_status()
         index_payload = response.json()
     except requests.RequestException as exc:
-        raise RuntimeError("Failed to download namespaces.json.") from exc
+        raise FerpError(
+            code="namespaces_download_failed",
+            message="Failed to download namespaces.json.",
+            detail=str(exc),
+        ) from exc
     except json.JSONDecodeError as exc:
-        raise RuntimeError("namespaces.json is not valid JSON.") from exc
+        raise FerpError(
+            code="namespaces_invalid_json",
+            message="namespaces.json is not valid JSON.",
+        ) from exc
 
     return tag_name, index_payload
 
@@ -105,7 +126,10 @@ def update_scripts_from_namespace_release(
     tag_name, index_payload = fetch_namespace_index(repo_url)
     namespaces = index_payload.get("namespaces", [])
     if not isinstance(namespaces, list):
-        raise RuntimeError("namespaces.json is missing a namespaces list.")
+        raise FerpError(
+            code="namespaces_missing_list",
+            message="namespaces.json is missing a namespaces list.",
+        )
 
     def _find_asset_id(ns_id: str) -> str:
         for entry in namespaces:
@@ -119,17 +143,26 @@ def update_scripts_from_namespace_release(
 
     core_asset = _find_asset_id("core")
     if not core_asset:
-        raise RuntimeError("namespaces.json does not include a core asset.")
+        raise FerpError(
+            code="namespaces_missing_core",
+            message="namespaces.json does not include a core asset.",
+        )
     namespace_asset = _find_asset_id(namespace)
     if not namespace_asset:
-        raise RuntimeError(f"namespaces.json does not include '{namespace}'.")
+        raise FerpError(
+            code="namespaces_missing_namespace",
+            message=f"namespaces.json does not include '{namespace}'.",
+        )
 
     payload = _fetch_latest_release(repo_url)
     assets = _release_assets(payload)
     core_url = assets.get(core_asset)
     namespace_url = assets.get(namespace_asset)
     if not core_url or not namespace_url:
-        raise RuntimeError("Release assets missing for selected namespace.")
+        raise FerpError(
+            code="release_assets_missing",
+            message="Release assets missing for selected namespace.",
+        )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
@@ -146,7 +179,10 @@ def update_scripts_from_namespace_release(
                 with zipfile.ZipFile(archive_path) as archive:
                     archive.extractall(payload_dir)
             except zipfile.BadZipFile as exc:
-                raise RuntimeError("Release asset is not a valid zip file.") from exc
+                raise FerpError(
+                    code="release_asset_bad_zip",
+                    message="Release asset is not a valid zip file.",
+                ) from exc
 
         if not dry_run:
             _replace_scripts_payload(payload_dir, scripts_dir)
@@ -236,9 +272,16 @@ def _fetch_latest_release(repo_url: str) -> dict:
         response.raise_for_status()
         payload = response.json()
     except requests.RequestException as exc:
-        raise RuntimeError("Failed to fetch latest release metadata.") from exc
+        raise FerpError(
+            code="release_metadata_failed",
+            message="Failed to fetch latest release metadata.",
+            detail=str(exc),
+        ) from exc
     if not isinstance(payload, dict):
-        raise RuntimeError("Release metadata response is not valid JSON.")
+        raise FerpError(
+            code="release_metadata_invalid",
+            message="Release metadata response is not valid JSON.",
+        )
     return payload
 
 
@@ -263,13 +306,20 @@ def _download_asset(url: str, target: Path) -> None:
         response.raise_for_status()
         target.write_bytes(response.content)
     except requests.RequestException as exc:
-        raise RuntimeError(f"Failed to download asset from {url}.") from exc
+        raise FerpError(
+            code="release_asset_download_failed",
+            message=f"Failed to download asset from {url}.",
+            detail=str(exc),
+        ) from exc
 
 
 def _find_release_payload_dir(extract_dir: Path) -> Path:
     root_dirs = [path for path in extract_dir.iterdir() if path.is_dir()]
     if not root_dirs:
-        raise RuntimeError("Release archive did not contain any directories.")
+        raise FerpError(
+            code="release_missing_directories",
+            message="Release archive did not contain any directories.",
+        )
 
     if len(root_dirs) == 1:
         root = root_dirs[0]
@@ -287,7 +337,10 @@ def _find_release_payload_dir(extract_dir: Path) -> Path:
         if _payload_has_scripts(nested):
             return nested
 
-    raise RuntimeError("Release archive did not include scripts payload.")
+    raise FerpError(
+        code="release_missing_payload",
+        message="Release archive did not include scripts payload.",
+    )
 
 
 def _payload_has_scripts(candidate: Path) -> bool:
@@ -299,11 +352,17 @@ def _payload_has_scripts(candidate: Path) -> bool:
 def _parse_github_repo(repo_url: str) -> tuple[str, str]:
     url = repo_url.strip().removesuffix(".git")
     if "github.com/" not in url:
-        raise ValueError("Only GitHub URLs are supported for release updates.")
+        raise FerpError(
+            code="release_invalid_repo",
+            message="Only GitHub URLs are supported for release updates.",
+        )
     owner_repo = url.split("github.com/", 1)[1].strip("/")
     parts = owner_repo.split("/")
     if len(parts) != 2 or not all(parts):
-        raise ValueError("Invalid GitHub repository URL.")
+        raise FerpError(
+            code="release_invalid_repo",
+            message="Invalid GitHub repository URL.",
+        )
     return parts[0], parts[1]
 
 

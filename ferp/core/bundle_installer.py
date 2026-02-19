@@ -11,6 +11,9 @@ from typing import TYPE_CHECKING, Any
 from textual.worker import Worker, WorkerState
 
 from ferp.core.dependency_manager import ScriptDependencyManager
+from ferp.core.errors import FerpError
+from ferp.core.worker_groups import WorkerGroup
+from ferp.core.worker_registry import worker_handler
 from ferp.domain.scripts import TargetSelection, normalize_targets
 from ferp.widgets.scripts import ScriptManager
 
@@ -47,17 +50,21 @@ class ScriptBundleInstaller:
         self._config_file = app._paths.config_file
 
     def start_install(self, bundle_path: Path) -> None:
-        self._app.notify(f"Installing bundle: {bundle_path}", timeout=3)
+        self._app.notify(
+            f"Installing bundle: {bundle_path}",
+            timeout=self._app.notify_timeouts.long,
+        )
         self._app.run_worker(
             lambda: self._process_script_bundle(bundle_path),
-            group="bundle_install",
+            group=WorkerGroup.BUNDLE_INSTALL,
             exclusive=True,
             thread=True,
         )
 
+    @worker_handler(WorkerGroup.BUNDLE_INSTALL)
     def handle_worker_state(self, event: Worker.StateChanged) -> bool:
         worker = event.worker
-        if worker.group != "bundle_install":
+        if worker.group != WorkerGroup.BUNDLE_INSTALL:
             return False
 
         if event.state is WorkerState.SUCCESS:
@@ -68,6 +75,13 @@ class ScriptBundleInstaller:
 
         if event.state is WorkerState.ERROR:
             error = worker.error or RuntimeError("Bundle installation failed.")
+            if not isinstance(error, FerpError):
+                detail = None if isinstance(error, RuntimeError) else str(error)
+                error = FerpError(
+                    code="bundle_install_failed",
+                    message="Bundle installation failed.",
+                    detail=detail,
+                )
             self._app.show_error(error)
             return True
 
@@ -124,7 +138,7 @@ class ScriptBundleInstaller:
             f"Bundle installed: {result.manifest.name} v{result.manifest.version} "
             f"({result.manifest.id})"
         )
-        self._app.notify(message, timeout=4)
+        self._app.notify(message, timeout=self._app.notify_timeouts.normal)
         scripts_panel = self._app.query_one(ScriptManager)
         scripts_panel.load_scripts()
         scripts_panel.focus()

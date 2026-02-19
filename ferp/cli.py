@@ -6,9 +6,16 @@ import zipfile
 from pathlib import Path
 from typing import Sequence
 
+from platformdirs import user_config_path
+
 from ferp import __version__
 from ferp.app import main as run_app
-from ferp.domain.scripts import normalize_targets
+from ferp.core.config import get_runtime_config
+from ferp.core.paths import APP_AUTHOR, APP_NAME, SETTINGS_FILENAME
+from ferp.core.settings_store import SettingsStore
+from typing import cast
+
+from ferp.domain.scripts import TargetType, normalize_targets
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -84,6 +91,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bundle_parser.set_defaults(handler=handle_bundle)
 
+    config_parser = subparsers.add_parser(
+        "print-config",
+        help=f"Print resolved runtime config and {SETTINGS_FILENAME} to stdout.",
+    )
+    config_parser.set_defaults(handler=handle_print_config)
+
     return parser
 
 
@@ -116,7 +129,18 @@ def handle_bundle(args: argparse.Namespace) -> None:
 
     raw_target = args.target
     target_values = [value.strip() for value in str(raw_target).split(",") if value]
-    target = normalize_targets(target_values or "current_directory")
+    if target_values:
+        allowed = {
+            "current_directory",
+            "highlighted_file",
+            "highlighted_directory",
+        }
+        for value in target_values:
+            if value not in allowed:
+                raise SystemExit(f"Unsupported script target: {value}")
+        target = normalize_targets(cast(list[TargetType], target_values))
+    else:
+        target = normalize_targets("current_directory")
 
     manifest: dict[str, object] = {
         "id": script_id,
@@ -149,13 +173,40 @@ def _slugify(value: str) -> str:
     return cleaned.strip("-")
 
 
+def _redact_secrets(value: object) -> object:
+    if isinstance(value, dict):
+        redacted: dict[object, object] = {}
+        for key, item in value.items():
+            key_text = str(key).lower()
+            tokens = ("token", "secret", "password", "api_key", "apikey")
+            if any(token in key_text for token in tokens):
+                redacted[key] = "***"
+            else:
+                redacted[key] = _redact_secrets(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_secrets(item) for item in value]
+    return value
+
+
+def handle_print_config(_args: argparse.Namespace) -> None:
+    config_dir = Path(user_config_path(APP_NAME, APP_AUTHOR))
+    settings_path = config_dir / SETTINGS_FILENAME
+    settings_store = SettingsStore(settings_path)
+    payload = {
+        "runtime": get_runtime_config().model_dump(),
+        "settings_path": str(settings_path),
+        "settings": settings_store.load(),
+    }
+    print(json.dumps(_redact_secrets(payload), indent=2))
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command == "bundle":
+    if args.command in {"bundle", "print-config"}:
         args.handler(args)
-        print(args)
         return
 
     if args.no_ui:

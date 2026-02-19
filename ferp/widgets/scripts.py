@@ -8,6 +8,7 @@ from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView
 
 from ferp.core.messages import RunScriptRequest, ShowReadmeRequest
+from ferp.core.paths import SCRIPTS_CONFIG_FILENAME
 from ferp.domain.scripts import Script, ScriptConfig, normalize_targets
 
 
@@ -190,7 +191,9 @@ class ScriptManager(ListView):
 
         if not any(path.exists() for path in self.config_paths):
             self.border_subtitle = ""
-            self.append(ListItem(Label("No config.json found")))
+            self.append(
+                ListItem(Label(f"No {SCRIPTS_CONFIG_FILENAME} found"))
+            )
             return
 
         try:

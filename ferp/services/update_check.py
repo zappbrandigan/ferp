@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ferp.core.errors import FerpError
+
 
 @dataclass(frozen=True)
 class UpdateCheckResult:
@@ -72,7 +74,10 @@ def fetch_latest_version(package: str) -> str:
     info = payload.get("info", {})
     version = info.get("version")
     if not isinstance(version, str) or not version:
-        raise RuntimeError("PyPI response missing latest version.")
+        raise FerpError(
+            code="update_check_invalid_response",
+            message="PyPI response missing latest version.",
+        )
     return version
 
 

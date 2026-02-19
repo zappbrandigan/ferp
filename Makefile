@@ -1,10 +1,16 @@
-.PHONY: dev test clean bump-patch bump-minor bump-major
+.PHONY: dev test test-cov test-scripts clean bump-patch bump-minor bump-major
 
 dev:
 	FERP_DEV_CONFIG=1 FERP_SCRIPT_LOG_LEVEL=debug textual run --dev ferp/app.py
 
 test:
-	pytest
+	pytest -v
+
+test-cov:
+	pytest --cov=ferp --cov-report=term-missing
+
+test-scripts:
+	pytest tests/scripts -v
 
 clean:
 	find . -name "__pycache__" -type d -prune -exec rm -rf {} +

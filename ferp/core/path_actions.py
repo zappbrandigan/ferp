@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
+from ferp.core.errors import FerpError
 from ferp.core.fs_controller import FileSystemController
 from ferp.widgets.dialogs import ConfirmDialog, InputDialog
 
@@ -153,7 +154,12 @@ class PathActionController:
         move: bool,
     ) -> None:
         if not destination.exists() or not destination.is_dir():
-            self._show_error(RuntimeError("Destination must be an existing directory."))
+            self._show_error(
+                FerpError(
+                    code="paste_invalid_destination",
+                    message="Destination must be an existing directory.",
+                )
+            )
             return
 
         unique_sources: list[Path] = []
@@ -168,7 +174,12 @@ class PathActionController:
         if missing:
             sample = ", ".join(path.name for path in missing[:3])
             suffix = "..." if len(missing) > 3 else ""
-            self._show_error(RuntimeError(f"Missing source item(s): {sample}{suffix}"))
+            self._show_error(
+                FerpError(
+                    code="paste_missing_source",
+                    message=f"Missing source item(s): {sample}{suffix}",
+                )
+            )
             return
 
         plan: list[tuple[Path, Path]] = []
@@ -184,7 +195,10 @@ class PathActionController:
                     pass
                 else:
                     self._show_error(
-                        RuntimeError("Cannot paste a folder inside itself.")
+                        FerpError(
+                            code="paste_inside_self",
+                            message="Cannot paste a folder inside itself.",
+                        )
                     )
                     return
             if destination_path.exists():
@@ -192,7 +206,12 @@ class PathActionController:
             plan.append((source, destination_path))
 
         if not plan:
-            self._show_error(RuntimeError("Nothing to paste."))
+            self._show_error(
+                FerpError(
+                    code="paste_nothing",
+                    message="Nothing to paste.",
+                )
+            )
             return
 
         def perform(overwrite: bool) -> None:

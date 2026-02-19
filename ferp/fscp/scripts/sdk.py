@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import itertools
 import json
-import os
 import traceback
 from dataclasses import dataclass
 from functools import wraps
@@ -20,6 +19,7 @@ from typing import (
     overload,
 )
 
+from ferp.core.config import get_runtime_config
 from ferp.fscp.protocol.messages import Message, MessageType
 from ferp.fscp.protocol.validator import Endpoint, ProtocolValidator
 from ferp.fscp.scripts.runtime.errors import FatalScriptError, ProtocolViolation
@@ -101,9 +101,7 @@ class ScriptAPI:
         self._transport = transport
         self._request_counter = itertools.count(1)
         self._exited = False
-        self._log_level = _normalize_log_level(
-            os.environ.get("FERP_SCRIPT_LOG_LEVEL", "info")
-        )
+        self._log_level = _normalize_log_level(get_runtime_config().script_log_level)
         self._cleanup_hooks: list[Callable[[], None]] = []
         self._cleanup_ran = False
 
@@ -292,9 +290,7 @@ class ScriptAPI:
             if not isinstance(field_id, str) or not field_id:
                 raise ValueError("Fields must define a non-empty 'id'.")
             if not isinstance(label, str) or not label:
-                raise ValueError(
-                    f"Field '{field_id}' must define a non-empty 'label'."
-                )
+                raise ValueError(f"Field '{field_id}' must define a non-empty 'label'.")
             if field_type == "bool":
                 default = field.get("default")
                 if not isinstance(default, bool):

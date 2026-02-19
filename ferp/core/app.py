@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -28,9 +27,12 @@ from textual.worker import Worker, WorkerState
 from ferp import __version__
 from ferp.core.bundle_installer import ScriptBundleInstaller
 from ferp.core.command_provider import FerpCombinedCommandProvider, FerpCommandProvider
+from ferp.core.config import get_runtime_config
 from ferp.core.dependency_manager import ScriptDependencyManager
+from ferp.core.errors import FerpError, format_error
 from ferp.core.fs_controller import FileSystemController
 from ferp.core.fs_watcher import FileTreeWatcher
+from ferp.core.logging import configure_logging, get_logger, log_event
 from ferp.core.messages import (
     BulkDeleteRequest,
     BulkPasteRequest,
@@ -42,14 +44,24 @@ from ferp.core.messages import (
     RunScriptRequest,
     ShowReadmeRequest,
 )
+from ferp.core.notify import NotifyTimeouts
 from ferp.core.path_actions import PathActionController
-from ferp.core.paths import APP_AUTHOR, APP_NAME, SCRIPTS_REPO_URL
+from ferp.core.paths import (
+    APP_AUTHOR,
+    APP_NAME,
+    SCRIPTS_CONFIG_FILENAME,
+    SETTINGS_FILENAME,
+    SCRIPTS_REPO_URL,
+    TASKS_FILENAME,
+)
 from ferp.core.script_controller import ScriptLifecycleController
 from ferp.core.script_runner import ScriptResult
 from ferp.core.settings_store import SettingsStore
 from ferp.core.state import AppStateStore, FileTreeStateStore, TaskListStateStore
 from ferp.core.task_store import Task, TaskStore
 from ferp.core.transcript_logger import TranscriptLogger
+from ferp.core.worker_groups import WorkerGroup
+from ferp.core.worker_registry import WorkerRouter, worker_handler
 from ferp.fscp.host.process_registry import ProcessRecord
 from ferp.services.file_info import FileInfoResult, build_file_info
 from ferp.services.file_listing import (
@@ -91,6 +103,8 @@ class AppPaths:
     data_dir: Path
     cache_dir: Path
     logs_dir: Path
+    host_logs_dir: Path
+    script_logs_dir: Path
     tasks_file: Path
     scripts_dir: Path
 
@@ -172,9 +186,17 @@ class Ferp(App):
         self.state_store.set_current_path(str(value))
 
     def __init__(self, start_path: Path | None = None) -> None:
+        self.runtime_config = get_runtime_config()
+        self._dev_config_enabled = self.runtime_config.dev_config
         self._paths = self._prepare_paths()
+        self.notify_timeouts = NotifyTimeouts()
+        configure_logging(
+            level=self.runtime_config.log_level,
+            format_name=self.runtime_config.log_format,
+            log_dir=self._paths.host_logs_dir,
+            filename="host.log",
+        )
         self.app_root = self._paths.app_root
-        self._dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
         self.settings_store = SettingsStore(self._paths.settings_file)
         self.settings = self.settings_store.load()
         self.state_store = AppStateStore()
@@ -205,7 +227,7 @@ class Ferp(App):
             snapshot_func=snapshot_directory,
             worker_factory=lambda fn: self.run_worker(
                 fn,
-                group="watcher_snapshot",
+                group=WorkerGroup.WATCHER_SNAPSHOT,
                 thread=True,
                 exclusive=True,
             ),
@@ -213,7 +235,7 @@ class Ferp(App):
         )
         self.script_controller = ScriptLifecycleController(self)
         self.transcript_logger = TranscriptLogger(
-            self._paths.logs_dir,
+            self._paths.script_logs_dir,
             lambda: self.settings_store.log_preferences(self.settings),
         )
         self.bundle_installer = ScriptBundleInstaller(self)
@@ -227,29 +249,42 @@ class Ferp(App):
             bulk_delete_handler=self._start_delete_paths,
             bulk_paste_handler=self._start_paste_paths,
         )
+        self._worker_router = WorkerRouter()
+        self._worker_router.bind(self)
+        self._worker_router.bind(self.bundle_installer)
+        self._worker_router.bind(self.script_controller)
 
     def _prepare_paths(self) -> AppPaths:
         app_root = Path(__file__).parent.parent
         config_dir = Path(user_config_path(APP_NAME, APP_AUTHOR))
-        dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
         config_file = (
-            app_root / "scripts" / "config.json"
-            if dev_config_enabled
-            else config_dir / "config.json"
+            app_root / "scripts" / SCRIPTS_CONFIG_FILENAME
+            if self._dev_config_enabled
+            else config_dir / SCRIPTS_CONFIG_FILENAME
         )
-        settings_file = config_dir / "settings.json"
+        settings_file = config_dir / SETTINGS_FILENAME
         data_dir = Path(user_data_path(APP_NAME, APP_AUTHOR))
         cache_dir = Path(user_cache_path(APP_NAME, APP_AUTHOR))
         logs_dir = data_dir / "logs"
-        tasks_file = cache_dir / "tasks.json"
+        host_logs_dir = logs_dir / "host"
+        script_logs_dir = logs_dir / "scripts"
+        tasks_file = cache_dir / TASKS_FILENAME
         scripts_dir = app_root / "scripts"
 
-        for directory in (config_dir, data_dir, cache_dir, logs_dir, scripts_dir):
+        for directory in (
+            config_dir,
+            data_dir,
+            cache_dir,
+            logs_dir,
+            host_logs_dir,
+            script_logs_dir,
+            scripts_dir,
+        ):
             directory.mkdir(parents=True, exist_ok=True)
 
-        default_config_file = app_root / "scripts" / "config.json"
+        default_config_file = app_root / "scripts" / SCRIPTS_CONFIG_FILENAME
 
-        if not config_file.exists() and not dev_config_enabled:
+        if not config_file.exists() and not self._dev_config_enabled:
             if default_config_file.exists():
                 config_file.write_text(
                     default_config_file.read_text(encoding="utf-8"),
@@ -276,6 +311,8 @@ class Ferp(App):
             data_dir=data_dir,
             cache_dir=cache_dir,
             logs_dir=logs_dir,
+            host_logs_dir=host_logs_dir,
+            script_logs_dir=script_logs_dir,
             tasks_file=tasks_file,
             scripts_dir=scripts_dir,
         )
@@ -457,10 +494,10 @@ class Ferp(App):
 
         scripts_root = self.app_root / "scripts"
         config_paths: list[Path] = []
-        default_config = scripts_root / "config.json"
+        default_config = scripts_root / SCRIPTS_CONFIG_FILENAME
         if default_config.exists():
             config_paths.append(default_config)
-        config_paths.extend(sorted(scripts_root.glob("*/config.json")))
+        config_paths.extend(sorted(scripts_root.glob(f"*/{SCRIPTS_CONFIG_FILENAME}")))
         return config_paths
 
     def on_mount(self) -> None:
@@ -499,27 +536,29 @@ class Ferp(App):
                 if not bundle_path.is_absolute():
                     bundle_path = (self.current_path / bundle_path).resolve()
             except Exception as exc:
-                self.notify(f"{exc}", severity="error", timeout=4)
+                self.notify(
+                    f"{exc}", severity="error", timeout=self.notify_timeouts.normal
+                )
                 return
             if not bundle_path.exists():
                 self.notify(
                     f"No bundle found at {bundle_path}",
                     severity="error",
-                    timeout=4,
+                    timeout=self.notify_timeouts.normal,
                 )
                 return
             if not bundle_path.is_file():
                 self.notify(
                     f"Bundle path must point to a file: {bundle_path}",
                     severity="error",
-                    timeout=4,
+                    timeout=self.notify_timeouts.normal,
                 )
                 return
             if bundle_path.suffix.lower() != ".ferp":
                 self.notify(
                     "Bundles must be supplied as .ferp archives.",
                     severity="error",
-                    timeout=4,
+                    timeout=self.notify_timeouts.normal,
                 )
                 return
             self.bundle_installer.start_install(bundle_path)
@@ -530,17 +569,21 @@ class Ferp(App):
         )
 
     def _command_open_latest_log(self) -> None:
-        logs_dir = self._paths.logs_dir
+        logs_dir = self._paths.script_logs_dir
         candidates = [entry for entry in logs_dir.glob("*.log") if entry.is_file()]
 
         if not candidates:
-            self.notify("No log files found.", severity="error", timeout=3)
+            self.notify(
+                "No log files found.",
+                severity="error",
+                timeout=self.notify_timeouts.short,
+            )
             return
 
         try:
             latest = max(candidates, key=lambda entry: entry.stat().st_mtime)
         except OSError as exc:
-            self.notify(f"{exc}", severity="error", timeout=3)
+            self.notify(f"{exc}", severity="error", timeout=self.notify_timeouts.short)
             return
 
         try:
@@ -551,17 +594,21 @@ class Ferp(App):
             else:
                 subprocess.run(["xdg-open", str(latest)], check=False)
         except Exception as exc:
-            self.notify(f"{exc}", severity="error", timeout=3)
+            self.notify(f"{exc}", severity="error", timeout=self.notify_timeouts.short)
 
     def _command_open_user_guide(self) -> None:
         guide_path = self.app_root / "resources" / "USERS_GUIDE.md"
         if not guide_path.exists():
-            self.notify("User guide not found.", severity="error", timeout=3)
+            self.notify(
+                "User guide not found.",
+                severity="error",
+                timeout=self.notify_timeouts.short,
+            )
             return
         try:
             content = guide_path.read_text(encoding="utf-8")
         except Exception as exc:
-            self.notify(f"{exc}", severity="error", timeout=3)
+            self.notify(f"{exc}", severity="error", timeout=self.notify_timeouts.short)
             return
         screen = ReadmeScreen("FERP User Guide", content, id="readme_screen")
         self.push_screen(screen)
@@ -583,24 +630,32 @@ class Ferp(App):
                 if not path.is_absolute():
                     path = (self.current_path / path).resolve()
             except Exception as exc:
-                self.notify(f"{exc}", severity="error", timeout=3)
+                self.notify(
+                    f"{exc}", severity="error", timeout=self.notify_timeouts.short
+                )
                 return
             if not path.exists() or not path.is_dir():
                 self.notify(
-                    f"{path} is not a valid directory.", severity="error", timeout=3
+                    f"{path} is not a valid directory.",
+                    severity="error",
+                    timeout=self.notify_timeouts.short,
                 )
                 return
             self.settings_store.update_startup_path(self.settings, path)
-            self.notify(f"Startup directory updated: {path}", timeout=3)
+            self.notify(
+                f"Startup directory updated: {path}", timeout=self.notify_timeouts.short
+            )
             self._refresh_output_panel_message()
 
         self.push_screen(InputDialog(prompt, default=default_value), after)
 
     def _command_install_default_scripts(self) -> None:
-        self.notify("Fetching available namespaces...", timeout=4)
+        self.notify(
+            "Fetching available namespaces...", timeout=self.notify_timeouts.normal
+        )
         self.run_worker(
             self._fetch_default_script_namespaces,
-            group="default_scripts_namespace",
+            group=WorkerGroup.DEFAULT_SCRIPTS_NAMESPACE,
             exclusive=True,
             thread=True,
         )
@@ -617,7 +672,7 @@ class Ferp(App):
                     f"No Monday config for namespace{label}.",
                     title="Sync Error",
                     severity="error",
-                    timeout=4,
+                    timeout=self.notify_timeouts.normal,
                 )
                 return
 
@@ -631,12 +686,12 @@ class Ferp(App):
             board_id_value = None
 
         def start_sync(api_token: str, board_id: int) -> None:
-            self.notify("Syncing Monday board...", timeout=4)
+            self.notify("Syncing Monday board...", timeout=self.notify_timeouts.normal)
             self.run_worker(
                 lambda token=api_token, board=board_id: self._sync_monday_board(
                     token, board
                 ),
-                group="monday_sync",
+                group=WorkerGroup.MONDAY_SYNC,
                 exclusive=True,
                 thread=True,
             )
@@ -677,7 +732,7 @@ class Ferp(App):
                         "Board id must be a number.",
                         title="Sync Error",
                         severity="error",
-                        timeout=4,
+                        timeout=self.notify_timeouts.normal,
                     )
                     return
                 self._set_monday_setting("boardId", board_id_value_local)
@@ -703,14 +758,14 @@ class Ferp(App):
                 self.notify(
                     "pipx not found on PATH. Please run 'pipx upgrade ferp' manually.",
                     severity="error",
-                    timeout=5,
+                    timeout=self.notify_timeouts.long,
                 )
                 return
-            self.notify("Upgrading FERP via pipx...", timeout=5)
+            self.notify("Upgrading FERP via pipx...", timeout=self.notify_timeouts.long)
             self._set_main_controls_disabled(True)
             self.run_worker(
                 lambda: self._upgrade_app(pipx_path),
-                group="app_upgrade",
+                group=WorkerGroup.APP_UPGRADE,
                 exclusive=True,
                 thread=True,
             )
@@ -724,7 +779,7 @@ class Ferp(App):
                 "Select a namespace before setting a Monday board id.",
                 title="Monday Config",
                 severity="error",
-                timeout=4,
+                timeout=self.notify_timeouts.normal,
             )
             return
 
@@ -743,7 +798,7 @@ class Ferp(App):
                     "Board id must be a number.",
                     title="Monday Config",
                     severity="error",
-                    timeout=4,
+                    timeout=self.notify_timeouts.normal,
                 )
                 return
             self._set_monday_setting("boardId", board_id_value)
@@ -751,7 +806,7 @@ class Ferp(App):
             self.notify(
                 f"Monday board id updated for '{namespace}'.",
                 title="Monday Config",
-                timeout=3,
+                timeout=self.notify_timeouts.short,
             )
             self._refresh_output_panel_message()
 
@@ -768,7 +823,11 @@ class Ferp(App):
                 return
             self._set_monday_token(token_value)
             self.settings_store.save(self.settings)
-            self.notify("Monday API token updated.", title="Monday Config", timeout=3)
+            self.notify(
+                "Monday API token updated.",
+                title="Monday Config",
+                timeout=self.notify_timeouts.short,
+            )
             self._refresh_output_panel_message()
 
         self.push_screen(InputDialog(prompt), after)
@@ -779,16 +838,18 @@ class Ferp(App):
         if entry in favorites:
             favorites = [item for item in favorites if item != entry]
             self._set_favorites(favorites)
-            self.notify(f"Removed favorite: {path.name}", timeout=2)
+            self.notify(
+                f"Removed favorite: {path.name}", timeout=self.notify_timeouts.quick
+            )
             return
         favorites.append(entry)
         self._set_favorites(favorites)
-        self.notify(f"Added favorite: {path.name}", timeout=2)
+        self.notify(f"Added favorite: {path.name}", timeout=self.notify_timeouts.quick)
 
     def open_favorites_dialog(self) -> None:
         favorites = self._favorites()
         if not favorites:
-            self.notify("No favorites yet.", timeout=2)
+            self.notify("No favorites yet.", timeout=self.notify_timeouts.quick)
             return
 
         def after(value: str | None) -> None:
@@ -798,7 +859,10 @@ class Ferp(App):
             if not selected.exists():
                 updated = [item for item in favorites if item != value]
                 self._set_favorites(updated)
-                self.notify("Favorite path missing; removed.", timeout=3)
+                self.notify(
+                    "Favorite path missing; removed.",
+                    timeout=self.notify_timeouts.short,
+                )
                 return
             if selected.is_dir():
                 self._request_navigation(selected)
@@ -820,11 +884,13 @@ class Ferp(App):
         if self.script_controller.is_running:
             return
         if not path.exists():
-            self.notify("File not found.", severity="error", timeout=3)
+            self.notify(
+                "File not found.", severity="error", timeout=self.notify_timeouts.short
+            )
             return
         self.run_worker(
             lambda target=path: build_file_info(target),
-            group="file_info",
+            group=WorkerGroup.FILE_INFO,
             thread=True,
         )
 
@@ -837,7 +903,7 @@ class Ferp(App):
                 cache_path,
                 ttl_seconds=2 * 60 * 60,
             ),
-            group="update_check",
+            group=WorkerGroup.UPDATE_CHECK,
             exclusive=True,
             thread=True,
         )
@@ -860,7 +926,7 @@ class Ferp(App):
                 stored_core=stored_core,
                 stored_namespace=stored_namespace,
             ),
-            group="script_update_check",
+            group=WorkerGroup.SCRIPT_UPDATE_CHECK,
             exclusive=True,
             thread=True,
         )
@@ -888,15 +954,14 @@ class Ferp(App):
 
     def _install_default_scripts(self, namespace: str) -> dict[str, str | bool]:
         try:
-            dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
             release_version, version_info = update_scripts_from_namespace_release(
                 SCRIPTS_REPO_URL,
                 self.scripts_dir,
                 namespace=namespace,
-                dry_run=dev_config_enabled,
+                dry_run=self._dev_config_enabled,
             )
 
-            if dev_config_enabled:
+            if self._dev_config_enabled:
                 return {
                     "release_status": "Default scripts update skipped (dry run).",
                     "release_detail": (
@@ -906,8 +971,8 @@ class Ferp(App):
                     "namespace": namespace,
                 }
 
-            core_config = self.scripts_dir / "core" / "config.json"
-            namespace_config = self.scripts_dir / namespace / "config.json"
+            core_config = self.scripts_dir / "core" / SCRIPTS_CONFIG_FILENAME
+            namespace_config = self.scripts_dir / namespace / SCRIPTS_CONFIG_FILENAME
             if not core_config.exists():
                 raise FileNotFoundError(f"No default config found at {core_config}")
             if not namespace_config.exists():
@@ -1262,17 +1327,21 @@ class Ferp(App):
         return self._paths.cache_dir / "publishers_cache.json"
 
     def show_error(self, error: BaseException) -> None:
-        self.notify(f"{error}", severity="error", timeout=4)
+        message, severity = format_error(error)
+        log_event(get_logger(), "ui_error", message=message, severity=severity)
+        self.notify(message, severity=severity, timeout=self.notify_timeouts.normal)
 
     def _start_delete_path(self, target: Path) -> None:
         file_tree = self.query_one(FileTree)
         file_tree.set_pending_delete_index(file_tree.index)
         label = target.name or str(target)
-        self.notify(f"Deleting '{escape(label)}'...", timeout=2)
+        self.notify(
+            f"Deleting '{escape(label)}'...", timeout=self.notify_timeouts.quick
+        )
         self._stop_file_tree_watch()
         self.run_worker(
             lambda: self._delete_path_worker(target),
-            group="delete_path",
+            group=WorkerGroup.DELETE_PATH,
             thread=True,
         )
 
@@ -1288,11 +1357,13 @@ class Ferp(App):
             return
         file_tree = self.query_one(FileTree)
         file_tree.set_pending_delete_index(file_tree.index)
-        self.notify(f"Deleting {len(targets)} items...", timeout=2)
+        self.notify(
+            f"Deleting {len(targets)} items...", timeout=self.notify_timeouts.quick
+        )
         self._stop_file_tree_watch()
         self.run_worker(
             lambda: self._delete_paths_worker(targets),
-            group="delete_paths",
+            group=WorkerGroup.DELETE_PATHS,
             thread=True,
         )
 
@@ -1301,7 +1372,7 @@ class Ferp(App):
         for target in targets:
             try:
                 self.fs_controller.delete_path(target)
-            except OSError as exc:
+            except Exception as exc:
                 label = target.name or str(target)
                 errors.append(f"{label}: {exc}")
         return BulkPathResult(
@@ -1320,11 +1391,13 @@ class Ferp(App):
         if not plan:
             return
         action = "Moving" if move else "Copying"
-        self.notify(f"{action} {len(plan)} items...", timeout=2)
+        self.notify(
+            f"{action} {len(plan)} items...", timeout=self.notify_timeouts.quick
+        )
         self._stop_file_tree_watch()
         self.run_worker(
             lambda: self._paste_paths_worker(plan, move, overwrite),
-            group="bulk_paste",
+            group=WorkerGroup.BULK_PASTE,
             thread=True,
         )
 
@@ -1349,7 +1422,7 @@ class Ferp(App):
                         destination,
                         overwrite=overwrite,
                     )
-            except OSError as exc:
+            except Exception as exc:
                 label = source.name or str(source)
                 errors.append(f"{label}: {exc}")
         return BulkPathResult(
@@ -1365,7 +1438,7 @@ class Ferp(App):
             self.notify(
                 f"Default scripts update failed: {error}",
                 severity="error",
-                timeout=4,
+                timeout=self.notify_timeouts.normal,
             )
             self._set_main_controls_disabled(False)
             return
@@ -1390,7 +1463,7 @@ class Ferp(App):
             summary = f"{summary} Config: {config_path}"
         if release_detail:
             summary = f"{summary} {release_detail}"
-        self.notify(summary, timeout=4)
+        self.notify(summary, timeout=self.notify_timeouts.normal)
 
         scripts_panel = self.query_one(ScriptManager)
         scripts_panel.load_scripts()
@@ -1405,18 +1478,24 @@ class Ferp(App):
             namespace = value.strip()
             if not namespace:
                 self.notify(
-                    "Select a namespace to continue.", severity="error", timeout=4
+                    "Select a namespace to continue.",
+                    severity="error",
+                    timeout=self.notify_timeouts.normal,
                 )
                 return
-            dev_config_enabled = os.environ.get("FERP_DEV_CONFIG") == "1"
-            if dev_config_enabled:
-                self.notify("Updating default scripts (dry run)...", timeout=5)
+            if self._dev_config_enabled:
+                self.notify(
+                    "Updating default scripts (dry run)...",
+                    timeout=self.notify_timeouts.long,
+                )
             else:
-                self.notify("Updating default scripts...", timeout=5)
+                self.notify(
+                    "Updating default scripts...", timeout=self.notify_timeouts.long
+                )
             self._set_main_controls_disabled(True)
             self.run_worker(
                 lambda ns=namespace: self._install_default_scripts(ns),
-                group="default_scripts_update",
+                group=WorkerGroup.DEFAULT_SCRIPTS_UPDATE,
                 exclusive=True,
                 thread=True,
             )
@@ -1434,7 +1513,7 @@ class Ferp(App):
                 f"Monday sync failed: {escape(str(error))}",
                 title="Sync Error",
                 severity="error",
-                timeout=4,
+                timeout=self.notify_timeouts.normal,
             )
             return
         board_name = payload.get("board_name", "")
@@ -1450,7 +1529,11 @@ class Ferp(App):
             if board_name
             else "Monday sync updated"
         )
-        self.notify(f"{title}. {details}", title="Cache Updated", timeout=5)
+        self.notify(
+            f"{title}. {details}",
+            title="Cache Updated",
+            timeout=self.notify_timeouts.long,
+        )
         self.update_cache_timestamp()
 
     def refresh_listing(self) -> None:
@@ -1484,7 +1567,7 @@ class Ferp(App):
             lambda directory=path, token=token: collect_directory_listing(
                 directory, token
             ),
-            group="directory_listing",
+            group=WorkerGroup.DIRECTORY_LISTING,
             exclusive=True,
             thread=True,
         )
@@ -1587,7 +1670,7 @@ class Ferp(App):
         if target.exists() and target != self.current_path:
             self.notify(
                 f"Directory removed. Jumped to '{escape(str(target))}'.",
-                timeout=3,
+                timeout=self.notify_timeouts.short,
             )
 
         if self._listing_in_progress:
@@ -1702,326 +1785,428 @@ class Ferp(App):
 
     @on(Worker.StateChanged)
     def _on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        worker = event.worker
-        if worker.group == "directory_listing":
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if isinstance(result, DirectoryListingResult):
-                    self._handle_directory_listing_result(result)
-            elif event.state is WorkerState.ERROR:
-                error = worker.error or RuntimeError("Directory listing failed.")
-                file_tree = self.query_one(FileTree)
-                file_tree.show_error(self.current_path, str(error))
-                self._finalize_directory_listing()
+        if self._worker_router.dispatch(event):
             return
-        if worker.group == "watcher_snapshot":
-            watcher = self._file_tree_watcher
-            if watcher is None:
-                return
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if result is not None:
-                    watcher.handle_snapshot_result(result)
-            elif event.state is WorkerState.ERROR:
-                watcher.handle_snapshot_error()
-            return
-        if worker.group == "update_check":
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if (
-                    isinstance(result, UpdateCheckResult)
-                    and result.ok
-                    and result.is_update
-                ):
-                    self.notify("A new verion of FERP is avaiable.", timeout=6)
-            if event.state in (WorkerState.SUCCESS, WorkerState.ERROR):
-                self._check_for_script_updates()
-            return
-        if worker.group == "script_update_check":
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if isinstance(result, ScriptUpdateResult):
-                    if result.ok and result.is_update:
-                        details: list[str] = []
-                        if result.core_update:
-                            details.append("core bundle")
-                        if result.namespace_update:
-                            details.append(result.namespace)
-                        suffix = ", ".join(details)
-                        message = (
-                            f"Default scripts update available ({suffix})."
-                            if suffix
-                            else "Default scripts update available."
-                        )
-                        self.notify(message, timeout=6)
+
+    @worker_handler(WorkerGroup.DIRECTORY_LISTING)
+    def _handle_directory_listing_worker(self, event: Worker.StateChanged) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, DirectoryListingResult):
+                self._handle_directory_listing_result(result)
+        elif event.state is WorkerState.ERROR:
+            error = event.worker.error or RuntimeError("Directory listing failed.")
+            file_tree = self.query_one(FileTree)
+            file_tree.show_error(self.current_path, str(error))
+            self._finalize_directory_listing()
+        return True
+
+    @worker_handler(WorkerGroup.WATCHER_SNAPSHOT)
+    def _handle_watcher_snapshot_worker(self, event: Worker.StateChanged) -> bool:
+        watcher = self._file_tree_watcher
+        if watcher is None:
+            return True
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if result is not None:
+                watcher.handle_snapshot_result(result)
+        elif event.state is WorkerState.ERROR:
+            watcher.handle_snapshot_error()
+        return True
+
+    @worker_handler(WorkerGroup.UPDATE_CHECK)
+    def _handle_update_check_worker(self, event: Worker.StateChanged) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, UpdateCheckResult) and result.ok and result.is_update:
+                self.notify(
+                    "A new verion of FERP is avaiable.",
+                    timeout=self.notify_timeouts.extended,
+                )
+        if event.state in (WorkerState.SUCCESS, WorkerState.ERROR):
+            self._check_for_script_updates()
+        return True
+
+    @worker_handler(WorkerGroup.SCRIPT_UPDATE_CHECK)
+    def _handle_script_update_check_worker(self, event: Worker.StateChanged) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, ScriptUpdateResult):
+                if result.ok and result.is_update:
+                    details: list[str] = []
+                    if result.core_update:
+                        details.append("core bundle")
+                    if result.namespace_update:
+                        details.append(result.namespace)
+                    suffix = ", ".join(details)
+                    message = (
+                        f"Default scripts update available ({suffix})."
+                        if suffix
+                        else "Default scripts update available."
+                    )
+                    self.notify(message, timeout=self.notify_timeouts.extended)
                     if result.ok:
                         if result.stored_core is None and result.latest_core:
                             self.settings_store.update_script_versions(
                                 self.settings,
                                 core_version=result.latest_core,
                             )
-                        if (
-                            result.stored_namespace is None
-                            and result.latest_namespace
-                            and result.namespace
-                        ):
-                            self.settings_store.update_script_versions(
-                                self.settings,
-                                namespace=result.namespace,
-                                namespace_version=result.latest_namespace,
-                            )
-            return
-        if self.bundle_installer.handle_worker_state(event):
-            return
-        if self.script_controller.handle_worker_state(event):
-            return
-        if worker.group == "default_scripts_namespace":
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if isinstance(result, dict):
-                    error = result.get("error")
-                    if error:
-                        self.notify(
-                            f"Namespace fetch failed: {error}",
-                            severity="error",
-                            timeout=4,
+                    if (
+                        result.stored_namespace is None
+                        and result.latest_namespace
+                        and result.namespace
+                    ):
+                        self.settings_store.update_script_versions(
+                            self.settings,
+                            namespace=result.namespace,
+                            namespace_version=result.latest_namespace,
                         )
-                        return
-                    options = result.get("options", [])
-                    if isinstance(options, list) and options:
-                        self._prompt_default_scripts_namespace(
-                            [str(option) for option in options]
+                if not result.ok:
+                    detail = result.error or "Update check failed."
+                    self.show_error(
+                        FerpError(
+                            code="script_update_check_failed",
+                            message="Script update check failed.",
+                            detail=str(detail),
                         )
-                        return
-                    self.notify(
-                        "No namespaces available for installation.",
-                        severity="error",
-                        timeout=4,
                     )
-            elif event.state is WorkerState.ERROR:
-                error = worker.error or RuntimeError("Namespace fetch failed.")
-                self.notify(
-                    f"Namespace fetch failed: {error}",
-                    severity="error",
-                    timeout=4,
-                )
-            return
-        if worker.group == "default_scripts_update":
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if isinstance(result, dict):
-                    self._render_default_scripts_update(result)
-                else:
-                    self._set_main_controls_disabled(False)
-            elif event.state is WorkerState.ERROR:
-                error = worker.error or RuntimeError("Default script update failed.")
-                self.notify(
-                    f"Default scripts update failed: {error}",
-                    severity="error",
-                    timeout=4,
-                )
-                self._set_main_controls_disabled(False)
-            return
-        if worker.group == "app_upgrade":
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if isinstance(result, dict):
-                    if result.get("no_update") is True:
-                        current = result.get("current") or ""
-                        latest = result.get("latest") or current
-                        label = latest or current
-                        message = (
-                            f"FERP is already up to date ({label})."
-                            if label
-                            else "FERP is already up to date."
+        return True
+
+    @worker_handler(WorkerGroup.DEFAULT_SCRIPTS_NAMESPACE)
+    def _handle_default_scripts_namespace_worker(
+        self, event: Worker.StateChanged
+    ) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, dict):
+                error = result.get("error")
+                if error:
+                    self.show_error(
+                        FerpError(
+                            code="namespace_fetch_failed",
+                            message="Namespace fetch failed.",
+                            detail=str(error),
                         )
-                        self.notify(message, timeout=5)
-                        self._set_main_controls_disabled(False)
-                        return
-                    check_error = result.get("check_error")
-                    if check_error:
-                        self.notify(
-                            f"Update check failed ({check_error}); running upgrade anyway.",
-                            timeout=5,
-                        )
-                    if result.get("ok") is True:
-                        self.notify(
-                            "Upgrade complete. Please restart after the app exits. Exiting...",
-                            timeout=5,
-                        )
-                        self.set_timer(2.0, self.exit)
-                    else:
-                        error = result.get("error") or result.get("stderr") or ""
-                        code = result.get("code")
-                        detail = f" (exit {code})" if code is not None else ""
-                        message = (
-                            f"Upgrade failed{detail}. {error}".strip()
-                            if error
-                            else f"Upgrade failed{detail}."
-                        )
-                        self.notify(message, severity="error", timeout=6)
-                        self._set_main_controls_disabled(False)
-                else:
-                    self._set_main_controls_disabled(False)
-            elif event.state is WorkerState.ERROR:
-                error = worker.error or RuntimeError("Upgrade failed.")
-                self.notify(f"Upgrade failed: {error}", severity="error", timeout=6)
-                self._set_main_controls_disabled(False)
-            return
-        if worker.group == "delete_path":
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if isinstance(result, DeletePathResult):
-                    if result.error:
-                        self.notify(
-                            f"Delete failed: {result.error}",
-                            severity="error",
-                            timeout=3,
-                        )
-                        file_tree = self.query_one(FileTree)
-                        file_tree.set_pending_delete_index(None)
-                        self._start_file_tree_watch()
-                        return
-                    label = result.target.name or str(result.target)
-                    self.notify(f"Deleted '{escape(label)}'.", timeout=3)
-                    self.refresh_listing()
-            elif event.state is WorkerState.ERROR:
-                error = worker.error or RuntimeError("Delete failed.")
-                self.notify(f"Delete failed: {error}", severity="error", timeout=3)
-                file_tree = self.query_one(FileTree)
-                file_tree.set_pending_delete_index(None)
-                self._start_file_tree_watch()
-            return
-        if worker.group == "delete_paths":
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if isinstance(result, BulkPathResult):
-                    if result.errors:
-                        self.notify(
-                            f"Delete completed with {len(result.errors)} error(s).",
-                            severity="error",
-                            timeout=4,
-                        )
-                        file_tree = self.query_one(FileTree)
-                        file_tree.set_pending_delete_index(None)
-                        self._start_file_tree_watch()
-                        return
-                    self.notify(f"Deleted {result.count} items.", timeout=3)
-                    self.refresh_listing()
-            elif event.state is WorkerState.ERROR:
-                error = worker.error or RuntimeError("Delete failed.")
-                self.notify(f"Delete failed: {error}", severity="error", timeout=3)
-                file_tree = self.query_one(FileTree)
-                file_tree.set_pending_delete_index(None)
-                self._start_file_tree_watch()
-            return
-        if worker.group == "bulk_paste":
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if isinstance(result, BulkPathResult):
-                    if result.errors:
-                        self.notify(
-                            f"{result.action.title()} completed with {len(result.errors)} error(s).",
-                            severity="error",
-                            timeout=4,
-                        )
-                        self._start_file_tree_watch()
-                        return
-                    dest_label = ""
-                    if result.destination is not None:
-                        dest_label = result.destination.name or str(result.destination)
-                    detail = f" to '{escape(dest_label)}'" if dest_label else ""
-                    self.notify(
-                        f"{result.action.title()} complete: {result.count} items{detail}.",
-                        timeout=3,
                     )
-                    self.refresh_listing()
-            elif event.state is WorkerState.ERROR:
-                error = worker.error or RuntimeError("Paste failed.")
-                self.notify(f"Paste failed: {error}", severity="error", timeout=3)
-                self._start_file_tree_watch()
-            return
-        if worker.group == "file_info":
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if isinstance(result, FileInfoResult):
-                    panel = self.query_one(ScriptOutputPanel)
-                    if result.error:
-                        panel.show_info(
-                            "File Info",
-                            [
-                                "[bold $error]Error:[/bold $error]",
-                                escape(result.error),
-                            ],
+                    return True
+                options = result.get("options", [])
+                if isinstance(options, list) and options:
+                    self._prompt_default_scripts_namespace(
+                        [str(option) for option in options]
+                    )
+                    return True
+                self.show_error(
+                    FerpError(
+                        code="namespace_unavailable",
+                        message="No namespaces available for installation.",
+                    )
+                )
+        elif event.state is WorkerState.ERROR:
+            error = event.worker.error or RuntimeError("Namespace fetch failed.")
+            self.show_error(
+                FerpError(
+                    code="namespace_fetch_failed",
+                    message="Namespace fetch failed.",
+                    detail=str(error),
+                )
+            )
+        return True
+
+    @worker_handler(WorkerGroup.DEFAULT_SCRIPTS_UPDATE)
+    def _handle_default_scripts_update_worker(self, event: Worker.StateChanged) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, dict):
+                self._render_default_scripts_update(result)
+            else:
+                self._set_main_controls_disabled(False)
+        elif event.state is WorkerState.ERROR:
+            error = event.worker.error or RuntimeError("Default script update failed.")
+            self.show_error(
+                FerpError(
+                    code="default_scripts_update_failed",
+                    message="Default scripts update failed.",
+                    detail=str(error),
+                )
+            )
+            self._set_main_controls_disabled(False)
+        return True
+
+    @worker_handler(WorkerGroup.APP_UPGRADE)
+    def _handle_app_upgrade_worker(self, event: Worker.StateChanged) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, dict):
+                if result.get("no_update") is True:
+                    current = result.get("current") or ""
+                    latest = result.get("latest") or current
+                    label = latest or current
+                    message = (
+                        f"FERP is already up to date ({label})."
+                        if label
+                        else "FERP is already up to date."
+                    )
+                    self.notify(message, timeout=self.notify_timeouts.long)
+                    self._set_main_controls_disabled(False)
+                    return True
+                check_error = result.get("check_error")
+                if check_error:
+                    self.notify(
+                        f"Update check failed ({check_error}); running upgrade anyway.",
+                        timeout=self.notify_timeouts.long,
+                    )
+                if result.get("ok") is True:
+                    self.notify(
+                        "Upgrade complete. Please restart after the app exits. Exiting...",
+                        timeout=self.notify_timeouts.long,
+                    )
+                    self.set_timer(3.0, self.exit)
+                else:
+                    error = result.get("error") or result.get("stderr") or ""
+                    code = result.get("code")
+                    detail = f" (exit {code})" if code is not None else ""
+                    message = (
+                        f"Upgrade failed{detail}. {error}".strip()
+                        if error
+                        else f"Upgrade failed{detail}."
+                    )
+                    self.show_error(
+                        FerpError(
+                            code="app_upgrade_failed",
+                            message="Upgrade failed.",
+                            detail=message,
                         )
-                        return
-                    lines = [
-                        f"[bold $text-primary]{escape(key)}:[/bold $text-primary] {escape(value)}"
-                        for key, value in result.data.items()
-                    ]
-                    if result.pdf_data:
-                        lines.append("")
-                        lines.append("[bold $secondary]PDF Metadata[/bold $secondary]")
-                        lines.extend(
-                            f"[bold $text-primary]{escape(key)}:[/bold $text-primary] {escape(value)}"
-                            for key, value in result.pdf_data.items()
+                    )
+                    self._set_main_controls_disabled(False)
+            else:
+                self._set_main_controls_disabled(False)
+        elif event.state is WorkerState.ERROR:
+            error = event.worker.error or RuntimeError("Upgrade failed.")
+            self.show_error(
+                FerpError(
+                    code="app_upgrade_failed",
+                    message="Upgrade failed.",
+                    detail=str(error),
+                )
+            )
+            self._set_main_controls_disabled(False)
+        return True
+
+    @worker_handler(WorkerGroup.DELETE_PATH)
+    def _handle_delete_path_worker(self, event: Worker.StateChanged) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, DeletePathResult):
+                if result.error:
+                    self.show_error(
+                        FerpError(
+                            code="delete_failed",
+                            message="Delete failed.",
+                            detail=result.error,
                         )
-                    if result.excel_data:
-                        lines.append("")
-                        lines.append("[bold $secondary]Excel Metadata[/bold $secondary]")
-                        lines.extend(
-                            f"[bold $text-primary]{escape(key)}:[/bold $text-primary] {escape(value)}"
-                            for key, value in result.excel_data.items()
+                    )
+                    file_tree = self.query_one(FileTree)
+                    file_tree.set_pending_delete_index(None)
+                    self._start_file_tree_watch()
+                    return True
+                label = result.target.name or str(result.target)
+                self.notify(
+                    f"Deleted '{escape(label)}'.", timeout=self.notify_timeouts.short
+                )
+                self.refresh_listing()
+        elif event.state is WorkerState.ERROR:
+            error = event.worker.error or RuntimeError("Delete failed.")
+            self.show_error(
+                FerpError(
+                    code="delete_failed",
+                    message="Delete failed.",
+                    detail=str(error),
+                )
+            )
+            file_tree = self.query_one(FileTree)
+            file_tree.set_pending_delete_index(None)
+            self._start_file_tree_watch()
+        return True
+
+    @worker_handler(WorkerGroup.DELETE_PATHS)
+    def _handle_delete_paths_worker(self, event: Worker.StateChanged) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, BulkPathResult):
+                if result.errors:
+                    self.show_error(
+                        FerpError(
+                            code="delete_failed",
+                            message="Delete completed with errors.",
+                            detail=f"{len(result.errors)} error(s)",
                         )
-                    panel.show_info("File Info", lines)
-            elif event.state is WorkerState.ERROR:
-                error = worker.error or RuntimeError("File info failed.")
+                    )
+                    file_tree = self.query_one(FileTree)
+                    file_tree.set_pending_delete_index(None)
+                    self._start_file_tree_watch()
+                    return True
+                self.notify(
+                    f"Deleted {result.count} items.", timeout=self.notify_timeouts.short
+                )
+                self.refresh_listing()
+        elif event.state is WorkerState.ERROR:
+            error = event.worker.error or RuntimeError("Delete failed.")
+            self.show_error(
+                FerpError(
+                    code="delete_failed",
+                    message="Delete failed.",
+                    detail=str(error),
+                )
+            )
+            file_tree = self.query_one(FileTree)
+            file_tree.set_pending_delete_index(None)
+            self._start_file_tree_watch()
+        return True
+
+    @worker_handler(WorkerGroup.BULK_PASTE)
+    def _handle_bulk_paste_worker(self, event: Worker.StateChanged) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, BulkPathResult):
+                if result.errors:
+                    self.show_error(
+                        FerpError(
+                            code="paste_failed",
+                            message=f"{result.action.title()} completed with errors.",
+                            detail=f"{len(result.errors)} error(s)",
+                        )
+                    )
+                    self._start_file_tree_watch()
+                    return True
+                dest_label = ""
+                if result.destination is not None:
+                    dest_label = result.destination.name or str(result.destination)
+                detail = f" to '{escape(dest_label)}'" if dest_label else ""
+                self.notify(
+                    f"{result.action.title()} complete: {result.count} items{detail}.",
+                    timeout=self.notify_timeouts.short,
+                )
+                self.refresh_listing()
+        elif event.state is WorkerState.ERROR:
+            error = event.worker.error or RuntimeError("Paste failed.")
+            self.show_error(
+                FerpError(
+                    code="paste_failed",
+                    message="Paste failed.",
+                    detail=str(error),
+                )
+            )
+            self._start_file_tree_watch()
+        return True
+
+    @worker_handler(WorkerGroup.FILE_INFO)
+    def _handle_file_info_worker(self, event: Worker.StateChanged) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, FileInfoResult):
                 panel = self.query_one(ScriptOutputPanel)
-                panel.show_info(
-                    "File Info",
-                    [
-                        "[bold $error]Error:[/bold $error]",
-                        escape(str(error)),
-                    ],
-                )
-            return
-        if worker.group == "bulk_rename":
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if isinstance(result, dict):
-                    errors = (
-                        result.get("errors")
-                        if isinstance(result.get("errors"), list)
-                        else []
-                    )
-                    count = result.get("count", 0)
-                    if errors:
-                        self.notify(
-                            f"Rename completed with errors ({len(errors)} issue(s)).",
-                            severity="warning",
-                            timeout=3,
+                if result.error:
+                    self.show_error(
+                        FerpError(
+                            code="file_info_failed",
+                            message="File info failed.",
+                            detail=result.error,
                         )
-                    else:
-                        self.notify(f"Rename complete: {count} file(s).", timeout=3)
-                self.refresh_listing()
-            elif event.state is WorkerState.ERROR:
-                error = worker.error or RuntimeError("Bulk rename failed.")
-                self.notify(
-                    f"Bulk rename failed: {error}", severity="warning", timeout=3
+                    )
+                    panel.show_info(
+                        "File Info",
+                        [
+                            "[bold $error]Error:[/bold $error]",
+                            escape(result.error),
+                        ],
+                    )
+                    return True
+                lines = [
+                    f"[bold $text-primary]{escape(key)}:[/bold $text-primary] {escape(value)}"
+                    for key, value in result.data.items()
+                ]
+                if result.pdf_data:
+                    lines.append("")
+                    lines.append("[bold $secondary]PDF Metadata[/bold $secondary]")
+                    lines.extend(
+                        f"[bold $text-primary]{escape(key)}:[/bold $text-primary] {escape(value)}"
+                        for key, value in result.pdf_data.items()
+                    )
+                if result.excel_data:
+                    lines.append("")
+                    lines.append("[bold $secondary]Excel Metadata[/bold $secondary]")
+                    lines.extend(
+                        f"[bold $text-primary]{escape(key)}:[/bold $text-primary] {escape(value)}"
+                        for key, value in result.excel_data.items()
+                    )
+                panel.show_info("File Info", lines)
+        elif event.state is WorkerState.ERROR:
+            error = event.worker.error or RuntimeError("File info failed.")
+            self.show_error(
+                FerpError(
+                    code="file_info_failed",
+                    message="File info failed.",
+                    detail=str(error),
                 )
-                self.refresh_listing()
-            return
-        if worker.group == "monday_sync":
-            if event.state is WorkerState.SUCCESS:
-                result = worker.result
-                if isinstance(result, dict):
-                    self._render_monday_sync(result)
-            elif event.state is WorkerState.ERROR:
-                error = worker.error or RuntimeError("Monday sync failed.")
-                self.notify(
-                    f"Monday sync failed: {error}",
-                    title="Sync Error",
-                    severity="error",
-                    timeout=4,
+            )
+            panel = self.query_one(ScriptOutputPanel)
+            panel.show_info(
+                "File Info",
+                [
+                    "[bold $error]Error:[/bold $error]",
+                    escape(str(error)),
+                ],
+            )
+        return True
+
+    @worker_handler(WorkerGroup.BULK_RENAME)
+    def _handle_bulk_rename_worker(self, event: Worker.StateChanged) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, dict):
+                errors = (
+                    result.get("errors")
+                    if isinstance(result.get("errors"), list)
+                    else []
                 )
-            return
+                count = result.get("count", 0)
+                if errors:
+                    self.notify(
+                        f"Rename completed with errors ({len(errors)} issue(s)).",
+                        severity="warning",
+                        timeout=self.notify_timeouts.short,
+                    )
+                else:
+                    self.notify(
+                        f"Rename complete: {count} file(s).",
+                        timeout=self.notify_timeouts.short,
+                    )
+            self.refresh_listing()
+        elif event.state is WorkerState.ERROR:
+            error = event.worker.error or RuntimeError("Bulk rename failed.")
+            self.show_error(
+                FerpError(
+                    code="bulk_rename_failed",
+                    message="Bulk rename failed.",
+                    detail=str(error),
+                    severity="warning",
+                )
+            )
+            self.refresh_listing()
+        return True
+
+    @worker_handler(WorkerGroup.MONDAY_SYNC)
+    def _handle_monday_sync_worker(self, event: Worker.StateChanged) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, dict):
+                self._render_monday_sync(result)
+        elif event.state is WorkerState.ERROR:
+            error = event.worker.error or RuntimeError("Monday sync failed.")
+            self.notify(
+                f"Monday sync failed: {error}",
+                title="Sync Error",
+                severity="error",
+                timeout=self.notify_timeouts.normal,
+            )
+        return True

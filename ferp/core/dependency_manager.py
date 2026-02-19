@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from ferp.core.errors import wrap_error
+
 
 class ScriptDependencyManager:
     """Install script dependencies from the user config."""
@@ -22,7 +24,11 @@ class ScriptDependencyManager:
 
     def _collect_dependencies(self, script_ids: Iterable[str] | None) -> list[str]:
         if not self._config_file.exists():
-            raise FileNotFoundError(f"Unable to locate config at {self._config_file}")
+            raise wrap_error(
+                FileNotFoundError(f"Unable to locate config at {self._config_file}"),
+                code="dependencies_missing_config",
+                message="Unable to locate script config.",
+            )
 
         data = json.loads(self._config_file.read_text())
         scripts = data.get("scripts", [])
@@ -53,7 +59,8 @@ class ScriptDependencyManager:
                 text=True,
             )
         except subprocess.CalledProcessError as exc:
-            stderr = exc.stderr.strip() if exc.stderr else ""
-            raise RuntimeError(
-                f"Failed to install dependencies ({', '.join(dependencies)}).\n{stderr}"
+            raise wrap_error(
+                exc,
+                code="dependencies_install_failed",
+                message=f"Failed to install dependencies ({', '.join(dependencies)}).",
             ) from exc
