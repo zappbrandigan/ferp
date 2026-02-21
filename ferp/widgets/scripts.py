@@ -4,8 +4,7 @@ from typing import Sequence
 
 from rich.text import Text
 from textual.binding import Binding
-from textual.widget import Widget
-from textual.widgets import Label, ListItem, ListView
+from textual.widgets import ListItem, ListView
 
 from ferp.core.messages import RunScriptRequest, ShowReadmeRequest
 from ferp.core.paths import SCRIPTS_CONFIG_FILENAME
@@ -56,26 +55,33 @@ def load_scripts_configs(paths: Sequence[Path]) -> list[Script]:
     return sorted(scripts_by_id.values(), key=lambda script: script.name.lower())
 
 
-class ScriptRow(Widget):
+class ScriptItem(ListItem):
     COMPONENT_CLASSES = {
         "script_category",
         "script_name",
         "script_version",
     }
 
-    def __init__(
-        self,
-        *,
-        category: str,
-        name: str,
-        version: str,
-        raw_name: str | None = None,
-    ) -> None:
-        super().__init__(id="script_item", classes="script_row")
+    def __init__(self, script: Script) -> None:
+        category, name = self._split_name(script.name)
+        self.script = script
         self._category = category
         self._name = name
-        self._raw_name = raw_name
-        self._version = version
+        self._raw_name = script.name
+        self._version = script.version
+        super().__init__(classes="script_row")
+
+    @staticmethod
+    def _split_name(raw_name: str | None) -> tuple[str, str]:
+        if not raw_name:
+            return "General", "(unnamed)"
+        if ":" not in raw_name:
+            return "General", raw_name
+        category, name = raw_name.split(":", 1)
+        name = name.strip()
+        if not name:
+            return "General", raw_name
+        return category.strip() or "General", name
 
     def render(self) -> Text:
         width = self.size.width
@@ -83,7 +89,7 @@ class ScriptRow(Widget):
         name_value = self._name or ""
         if not name_value.strip():
             name_value = self._raw_name or ""
-        prefix = f"{category}:"
+        prefix = category
         if name_value.startswith(prefix):
             name_value = name_value[len(prefix) :].lstrip()
 
@@ -126,29 +132,16 @@ class ScriptRow(Widget):
         return text
 
 
-class ScriptItem(ListItem):
-    def __init__(self, script: Script) -> None:
-        category, name = self._split_name(script.name)
-        row = ScriptRow(
-            category=category,
-            name=name,
-            raw_name=script.name,
-            version=script.version,
-        )
-        super().__init__(row)
-        self.script = script
+class StaticTextItem(ListItem):
+    def __init__(self, message: str, *, classes: str | None = None) -> None:
+        self._message = message
+        super().__init__(classes=classes)
+        self.can_focus = False
 
-    @staticmethod
-    def _split_name(raw_name: str | None) -> tuple[str, str]:
-        if not raw_name:
-            return "General", "(unnamed)"
-        if ":" not in raw_name:
-            return "General", raw_name
-        category, name = raw_name.split(":", 1)
-        name = name.strip()
-        if not name:
-            return "General", raw_name
-        return category.strip() or "General", name
+    def render(self) -> Text:
+        text = Text(self._message)
+        text.stylize(self.rich_style)
+        return text
 
 
 class ScriptManager(ListView):
@@ -191,21 +184,19 @@ class ScriptManager(ListView):
 
         if not any(path.exists() for path in self.config_paths):
             self.border_subtitle = ""
-            self.append(
-                ListItem(Label(f"No {SCRIPTS_CONFIG_FILENAME} found"))
-            )
+            self.append(StaticTextItem(f"No {SCRIPTS_CONFIG_FILENAME} found"))
             return
 
         try:
             scripts = load_scripts_configs(self.config_paths)
         except ValueError as exc:
             self.border_subtitle = ""
-            self.append(ListItem(Label(f"Invalid config: {exc}")))
+            self.append(StaticTextItem(f"Invalid config: {exc}"))
             return
 
         if not scripts:
             self.border_subtitle = ""
-            self.append(ListItem(Label("No scripts configured")))
+            self.append(StaticTextItem("No scripts configured"))
             return
         self._set_namespace_subtitle()
 

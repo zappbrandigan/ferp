@@ -132,7 +132,7 @@ Use the filter widget to quickly narrow the File Navigator list.
 - Use `pattern/replacement` to batch-rename files matching the filter (file extensions will not be modified).
 - Use `/regex/replacement` for regex-based renames (regex runs on file stems).
 
-> Note: Use `\1` or `\g<1>` notation to reference the first captured group.
+> Note: Use `\g<1>` notation to reference the first captured group.
 
 ---
 

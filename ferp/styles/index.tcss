@@ -100,11 +100,11 @@ TopBar {
             background: $secondary;
         }
 
-        ListItem .file_tree_row {
+        ListItem.file_tree_row {
             color: $text-primary;
         }
 
-        ListItem.-highlight .file_tree_row {
+        ListItem.-highlight.file_tree_row {
             color: $text;
         }
 
@@ -120,11 +120,11 @@ TopBar {
             background: $secondary-lighten-3;
         }
 
-        ListItem.item_selected .file_tree_row {
+        ListItem.item_selected.file_tree_row {
             color: $text;
         }
 
-        ListItem.-highlight.item_selected .file_tree_row {
+        ListItem.-highlight.item_selected.file_tree_row {
             color: $text;
         }
 
@@ -149,7 +149,7 @@ TopBar {
 
         #file_list_container:focus-within {
             border: round $secondary-lighten-3;
-            background-tint: $foreground 3%;
+            background-tint: $foreground 5%;
         }
 
         #file_list {
@@ -183,14 +183,6 @@ TopBar {
             color: $text-accent;
         }
 
-        .file_tree_name {
-            width: 1fr;
-        }
-
-        .file_tree_chars, .file_tree_type {
-            width: 8;
-        }
-
     }
 
     #details_pane {
@@ -211,29 +203,29 @@ TopBar {
 
         #scripts_panel:focus {
             border: round $secondary-lighten-3;
-            background-tint: $foreground 3%;
+            background-tint: $foreground 5%;
         }
 
-        #script_item {
+        .script_row {
             height: 1;
             padding: 0 1 0 1;
         }
 
-        ScriptRow > .script_category {
+        ScriptItem > .script_category {
             color: $text-accent;
         }
 
-        ScriptItem.-highlight ScriptRow > .script_category {
+        ScriptItem.-highlight > .script_category {
             color: $text;
         }
 
-        ScriptRow > .script_name {
+        ScriptItem > .script_name {
             width: 1fr;
             background: transparent;
             color: $text;
         }
 
-        ScriptRow > .script_version {
+        ScriptItem > .script_version {
             color: $text;
             text-style: italic dim; 
         }
@@ -257,7 +249,7 @@ TopBar {
 
         #output_panel_container:focus {
             border: round $secondary-lighten-3;
-            background-tint: $foreground 3%;
+            background-tint: $foreground 5%;
         }
     }
 
@@ -576,10 +568,6 @@ TaskListScreen {
 
 .task_item--completed {
     opacity: 0.55;
-}
-
-.task_item--loading {
-    height: 1fr;
 }
 
 .task_item--priority {

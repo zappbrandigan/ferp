@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Pattern, Sequence, cast
 
+from rich.style import Style
 from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
@@ -14,7 +15,7 @@ from textual.containers import Vertical
 from textual.events import Click
 from textual.timer import Timer
 from textual.widget import Widget
-from textual.widgets import Input, Label, ListItem, ListView, LoadingIndicator
+from textual.widgets import Input, ListItem, ListView
 
 from ferp.core.messages import (
     BulkDeleteRequest,
@@ -91,58 +92,43 @@ def _replace_in_stem(
     return new_name, new_stem, count
 
 
-class FileRow(Widget):
-    CHARS_WIDTH = 8
-    TYPE_WIDTH = 8
-    GAP = 1
+ROW_CHARS_WIDTH = 8
+ROW_TYPE_WIDTH = 8
+ROW_GAP = 1
 
-    def __init__(
-        self,
-        *,
-        name: str,
-        chars: str,
-        type_label: str,
-        is_header: bool = False,
-        classes: str | None = None,
-    ) -> None:
-        row_classes = "file_tree_row"
-        if is_header:
-            row_classes = f"{row_classes} file_tree_header"
-        if classes:
-            row_classes = f"{row_classes} {classes}"
-        super().__init__(classes=row_classes)
-        self._name = name
-        self._chars = chars
-        self._type_label = type_label
 
-    @staticmethod
-    def _truncate(value: str, width: int) -> str:
-        if width <= 0:
-            return ""
-        if len(value) <= width:
-            return value
-        if width <= 3:
-            return value[:width]
-        return f"{value[: width - 3]}..."
+def _truncate_row_value(value: str, width: int) -> str:
+    if width <= 0:
+        return ""
+    if len(value) <= width:
+        return value
+    if width <= 3:
+        return value[:width]
+    return f"{value[: width - 3]}..."
 
-    def render(self) -> Text:
-        width = self.size.width
-        name_width = max(
-            1, width - (self.CHARS_WIDTH + self.TYPE_WIDTH + (self.GAP * 2))
-        )
-        name = self._truncate(self._name, name_width)
-        chars = self._truncate(self._chars, self.CHARS_WIDTH)
-        type_label = self._truncate(self._type_label, self.TYPE_WIDTH)
 
-        name_seg = name.ljust(name_width)
-        chars_seg = chars.ljust(self.CHARS_WIDTH)
-        type_seg = type_label.ljust(self.TYPE_WIDTH)
-        gap = " " * self.GAP
+def _render_row_text(
+    *,
+    name: str,
+    chars: str,
+    type_label: str,
+    width: int,
+    rich_style: str | Style,
+) -> Text:
+    name_width = max(1, width - (ROW_CHARS_WIDTH + ROW_TYPE_WIDTH + (ROW_GAP * 2)))
+    name = _truncate_row_value(name, name_width)
+    chars = _truncate_row_value(chars, ROW_CHARS_WIDTH)
+    type_label = _truncate_row_value(type_label, ROW_TYPE_WIDTH)
 
-        text = Text()
-        text.append(f"{name_seg}{gap}{chars_seg}{gap}{type_seg}")
-        text.stylize(self.rich_style)
-        return text
+    name_seg = name.ljust(name_width)
+    chars_seg = chars.ljust(ROW_CHARS_WIDTH)
+    type_seg = type_label.ljust(ROW_TYPE_WIDTH)
+    gap = " " * ROW_GAP
+
+    text = Text()
+    text.append(f"{name_seg}{gap}{chars_seg}{gap}{type_seg}")
+    text.stylize(rich_style)
+    return text
 
 
 class FileItem(ListItem):
@@ -157,15 +143,14 @@ class FileItem(ListItem):
         self.path = path
         self.is_header = False
         self.metadata = metadata
-
-        row = FileRow(
-            name=metadata.display_name,
-            chars=str(metadata.char_count),
-            type_label=metadata.type_label,
-            classes="file_tree_type_dir" if metadata.is_dir else "file_tree_type_file",
-        )
-
-        super().__init__(row, classes=classes, **kwargs)
+        row_classes = "file_tree_row"
+        if metadata.is_dir:
+            row_classes = f"{row_classes} file_tree_type_dir"
+        else:
+            row_classes = f"{row_classes} file_tree_type_file"
+        if classes:
+            row_classes = f"{row_classes} {classes}"
+        super().__init__(classes=row_classes, **kwargs)
 
     def on_click(self, event: Click) -> None:
         if event.chain < 2:
@@ -175,30 +160,44 @@ class FileItem(ListItem):
             parent._activate_item(self)
 
     def render(self) -> Text:
-        # Prevent fallback ListItem text (e.g., "FileItem.item_file") during refresh.
-        return Text("")
-
-
-class ChunkNavigatorItem(ListItem):
-    """Interactive row to navigate between file list chunks."""
-
-    def __init__(self, label: str, *, direction: str) -> None:
-        super().__init__(
-            Label(label, classes="file_tree_notice"), classes="item_notice"
+        return _render_row_text(
+            name=self.metadata.display_name,
+            chars=str(self.metadata.char_count),
+            type_label=self.metadata.type_label,
+            width=self.size.width,
+            rich_style=self.rich_style,
         )
-        self.direction = direction
+
+
+class StaticTextItem(ListItem):
+    def __init__(self, message: str, *, classes: str | None = None, **kwargs) -> None:
+        self._message = message
+        super().__init__(classes=classes, **kwargs)
+        self.can_focus = False
+
+    def render(self) -> Text:
+        text = Text(self._message)
+        text.stylize(self.rich_style)
+        return text
 
 
 class FileTreeHeader(Widget):
     """Static header row for the file tree list."""
 
-    def compose(self) -> ComposeResult:
-        yield FileRow(
+    def __init__(self, **kwargs) -> None:
+        classes = kwargs.pop("classes", None)
+        base_classes = "file_tree_row file_tree_header file_tree_header_row"
+        if classes:
+            base_classes = f"{base_classes} {classes}"
+        super().__init__(classes=base_classes, **kwargs)
+
+    def render(self) -> Text:
+        return _render_row_text(
             name="Name",
             chars="Chars",
             type_label="Type",
-            is_header=True,
-            classes="file_tree_header_row",
+            width=self.size.width,
+            rich_style=self.rich_style,
         )
 
 
@@ -301,6 +300,7 @@ class FileTree(ListView):
     CHUNK_SIZE = 50
     FILTER_TITLE_MAX = 24
     CHUNK_DEBOUNCE_S = 0.25
+    LOADING_DELAY_S = 0.2
     FAST_CURSOR_STEP = 5
     BINDINGS = [
         Binding("enter", "activate_item", "Select directory", show=False),
@@ -497,6 +497,9 @@ class FileTree(ListView):
         self._visual_clipboard_paths: list[Path] = []
         self._visual_clipboard_mode: str | None = None
         self._subtitle_base = ""
+        self._loading_timer: Timer | None = None
+        self._loading_pending = False
+        self._loading_visible = False
 
     def set_pending_delete_index(self, index: int | None) -> None:
         self._pending_delete_index = index
@@ -507,6 +510,7 @@ class FileTree(ListView):
 
     def on_unmount(self) -> None:
         self._state_store.unsubscribe(self._state_subscription)
+        self._cancel_loading()
 
     def action_go_parent(self) -> None:
         app = cast(AppWithPath, self.app)
@@ -653,28 +657,50 @@ class FileTree(ListView):
         self._suppress_focus_once = True
 
     def show_loading(self, path: Path) -> None:
+        if self._loading_visible:
+            return
         app = self.app
         with app.batch_update():
             self.clear()
             self._current_chunk_items = {}
-            indicator = LoadingIndicator()
-            indicator.loading = True
-            placeholder = ListItem(indicator, classes="item_loading")
-            placeholder.can_focus = False
-            self.append(placeholder)
+        self._loading_pending = True
+        if self._loading_timer is not None:
+            self._loading_timer.stop()
+            self._loading_timer = None
+        self._loading_timer = self.set_timer(
+            self.LOADING_DELAY_S,
+            self._show_loading_now,
+            name="file-tree-loading-delay",
+        )
+
+    def _show_loading_now(self) -> None:
+        self._loading_timer = None
+        if not self._loading_pending:
+            return
+        self._loading_visible = True
+        app = self.app
+        with app.batch_update():
+            self.clear()
+            self._current_chunk_items = {}
+            self.append(StaticTextItem("Loading...", classes="item_loading"))
+
+    def _cancel_loading(self) -> None:
+        self._loading_pending = False
+        self._loading_visible = False
+        if self._loading_timer is not None:
+            self._loading_timer.stop()
+            self._loading_timer = None
 
     def show_error(self, path: Path, message: str) -> None:
+        self._cancel_loading()
         app = self.app
         with app.batch_update():
             self.clear()
             self._current_chunk_items = {}
-            notice = ListItem(
-                Label(message, classes="file_tree_error"), classes="item_error"
-            )
-            notice.can_focus = False
-            self.append(notice)
+            self.append(StaticTextItem(message, classes="item_error file_tree_error"))
 
     def show_listing(self, path: Path, entries: Sequence[FileListingEntry]) -> None:
+        self._cancel_loading()
         app = self.app
         with app.batch_update():
             previous_path = self._current_listing_path
@@ -991,11 +1017,7 @@ class FileTree(ListView):
         return [path] if path else []
 
     def _append_notice(self, message: str) -> None:
-        notice = ListItem(
-            Label(message, classes="file_tree_notice"), classes="item_notice"
-        )
-        notice.can_focus = False
-        self.append(notice)
+        self.append(StaticTextItem(message, classes="item_notice file_tree_notice"))
 
     def _render_current_chunk(self) -> None:
         path = self._current_listing_path
@@ -1053,23 +1075,10 @@ class FileTree(ListView):
         else:
             pass
 
-    @on(ListView.Selected)
-    def emit_selection(self, event: ListView.Selected) -> None:
-        item = event.item
-        if isinstance(item, ChunkNavigatorItem):
-            total = len(self._filtered_entries)
-            if total == 0:
-                return
-            delta = -1 if item.direction == "prev" else 1
-            self._schedule_chunk_move(delta)
-
     def action_activate_item(self) -> None:
         item = self.highlighted_child
         if isinstance(item, FileItem) and not item.is_header:
             self._activate_item(item)
-            return
-        if isinstance(item, ChunkNavigatorItem):
-            self._activate_chunk_item(item)
 
     def _activate_item(self, item: FileItem) -> None:
         if not item.path.is_dir():
@@ -1080,20 +1089,6 @@ class FileTree(ListView):
             )
         self._state_store.set_last_selected_path(None)
         self.post_message(DirectorySelectRequest(item.path))
-
-    def _activate_chunk_item(self, item: ChunkNavigatorItem) -> None:
-        total = len(self._filtered_entries)
-        if total == 0:
-            return
-        if item.direction == "prev":
-            self._chunk_start = max(0, self._chunk_start - self.CHUNK_SIZE)
-            self._last_chunk_direction = "prev"
-        else:
-            max_start = (total - 1) // self.CHUNK_SIZE * self.CHUNK_SIZE
-            self._chunk_start = min(self._chunk_start + self.CHUNK_SIZE, max_start)
-            self._last_chunk_direction = "next"
-        self._render_current_chunk()
-        self._state_store.set_last_selected_path(None)
 
     def action_prev_chunk(self) -> None:
         self._schedule_chunk_move(-1)

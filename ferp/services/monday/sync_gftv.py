@@ -124,7 +124,7 @@ def sync(api_token: str, board_id: int, cache_path: Path) -> dict[str, object]:
 
             territory_mode = col_map.get("Territory", "").strip()
             status_value = col_map.get("Status", "").strip()
-            if status_value == "Active: Do Not Stamp":
+            if status_value in ["Inactive", "Active: Do Not Stamp"]:
                 skipped += 1
                 continue
             subitems = item.get("subitems") or []
