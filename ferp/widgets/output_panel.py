@@ -82,24 +82,14 @@ class ScriptOutputPanel(ContentPanel):
         result: ScriptResult,
         transcript_path: Path | None = None,
     ) -> None:
-        status = result.status.value.replace("_", " ").title()
-        lines: list[str] = [
-            f"[bold $text-primary]Script:[/bold $text-primary] {escape(script_name)}",
-            f"[bold $text-primary]Target:[/bold $text-primary] {escape(str(target.name))}",
-            f"[bold $text-primary]Status:[/bold $text-primary] {status}",
-        ]
-
-        if result.exit_code is not None:
-            lines.append(
-                f"[bold $text-primary]Exit Code:[/bold $text-primary] {result.exit_code}"
-            )
+        lines: list[str] = []
 
         if result.results:
             total = len(result.results)
             for index, payload in enumerate(result.results, start=1):
                 header_text, header_style = self._result_header(payload, index, total)
                 lines.append(
-                    f"\n[bold {header_style}]{escape(header_text)}[/bold {header_style}]\n"
+                    f"[bold {header_style}]{escape(header_text)}[/bold {header_style}]\n"
                 )
                 format_hint = payload.get("_format")
                 if (

@@ -23,8 +23,10 @@ def build_file_info(path: Path) -> FileInfoResult:
     except OSError as exc:
         return FileInfoResult(path=path, data={}, error=str(exc))
 
+    name_label = "Folder Name" if path.is_dir() else "File Name"
+    display_name = path.name or str(path)
     info: dict[str, str] = {
-        "Type": "Directory" if path.is_dir() else _file_type_label(path),
+        name_label: display_name,
         "Modified": _format_timestamp(stat.st_mtime),
         "Created": _format_timestamp(stat.st_ctime),
         "Size": _format_bytes(stat.st_size),

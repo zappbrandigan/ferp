@@ -229,13 +229,6 @@ class FileTreeFilterWidget(Widget):
         self._input = self.query_one(Input)
 
     def show(self, value: str) -> None:
-        # Don't show filter widget if file tree is maximized, since the input won't be visible.
-        if focused := self.app.focused:
-            try:
-                if cast(Widget, focused.parent).is_maximized:
-                    return
-            except AttributeError:
-                pass
         self.display = "block"
         if self._input:
             self._input.value = value
@@ -419,13 +412,6 @@ class FileTree(ListView):
             tooltip="Open favorites list",
         ),
         Binding(
-            "i",
-            "show_info",
-            "Info",
-            show=False,
-            tooltip="Show file info",
-        ),
-        Binding(
             "a",
             "select_all",
             "Select all",
@@ -500,6 +486,8 @@ class FileTree(ListView):
         self._loading_timer: Timer | None = None
         self._loading_pending = False
         self._loading_visible = False
+        self._info_timer: Timer | None = None
+        self._pending_info_path: Path | None = None
 
     def set_pending_delete_index(self, index: int | None) -> None:
         self._pending_delete_index = index
@@ -511,6 +499,7 @@ class FileTree(ListView):
     def on_unmount(self) -> None:
         self._state_store.unsubscribe(self._state_subscription)
         self._cancel_loading()
+        self._cancel_info_timer()
 
     def action_go_parent(self) -> None:
         app = cast(AppWithPath, self.app)
@@ -1072,8 +1061,31 @@ class FileTree(ListView):
 
         if isinstance(item, FileItem) and not item.is_header:
             self._state_store.set_last_selected_path(item.path)
+            self._schedule_file_info(item.path)
         else:
-            pass
+            self._cancel_info_timer()
+
+    def _schedule_file_info(self, path: Path) -> None:
+        self._cancel_info_timer()
+        self._pending_info_path = path
+        self._info_timer = self.set_timer(0.35, self._emit_file_info)
+
+    def _cancel_info_timer(self) -> None:
+        if self._info_timer is not None:
+            self._info_timer.stop()
+            self._info_timer = None
+        self._pending_info_path = None
+
+    def _emit_file_info(self) -> None:
+        path = self._pending_info_path
+        self._info_timer = None
+        if path is None:
+            return
+        current = self._selected_path()
+        if current != path:
+            return
+        app = cast("Ferp", self.app)
+        app.request_file_info(path)
 
     def action_activate_item(self) -> None:
         item = self.highlighted_child

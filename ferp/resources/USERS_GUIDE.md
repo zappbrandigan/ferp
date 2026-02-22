@@ -50,6 +50,8 @@ FERP is split into sections (called "panels"):
 - **File Navigator (left)**: Shows folders and files you can navigate.
 - **Scripts List (top-right)**: Shows automations you can run (if any are installed).
 - **Output (bottom-right)**: Shows progress and results when a script runs.
+- **Process List (bottom-left)**: Shows recent script runs and their status.
+- **Metadata (bottom-middle)**: Shows details about the highlighted file or folder.
 - **Footer (bottom)**: Shows the most commonly used commands available from the currently focused panel.
 
 > FERP starts in your Home folder. You can change what directory is loaded on startup using the command palette.
@@ -94,7 +96,8 @@ FERP is keyboard‑first. Common actions:
 
 - **Arrow keys**: Move selection up/down.
 - **Enter**: Open a folder or display a help file for a script.
-- **i**: Show metadata for the highlighted file in the output panel.
+
+Metadata updates automatically when you highlight a file or folder (with a short debounce).
 
 Tip: You can move quickly without using the mouse. The full list of navigation keys are available in the app.
 
@@ -104,7 +107,7 @@ Tip: You can move quickly without using the mouse. The full list of navigation k
 
 Visual mode lets you select multiple items in the File Navigator without running scripts.
 
-- **v**: Toggle visual mode (scripts and output panels are disabled while active).
+- **v**: Toggle visual mode (scripts panel is disabled while active).
 - **s**: Toggle selection for the highlighted item.
 - **Shift+s**: Select a range from the last anchor to the highlighted item.
 - **c**: Copy selected items.
@@ -125,11 +128,11 @@ Selections are cleared when you exit visual mode.
 
 Use the filter widget to quickly narrow the File Navigator list.
 
-- Press `/` in the File Navigator to open the filter box.
+- Press `/` in the File Navigator to focus the filter box at the bottom of the File Navigator.
 - Text search matches the name and type column (e.g., `dir`, `pdf`, `report`).
 - Prefix with `!` to exclude matches (e.g., `!dir` to hide directories).
-- Prefix with `/` to use a regex (regex searches file names only).
-- Use `pattern/replacement` to batch-rename files matching the filter (file extensions will not be modified).
+- Prefix with `/` to use a regex (regex searches file/directory names only).
+- Use `pattern/replacement` to batch-rename files matching the filter (file extensions and directories will not be modified).
 - Use `/regex/replacement` for regex-based renames (regex runs on file stems).
 
 > Note: Use `\g<1>` notation to reference the first captured group.
@@ -142,6 +145,31 @@ Favorites let you mark locations and jump back quickly.
 
 - **f**: Toggle favorite for the highlighted item (or current directory).
 - **Shift+f**: Open the favorites list and jump to a saved path.
+
+---
+
+## 6e) Panel Focus Shortcuts
+
+You can jump between panels without cycling through every widget:
+
+- **Tab / Shift+Tab**: Toggle focus between File Navigator and Scripts List.
+- **Alt+1**: Focus File Navigator.
+- **Alt+2**: Focus Scripts List.
+- **Alt+3**: Focus Output panel.
+- **Alt+4**: Focus Metadata panel.
+- **Alt+5**: Focus Process List panel.
+
+---
+
+## 6f) Process List Panel
+
+The Process List shows recent script runs and their status:
+
+- **r**: Refresh the list.
+- **p**: Prune finished processes.
+- **k**: Cancel the selected process.
+
+Statuses are simplified for clarity (e.g., Running, Finished, Canceled, Error).
 
 ---
 

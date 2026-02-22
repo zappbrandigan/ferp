@@ -231,6 +231,7 @@ class ScriptLifecycleController:
         )
 
         self._set_controls_disabled(True)
+        self._focus_output_panel()
 
         try:
             worker = app.run_worker(
@@ -537,6 +538,18 @@ class ScriptLifecycleController:
         )
         self._app._start_file_tree_watch()
         self._app._maybe_exit_after_script()
+
+    def _focus_output_panel(self) -> None:
+        try:
+            container = self._app.query_one("#output_panel_container")
+        except Exception:
+            return
+        if getattr(container, "disabled", False):
+            return
+        try:
+            container.focus()
+        except Exception:
+            return
 
     def _set_controls_disabled(self, disabled: bool) -> None:
         visual_mode = self._app.visual_mode

@@ -1,4 +1,4 @@
-.PHONY: dev test test-cov test-scripts clean bump-patch bump-minor bump-major
+.PHONY: dev test test-cov test-host test-scripts clean bump-patch bump-minor bump-major
 
 dev:
 	FERP_DEV_CONFIG=1 FERP_SCRIPT_LOG_LEVEL=debug textual run --dev ferp/app.py
@@ -7,7 +7,10 @@ test:
 	pytest -v
 
 test-cov:
-	pytest --cov=ferp --cov-report=term-missing
+	pytest --cov=ferp --cov-report=term-missing --ignore=tests/scripts --ignore="*/__main__.py"
+
+test-host:
+	pytest -v --ignore=tests/scripts
 
 test-scripts:
 	pytest tests/scripts -v

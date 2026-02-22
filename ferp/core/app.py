@@ -18,6 +18,7 @@ from textual.binding import Binding
 from textual.command import CommandPalette
 from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
+from textual.events import Key
 from textual.screen import Screen
 from textual.theme import Theme
 from textual.timer import Timer
@@ -50,8 +51,8 @@ from ferp.core.paths import (
     APP_AUTHOR,
     APP_NAME,
     SCRIPTS_CONFIG_FILENAME,
-    SETTINGS_FILENAME,
     SCRIPTS_REPO_URL,
+    SETTINGS_FILENAME,
     TASKS_FILENAME,
 )
 from ferp.core.script_controller import ScriptLifecycleController
@@ -86,8 +87,9 @@ from ferp.widgets.file_tree import (
     FileTreeFilterWidget,
     FileTreeHeader,
 )
+from ferp.widgets.metadata_panel import MetadataPanel
 from ferp.widgets.output_panel import OutputPanelContainer, ScriptOutputPanel
-from ferp.widgets.process_list import ProcessListScreen
+from ferp.widgets.process_panel import ProcessListPanel
 from ferp.widgets.readme_modal import ReadmeScreen
 from ferp.widgets.scripts import ScriptManager
 from ferp.widgets.task_list import TaskListScreen
@@ -162,6 +164,55 @@ class Ferp(App):
             show=True,
             tooltip="Show/hide help panel",
         ),
+        Binding(
+            "tab",
+            "focus_primary_next",
+            "Primary focus",
+            show=False,
+            tooltip="Toggle focus between file navigator and scripts panel",
+        ),
+        Binding(
+            "shift+tab",
+            "focus_primary_prev",
+            "Primary focus",
+            show=False,
+            tooltip="Toggle focus between file navigator and scripts panel",
+        ),
+        Binding(
+            "1",
+            "focus_file_tree",
+            "Focus file tree",
+            show=False,
+            tooltip="Focus file navigator",
+        ),
+        Binding(
+            "2",
+            "focus_scripts_panel",
+            "Focus scripts panel",
+            show=False,
+            tooltip="Focus scripts panel",
+        ),
+        Binding(
+            "3",
+            "focus_output_panel",
+            "Focus output panel",
+            show=False,
+            tooltip="Focus output panel",
+        ),
+        Binding(
+            "4",
+            "focus_metadata_panel",
+            "Focus metadata panel",
+            show=False,
+            tooltip="Focus metadata panel",
+        ),
+        Binding(
+            "5",
+            "focus_process_panel",
+            "Focus process panel",
+            show=False,
+            tooltip="Focus process panel",
+        ),
     ]
 
     def get_system_commands(self, screen: Screen[Any]) -> Iterable[SystemCommand]:
@@ -213,7 +264,6 @@ class Ferp(App):
         self._pending_refresh = False
         self._refresh_timer: Timer | None = None
         self._task_list_screen: TaskListScreen | None = None
-        self._process_list_screen: ProcessListScreen | None = None
         self._pending_exit = False
         self._is_shutting_down = False
         self._suppress_watcher_until = 0.0
@@ -361,6 +411,10 @@ class Ferp(App):
                 FileTreeContainer(
                     FileTreeHeader(id="file_list_header"),
                     FileTree(id="file_list", state_store=self.file_tree_store),
+                    FileTreeFilterWidget(
+                        id="file_tree_filter",
+                        state_store=self.file_tree_store,
+                    ),
                     id="file_list_container",
                 ),
                 Vertical(
@@ -369,14 +423,18 @@ class Ferp(App):
                         scripts_root=self._paths.scripts_dir,
                         id="scripts_panel",
                     ),
-                    scroll_container,
                     id="details_pane",
                 ),
                 id="main_pane",
             )
-            yield FileTreeFilterWidget(
-                id="file_tree_filter",
-                state_store=self.file_tree_store,
+            yield Horizontal(
+                ProcessListPanel(
+                    self.script_controller.process_registry,
+                    self._request_process_abort,
+                ),
+                MetadataPanel(),
+                scroll_container,
+                id="output_panel_section",
             )
         yield Footer(id="app_footer")
 
@@ -449,11 +507,9 @@ class Ferp(App):
 
     def _set_details_disabled(self, disabled: bool) -> None:
         script_manager = self.query_one(ScriptManager)
-        output_container = self.query_one("#output_panel_container")
         details_pane = self.query_one("#details_pane")
 
         script_manager.disabled = disabled
-        output_container.disabled = disabled
 
         if disabled:
             details_pane.add_class("dimmed")
@@ -468,7 +524,6 @@ class Ferp(App):
         self._visual_mode = not self._visual_mode
         file_tree = self.query_one(FileTree)
         script_manager = self.query_one(ScriptManager)
-        output_container = self.query_one("#output_panel_container")
         details_pane = self.query_one("#details_pane")
 
         if self._visual_mode:
@@ -480,7 +535,6 @@ class Ferp(App):
         file_tree.clear_visual_state()
         file_tree._update_border_title()
         if self.script_controller.is_running:
-            output_container.disabled = False
             details_pane.remove_class("dimmed")
             script_manager.disabled = True
             script_manager.add_class("dimmed")
@@ -612,10 +666,6 @@ class Ferp(App):
             return
         screen = ReadmeScreen("FERP User Guide", content, id="readme_screen")
         self.push_screen(screen)
-
-    def _command_show_processes(self) -> None:
-        self._ensure_process_list_screen()
-        self.push_screen("process_list")
 
     def _command_set_startup_directory(self) -> None:
         prompt = "Startup directory"
@@ -1725,16 +1775,6 @@ class Ferp(App):
             self._task_list_screen = screen
         return self._task_list_screen
 
-    def _ensure_process_list_screen(self) -> ProcessListScreen:
-        if self._process_list_screen is None:
-            screen = ProcessListScreen(
-                self.script_controller.process_registry,
-                self._request_process_abort,
-            )
-            self.install_screen(screen, name="process_list")
-            self._process_list_screen = screen
-        return self._process_list_screen
-
     def action_toggle_help(self) -> None:
         try:
             self.screen.query_one("HelpPanel")
@@ -1742,6 +1782,56 @@ class Ferp(App):
             self.action_show_help_panel()
         else:
             self.action_hide_help_panel()
+
+    def action_focus_primary_next(self) -> None:
+        self._toggle_primary_focus()
+
+    def action_focus_primary_prev(self) -> None:
+        self._toggle_primary_focus()
+
+    def _toggle_primary_focus(self) -> None:
+        file_tree = self.query_one(FileTree)
+        script_manager = self.query_one(ScriptManager)
+        focused = self.screen.focused
+
+        def is_descendant(node, ancestor) -> bool:
+            while node is not None:
+                if node is ancestor:
+                    return True
+                node = node.parent
+            return False
+
+        if focused is not None and is_descendant(focused, file_tree):
+            script_manager.focus()
+        else:
+            file_tree.focus()
+
+    def action_focus_file_tree(self) -> None:
+        self.query_one(FileTree).focus()
+
+    def action_focus_scripts_panel(self) -> None:
+        self.query_one(ScriptManager).focus()
+
+    def action_focus_output_panel(self) -> None:
+        self.query_one("#output_panel_container").focus()
+
+    def action_focus_metadata_panel(self) -> None:
+        self.query_one("#metadata_panel").focus()
+
+    def action_focus_process_panel(self) -> None:
+        try:
+            self.query_one("#process_panel_list").focus()
+        except Exception:
+            self.query_one("#process_panel").focus()
+
+    def on_key(self, event: Key) -> None:
+        if event.key not in {"tab", "shift+tab"}:
+            return
+        focused = self.screen.focused
+        if focused is not None and focused.id in {"input", "prompt_textarea"}:
+            return
+        self._toggle_primary_focus()
+        event.stop()
 
     def action_toggle_maximize(self) -> None:
         screen = self.screen
@@ -2104,7 +2194,7 @@ class Ferp(App):
         if event.state is WorkerState.SUCCESS:
             result = event.worker.result
             if isinstance(result, FileInfoResult):
-                panel = self.query_one(ScriptOutputPanel)
+                panel = self.query_one(MetadataPanel)
                 if result.error:
                     self.show_error(
                         FerpError(
@@ -2114,7 +2204,7 @@ class Ferp(App):
                         )
                     )
                     panel.show_info(
-                        "File Info",
+                        "Metadata",
                         [
                             "[bold $error]Error:[/bold $error]",
                             escape(result.error),
@@ -2139,7 +2229,7 @@ class Ferp(App):
                         f"[bold $text-primary]{escape(key)}:[/bold $text-primary] {escape(value)}"
                         for key, value in result.excel_data.items()
                     )
-                panel.show_info("File Info", lines)
+                panel.show_info("Metadata", lines)
         elif event.state is WorkerState.ERROR:
             error = event.worker.error or RuntimeError("File info failed.")
             self.show_error(
@@ -2149,9 +2239,9 @@ class Ferp(App):
                     detail=str(error),
                 )
             )
-            panel = self.query_one(ScriptOutputPanel)
+            panel = self.query_one(MetadataPanel)
             panel.show_info(
-                "File Info",
+                "Metadata",
                 [
                     "[bold $error]Error:[/bold $error]",
                     escape(str(error)),

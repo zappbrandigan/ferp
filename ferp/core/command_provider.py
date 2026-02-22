@@ -48,11 +48,6 @@ class FerpCommandProvider(SimpleProvider):
             "_command_sync_monday_board",
         ),
         (
-            "Show Processes",
-            "View and manage tracked script processes.",
-            "_command_show_processes",
-        ),
-        (
             "Set Monday API Token",
             "Update the Monday API token.",
             "_command_set_monday_api_token",

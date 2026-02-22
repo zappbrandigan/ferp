@@ -79,8 +79,7 @@ TopBar {
 #app_main_container {
     #main_pane {
         layout: horizontal;
-        height: 1fr;
-        margin-bottom: 1;
+        height: 3fr;
         padding: 0 1 0 1;
         background: $background;
 
@@ -92,12 +91,8 @@ TopBar {
             opacity: 0.4;
         }
 
-        ListItem.-highlight {
-            color: $text !important;
-        }
-
-        ListItem:focus ListItem.-highlight {
-            background: $secondary;
+        ListView:focus ListItem.-highlight {
+            background: $primary;
         }
 
         ListItem.file_tree_row {
@@ -131,18 +126,18 @@ TopBar {
         .file_tree_header {
             text-style: bold;
         }
-
         /* ============================================================================
         File Tree
         ============================================================================ */
         #file_list_container {
-            width: 2fr;
+            width: 4fr;
             height: 1fr;
             min-height: 1;
             max-width: 100%;
             padding: 0 1;
             border: round $secondary;
             border-title-align: right;
+            border-subtitle-align: center;
             background: $background;
             layout: vertical;
         }
@@ -187,7 +182,7 @@ TopBar {
 
     #details_pane {
         layout: vertical;
-        width: 1fr;
+        width: 2fr;
         background: $background;
 
         /* ============================================================================
@@ -206,6 +201,10 @@ TopBar {
             background-tint: $foreground 5%;
         }
 
+        #scripts_panel:blur ListItem.-highlight {
+            background: transparent;
+        }
+
         .script_row {
             height: 1;
             padding: 0 1 0 1;
@@ -215,7 +214,7 @@ TopBar {
             color: $text-accent;
         }
 
-        ScriptItem.-highlight > .script_category {
+        #scripts_panel:focus ScriptItem.-highlight > .script_category {
             color: $text;
         }
 
@@ -229,28 +228,81 @@ TopBar {
             color: $text;
             text-style: italic dim; 
         }
+    }
 
-        /* ============================================================================
-        Output Panel
-        ============================================================================ */
-        #output_panel_container {
-            height: 1fr;
-            border: round $secondary;
-            border-title-align: right;
-            border-subtitle-align: left;
-            color: $text;
-            background: $background;
-        }
+    #output_panel_section {
+        height: 1fr;
+        padding: 0 1 0 1;
+        margin-bottom: 1;
+    }
 
-        #output_panel {
-            width: 100%;
-            padding: 0 1;
-        }
+    /* ============================================================================
+    Metadata Panel
+    ============================================================================ */
+    #metadata_panel {
+        width: 1fr;
+        height: 1fr;
+        padding: 0 1;
+        background: $background;
+        border: round $secondary;
+        border-title-align: right;
+    }
 
-        #output_panel_container:focus {
-            border: round $secondary-lighten-3;
-            background-tint: $foreground 5%;
-        }
+    #metadata_panel:focus {
+        border: round $secondary-lighten-3;
+        background-tint: $foreground 5%;
+    }
+
+    /* ============================================================================
+    Process Panel
+    ============================================================================ */
+    #process_panel {
+        width: 1fr;
+        padding: 0 1;
+        border: round $secondary;
+        border-title-align: right;
+        background: $background;
+    }
+
+    #process_panel_list {
+        height: 1fr;
+        background: transparent;
+    }
+
+    #process_panel_status {
+        height: 1;
+        padding: 0 1;
+        color: $text-muted;
+    }
+
+    #process_panel:focus-within {
+        border: round $secondary-lighten-3;
+        background-tint: $foreground 5%;
+    }
+
+    #process_panel_list:blur  ListItem.-highlight {
+        background: transparent;
+    }
+
+
+    /* ============================================================================
+    Output Panel
+    ============================================================================ */
+    #output_panel_container {
+        border: round $secondary;
+        border-title-align: right;
+        border-subtitle-align: left;
+        color: $text;
+        background: $background;
+    }
+
+    #output_panel {
+        padding: 0 1;
+    }
+
+    #output_panel_container:focus {
+        border: round $secondary-lighten-3;
+        background-tint: $foreground 5%;
     }
 
     /* ============================================================================
@@ -258,14 +310,14 @@ TopBar {
     ============================================================================ */
     #file_tree_filter {
         display: none;
-        padding: 0 1;
-        background: $panel;
+        padding: 0;
+        background: $background;
+        background-tint: $foreground 5%;
         height: 3;
 
         Input {
             width: 100%;
-            border: round $secondary;
-            background: transparent;
+            border: round $secondary-lighten-3;
         }
 
         Input:focus {
@@ -625,30 +677,6 @@ ListItem.-highlight .task_item_text {
 #progress_message {
     text-align: center;
     opacity: 0.5
-}
-
-/* ============================================================================
-   Process List
-============================================================================ */
-#process_list_modal {
-    align: center middle;
-    height: 100%;
-    margin: 5 40;
-    padding: 0;
-    background: $surface;
-}
-
-#process_list_view {
-    height: 1fr;
-    margin: 0;
-    border: round $secondary;
-    background: $background;
-}
-
-#process_list_status {
-    height: 1;
-    padding: 0 1;
-    color: $text-muted;
 }
 
 .process_row {
