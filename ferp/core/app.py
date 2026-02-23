@@ -1537,7 +1537,7 @@ class Ferp(App):
             lambda paths=list(scripts_panel.config_paths): self._load_scripts_payload(
                 paths
             ),
-            group=WorkerGroup.SCRIPTS,
+            group=WorkerGroup.SCRIPTS_REFRESH,
             exclusive=True,
             thread=True,
         )
@@ -2054,7 +2054,7 @@ class Ferp(App):
             self._set_main_controls_disabled(False)
         return True
 
-    @worker_handler(WorkerGroup.SCRIPTS)
+    @worker_handler(WorkerGroup.SCRIPTS_REFRESH)
     def _handle_scripts_worker(self, event: Worker.StateChanged) -> bool:
         if event.state is WorkerState.SUCCESS:
             result = event.worker.result

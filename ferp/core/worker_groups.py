@@ -16,5 +16,6 @@ class WorkerGroup:
     SCRIPT_ABORT = "script_abort"
     SCRIPT_UPDATE_CHECK = "script_update_check"
     SCRIPTS = "scripts"
+    SCRIPTS_REFRESH = "scripts_refresh"
     UPDATE_CHECK = "update_check"
     WATCHER_SNAPSHOT = "watcher_snapshot"
