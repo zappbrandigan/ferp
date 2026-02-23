@@ -18,8 +18,7 @@ from textual.binding import Binding
 from textual.command import CommandPalette
 from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
-from textual.events import Key
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
 from textual.timer import Timer
 from textual.widgets import Footer
@@ -1101,15 +1100,33 @@ class Ferp(App):
             )
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
+        shim_lock = False
+        if result.returncode != 0:
+            shim_lock = self._is_windows_shim_lock_error(result.stdout, result.stderr)
         return {
-            "ok": result.returncode == 0,
+            "ok": result.returncode == 0 or shim_lock,
             "code": result.returncode,
             "stdout": result.stdout.strip(),
             "stderr": result.stderr.strip(),
             "current": current_version,
             "latest": latest_version,
             "check_error": check_error,
+            "shim_lock": shim_lock,
         }
+
+    @staticmethod
+    def _is_windows_shim_lock_error(stdout: str, stderr: str) -> bool:
+        combined = f"{stdout}\n{stderr}".lower()
+        if "winerror 32" in combined:
+            return True
+        if "being used by another process" in combined:
+            return True
+        if (
+            "cannot access the file" in combined
+            and "used by another process" in combined
+        ):
+            return True
+        return False
 
     def _sync_monday_board(self, api_token: str, board_id: int) -> dict[str, object]:
         cache_path = self._monday_cache_path(create=True)
@@ -1783,6 +1800,22 @@ class Ferp(App):
         else:
             self.action_hide_help_panel()
 
+    def action_focus_next(self) -> None:
+        if self._visual_mode:
+            return
+        if isinstance(self.screen, ModalScreen):
+            self.screen.focus_next()
+            return
+        self._toggle_primary_focus()
+
+    def action_focus_previous(self) -> None:
+        if self._visual_mode:
+            return
+        if isinstance(self.screen, ModalScreen):
+            self.screen.focus_previous()
+            return
+        self._toggle_primary_focus()
+
     def action_focus_primary_next(self) -> None:
         self._toggle_primary_focus()
 
@@ -1823,15 +1856,6 @@ class Ferp(App):
             self.query_one("#process_panel_list").focus()
         except Exception:
             self.query_one("#process_panel").focus()
-
-    def on_key(self, event: Key) -> None:
-        if event.key not in {"tab", "shift+tab"}:
-            return
-        focused = self.screen.focused
-        if focused is not None and focused.id in {"input", "prompt_textarea"}:
-            return
-        self._toggle_primary_focus()
-        event.stop()
 
     def action_toggle_maximize(self) -> None:
         screen = self.screen
@@ -2046,6 +2070,14 @@ class Ferp(App):
                         timeout=self.notify_timeouts.long,
                     )
                 if result.get("ok") is True:
+                    if result.get("shim_lock") is True:
+                        self.notify(
+                            "Upgrade complete. Windows reported the launcher was in use; "
+                            "please restart after the app exits. Exiting...",
+                            timeout=self.notify_timeouts.long,
+                        )
+                        self.set_timer(3.0, self.exit)
+                        return True
                     self.notify(
                         "Upgrade complete. Please restart after the app exits. Exiting...",
                         timeout=self.notify_timeouts.long,

@@ -280,8 +280,35 @@ TopBar {
         background-tint: $foreground 5%;
     }
 
-    #process_panel_list:blur  ListItem.-highlight {
+    .process_row {
+        height: 2;
+        padding: 0 1;
+    }
+
+    .process_row--empty {
+        color: $text-muted;
+    }
+
+    .process_row_title {
+        color: $text-primary;
+        text-style: bold;
+    }
+
+    .process_row_meta {
+        color: $text-muted;
+    }
+
+    #process_panel_list:blur  .process_row.-highlight {
         background: transparent;
+    }
+
+    #process_panel_list:blur .process_row_title {
+        color: $primary;
+    }
+
+    #process_panel_list:focus .process_row.-highlight .process_row_title,
+    #process_panel_list:focus .process_row.-highlight .process_row_meta {
+        color: $text;
     }
 
 
@@ -679,28 +706,7 @@ ListItem.-highlight .task_item_text {
     opacity: 0.5
 }
 
-.process_row {
-    height: 2;
-    padding: 0 1;
-}
 
-.process_row--empty {
-    color: $text-muted;
-}
-
-.process_row_title {
-    color: $text-primary;
-    text-style: bold;
-}
-
-.process_row_meta {
-    color: $text-muted;
-}
-
-.process_row.-highlight .process_row_title,
-.process_row.-highlight .process_row_meta {
-    color: $text;
-}
 
 .item_loading {
     height: 1fr;
