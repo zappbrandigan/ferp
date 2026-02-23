@@ -90,7 +90,7 @@ from ferp.widgets.metadata_panel import MetadataPanel
 from ferp.widgets.output_panel import OutputPanelContainer, ScriptOutputPanel
 from ferp.widgets.process_panel import ProcessListPanel
 from ferp.widgets.readme_modal import ReadmeScreen
-from ferp.widgets.scripts import ScriptManager
+from ferp.widgets.scripts import ScriptManager, load_scripts_configs
 from ferp.widgets.task_list import TaskListScreen
 from ferp.widgets.top_bar import TopBar
 
@@ -1138,6 +1138,15 @@ class Ferp(App):
         except Exception as exc:
             return {"error": str(exc)}
 
+    def _load_scripts_payload(self, config_paths: Sequence[Path]) -> dict[str, object]:
+        if not any(path.exists() for path in config_paths):
+            return {"missing": True}
+        try:
+            scripts = load_scripts_configs(config_paths)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        return {"scripts": scripts}
+
     def _request_process_abort(self, record: ProcessRecord) -> bool:
         active_handle = self.script_controller.active_process_handle
         if not active_handle or record.handle != active_handle:
@@ -1509,9 +1518,6 @@ class Ferp(App):
             )
             self._set_main_controls_disabled(False)
             return
-        config_path = payload.get("config_path", "")
-        release_status = payload.get("release_status", "")
-        release_detail = payload.get("release_detail", "")
         release_version = payload.get("release_version", "")
         namespace = payload.get("namespace")
 
@@ -1524,16 +1530,17 @@ class Ferp(App):
         summary = "Default scripts updated."
         if release_version:
             summary = f"{summary} {release_version}"
-        if release_status:
-            summary = f"{summary} ({release_status})"
-        if config_path:
-            summary = f"{summary} Config: {config_path}"
-        if release_detail:
-            summary = f"{summary} {release_detail}"
         self.notify(summary, timeout=self.notify_timeouts.normal)
 
         scripts_panel = self.query_one(ScriptManager)
-        scripts_panel.load_scripts()
+        self.run_worker(
+            lambda paths=list(scripts_panel.config_paths): self._load_scripts_payload(
+                paths
+            ),
+            group=WorkerGroup.SCRIPTS,
+            exclusive=True,
+            thread=True,
+        )
         self._set_main_controls_disabled(False)
 
     def _prompt_default_scripts_namespace(self, options: list[str]) -> None:
@@ -1559,6 +1566,7 @@ class Ferp(App):
                 self.notify(
                     "Updating default scripts...", timeout=self.notify_timeouts.long
                 )
+            self.action_focus_output_panel()
             self._set_main_controls_disabled(True)
             self.run_worker(
                 lambda ns=namespace: self._install_default_scripts(ns),
@@ -2044,6 +2052,40 @@ class Ferp(App):
                 )
             )
             self._set_main_controls_disabled(False)
+        return True
+
+    @worker_handler(WorkerGroup.SCRIPTS)
+    def _handle_scripts_worker(self, event: Worker.StateChanged) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, dict):
+                scripts_panel = self.query_one(ScriptManager)
+                if result.get("missing") is True:
+                    scripts_panel.call_after_refresh(
+                        lambda: scripts_panel.apply_scripts(None, missing=True)
+                    )
+                    return True
+                error = result.get("error")
+                if error:
+                    scripts_panel.call_after_refresh(
+                        lambda err=str(error): scripts_panel.apply_scripts(None, error=err)
+                    )
+                    return True
+                scripts = result.get("scripts")
+                if isinstance(scripts, list):
+                    scripts_panel.call_after_refresh(
+                        lambda items=scripts: scripts_panel.apply_scripts(items)
+                    )
+            return True
+        if event.state is WorkerState.ERROR:
+            error = event.worker.error or RuntimeError("Script list update failed.")
+            self.show_error(
+                FerpError(
+                    code="scripts_update_failed",
+                    message="Scripts update failed.",
+                    detail=str(error),
+                )
+            )
         return True
 
     @worker_handler(WorkerGroup.APP_UPGRADE)

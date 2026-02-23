@@ -179,6 +179,31 @@ class ScriptManager(ListView):
         self.border_title = "Scripts"
         self.load_scripts()
 
+    def apply_scripts(
+        self,
+        scripts: list[Script] | None,
+        *,
+        error: str | None = None,
+        missing: bool = False,
+    ) -> None:
+        self.clear()
+        if missing:
+            self.border_subtitle = ""
+            self.append(StaticTextItem(f"No {SCRIPTS_CONFIG_FILENAME} found"))
+            return
+        if error:
+            self.border_subtitle = ""
+            self.append(StaticTextItem(f"Invalid config: {error}"))
+            return
+        if not scripts:
+            self.border_subtitle = ""
+            self.append(StaticTextItem("No scripts configured"))
+            return
+        self._set_namespace_subtitle()
+        for script in scripts:
+            self.append(ScriptItem(script))
+        self.call_after_refresh(self._focus_first_script)
+
     def load_scripts(self) -> None:
         self.clear()
 
