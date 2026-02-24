@@ -709,7 +709,8 @@ ListItem.-highlight .task_item_text {
 
 
 .item_loading {
-    height: 1fr;
+    height: 1;
     width: 100%;
     color: $primary;
+    text-align: center;
 }

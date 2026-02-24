@@ -141,14 +141,24 @@ class ProcessPanelItem(ListItem):
     def _render_title(record: ProcessRecord) -> str:
         pid = record.pid
         pid_label = f" · pid {pid}" if pid is not None else ""
-        return f"{record.metadata.script_name}{pid_label}"
+        status = ProcessPanelItem._friendly_status(record)
+        return f"{record.metadata.script_name} · {status}{pid_label}"
 
     @classmethod
     def _render_meta(cls, record: ProcessRecord) -> str:
         target = record.metadata.target_path
         target_label = target.name or str(target)
-        status = cls._friendly_status(record)
-        return f"{target_label} · {status}"
+        return cls._abbreviate_label(target_label)
+
+    @staticmethod
+    def _abbreviate_label(label: str, max_len: int = 32) -> str:
+        if len(label) <= max_len:
+            return label
+        if max_len < 7:
+            return label[:max_len]
+        head = (max_len - 3) // 2
+        tail = max_len - 3 - head
+        return f"{label[:head]}...{label[-tail:]}"
 
     @staticmethod
     def _friendly_status(record: ProcessRecord) -> str:
