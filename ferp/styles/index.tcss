@@ -474,17 +474,17 @@ TopBar {
     }
 }
 
+/* scripts */
 #dialog_container .prompt_select {
     height: 5;
-    margin: 0 15 0 15;
+    margin: 1 15 0 15;
     width: 100%;
-    border: round $secondary;
     background: transparent;
 }
 
-#dialog_container .prompt_select:focus {
-    border: round $secondary-lighten-3;
-    background: transparent;
+/* host */
+#select {
+    margin: 1 15 0 15;
 }
 
 #dialog_container #prompt_flags {
@@ -542,7 +542,6 @@ SelectionList .selection-list--button-highlighted {
 #dialog_container .dialog_buttons {
     dock: bottom;
     height: auto;
-    margin-top: 1;
     align: center middle;
 }
 

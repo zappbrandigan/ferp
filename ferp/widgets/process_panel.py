@@ -153,33 +153,33 @@ class ProcessPanelItem(ListItem):
     @staticmethod
     def _abbreviate_label(label: str, max_len: int = 32) -> str:
         if len(label) <= max_len:
-            return label
+            return f"target: {label}"
         if max_len < 7:
-            return label[:max_len]
+            return f"target: {label[:max_len]}"
         head = (max_len - 3) // 2
         tail = max_len - 3 - head
-        return f"{label[:head]}...{label[-tail:]}"
+        return f"target: {label[:head]}...{label[-tail:]}"
 
     @staticmethod
     def _friendly_status(record: ProcessRecord) -> str:
         if record.state in {HostState.ERR_PROTOCOL, HostState.ERR_TRANSPORT}:
-            return "Error"
+            return "[$error]Error[/]"
         if record.state is HostState.CANCELLING:
-            return "Canceling"
+            return "[$warning]Canceling[/]"
         if record.termination_mode in {"cancel", "kill", "terminate"}:
-            return "Canceled"
+            return "[$warning]Canceled[/]"
         if record.termination_mode in {
             "protocol-error",
             "transport-error",
             "abnormal-exit",
         }:
-            return "Error"
+            return "[$error]Error[/]"
         if record.exit_code not in (None, 0):
-            return "Error"
+            return "[$error]Error[/]"
         if record.state is HostState.TERMINATED:
-            return "Finished"
+            return "[$success]Finished[/]"
         if record.state is HostState.AWAITING_INPUT:
-            return "Waiting for input"
+            return "[$warning]Waiting for input[/]"
         if record.state is HostState.RUNNING:
-            return "Running"
+            return "[$warning]Running[/]"
         return record.state.name.replace("_", " ").title()

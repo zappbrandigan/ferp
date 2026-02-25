@@ -109,7 +109,7 @@ class ScriptOutputPanel(ContentPanel):
                     lines.append(self._format_pair(key, value))
 
         if result.error:
-            lines.append("\n[bold $error]Error:[/bold $error]\n" + escape(result.error))
+            lines.append("[bold $error]Error:[/bold $error]\n" + escape(result.error))
 
         if transcript_path:
             lines.append(
