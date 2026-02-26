@@ -293,6 +293,7 @@ class Ferp(App):
             present_confirm=self._present_confirm_dialog,
             show_error=self.show_error,
             refresh_listing=self.schedule_refresh_listing,
+            suppress_watcher_refreshes=self.suppress_watcher_refreshes,
             fs_controller=self.fs_controller,
             delete_handler=self._start_delete_path,
             bulk_delete_handler=self._start_delete_paths,

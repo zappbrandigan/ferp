@@ -35,16 +35,18 @@ class ProcessListPanel(Vertical):
         super().__init__(id="process_panel")
         self._registry = registry
         self._request_abort = request_abort
-        self._status: Static | None = None
+        self._list_view: ProcessPanelListView | None = None
+        self._items: dict[str, ProcessPanelItem] = {}
+        self._refresh_scheduled = False
 
     def compose(self):
-        yield ProcessPanelListView(id="process_panel_list")
-        status = Static("", id="process_panel_status")
-        self._status = status
-        yield status
+        list_view = ProcessPanelListView(id="process_panel_list")
+        self._list_view = list_view
+        yield list_view
 
     def on_mount(self) -> None:
         self.border_title = "Processes"
+        self.border_subtitle = ""
         self._refresh()
         self._registry.add_listener(self._on_registry_update)
 
@@ -57,52 +59,65 @@ class ProcessListPanel(Vertical):
         except Exception:
             return
         try:
-            app.call_from_thread(self._refresh)
+            app.call_from_thread(self._schedule_refresh)
         except RuntimeError:
-            self._refresh()
+            self._schedule_refresh()
 
     def action_refresh(self) -> None:
         self._refresh()
 
     def action_prune_finished(self) -> None:
         removed = self._registry.prune_finished()
-        self._set_status(f"Pruned {len(removed)} finished process(es).")
+        self._set_status(f"[$success]Pruned {len(removed)} finished process(es).[/]")
         self._refresh()
         self._clear_status_after_delay()
 
     def action_kill_selected(self) -> None:
-        list_view = self.query_one(ListView)
+        list_view = self._list_view or self.query_one(ListView)
         if list_view.index is None:
-            self._set_status("Select a process first.")
+            self._set_status("[$warning]Select a process first.[/]")
+            self._clear_status_after_delay()
             return
         try:
             item = list_view.children[list_view.index]
         except IndexError:
-            self._set_status("No process selected.")
+            self._set_status("[$warning]No process selected.[/]")
+            self._clear_status_after_delay()
             return
         if not isinstance(item, ProcessPanelItem):
-            self._set_status("Invalid selection.")
+            self._set_status("[$warning]Invalid selection.[/]")
+            self._clear_status_after_delay()
             return
         record = item.record
         if record.is_terminal:
-            self._set_status("Process already finished.")
+            self._set_status("[$warning]Process already finished.[/]")
+            self._clear_status_after_delay()
             return
         killed = self._request_abort(record)
         if killed:
-            self._set_status("Termination requested.")
-            self.set_timer(0.2, self._refresh)
+            self._set_status("[$success]Termination requested.[/]")
+            # self.set_timer(0.2, self._refresh)
             self.set_timer(0.8, self._refresh)
             self._clear_status_after_delay()
         else:
-            self._set_status("Unable to terminate this process.")
+            self._set_status("[$error]Unable to terminate this process.[/]")
+            self._clear_status_after_delay()
+
+    def _schedule_refresh(self) -> None:
+        if self._refresh_scheduled:
+            return
+        self._refresh_scheduled = True
+        self.call_later(self._refresh)
 
     def _refresh(self) -> None:
-        list_view = self.query_one(ListView)
-        list_view.clear()
+        self._refresh_scheduled = False
+        list_view = self._list_view or self.query_one(ListView)
         records = sorted(
             self._registry.list_all(), key=lambda rec: rec.start_time, reverse=True
         )
         if not records:
+            list_view.clear()
+            self._items.clear()
             placeholder = ListItem(
                 Static("No tracked processes."),
                 classes="process_row process_row--empty",
@@ -110,20 +125,51 @@ class ProcessListPanel(Vertical):
             placeholder.disabled = True
             list_view.append(placeholder)
             return
-        for record in records:
-            list_view.append(ProcessPanelItem(record))
+        desired_handles = [record.handle for record in records]
+        current_handles = [
+            child.record.handle
+            for child in list_view.children
+            if isinstance(child, ProcessPanelItem)
+        ]
+
+        selected_handle: str | None = None
+        if list_view.index is not None:
+            try:
+                selected_item = list_view.children[list_view.index]
+            except IndexError:
+                selected_item = None
+            if isinstance(selected_item, ProcessPanelItem):
+                selected_handle = selected_item.record.handle
+
+        if current_handles != desired_handles:
+            list_view.clear()
+            self._items = {}
+            for record in records:
+                item = ProcessPanelItem(record)
+                self._items[record.handle] = item
+                list_view.append(item)
+            if selected_handle is not None:
+                for idx, handle in enumerate(desired_handles):
+                    if handle == selected_handle:
+                        list_view.index = idx
+                        break
+        else:
+            for record in records:
+                item = self._items.get(record.handle)
+                if item is None:
+                    item = ProcessPanelItem(record)
+                    self._items[record.handle] = item
+                else:
+                    item.update_record(record)
 
     def _set_status(self, message: str) -> None:
-        status = self._status
-        if status is None:
-            return
-        status.update(message)
+        self.border_subtitle = message
 
     def _clear_status_after_delay(self) -> None:
         self.set_timer(1.2, self._clear_status)
 
     def _clear_status(self) -> None:
-        self._set_status("")
+        self.border_subtitle = ""
 
 
 class ProcessPanelItem(ListItem):
@@ -131,11 +177,30 @@ class ProcessPanelItem(ListItem):
 
     def __init__(self, record: ProcessRecord) -> None:
         self.record = record
+        self._title = Static("", classes="process_row_title")
+        self._meta = Static("", classes="process_row_meta")
+        self._title_text = ""
+        self._meta_text = ""
         body = Vertical(
-            Static(self._render_title(record), classes="process_row_title"),
-            Static(self._render_meta(record), classes="process_row_meta"),
+            self._title,
+            self._meta,
         )
         super().__init__(body, classes="process_row")
+        self._apply_record(record)
+
+    def update_record(self, record: ProcessRecord) -> None:
+        self.record = record
+        self._apply_record(record)
+
+    def _apply_record(self, record: ProcessRecord) -> None:
+        title_text = self._render_title(record)
+        meta_text = self._render_meta(record)
+        if self._title_text != title_text:
+            self._title.update(title_text)
+            self._title_text = title_text
+        if self._meta_text != meta_text:
+            self._meta.update(meta_text)
+            self._meta_text = meta_text
 
     @staticmethod
     def _render_title(record: ProcessRecord) -> str:

@@ -17,6 +17,7 @@ from ferp.core.worker_groups import WorkerGroup
 from ferp.core.worker_registry import worker_handler
 from ferp.domain.scripts import Script
 from ferp.services.scripts import ScriptExecutionContext
+from ferp.services.file_listing import snapshot_directory
 from ferp.widgets.dialogs import ConfirmDialog
 from ferp.widgets.file_tree import FileTree
 from ferp.widgets.forms import (
@@ -53,6 +54,8 @@ class ScriptLifecycleController:
         self._active_worker: Worker | None = None
         self._abort_worker: Worker | None = None
         self._input_screen: PromptDialog | ConfirmDialog | None = None
+        self._pre_script_path: Path | None = None
+        self._pre_script_snapshot: tuple[str, ...] | None = None
 
     @property
     def is_running(self) -> bool:
@@ -189,6 +192,19 @@ class ScriptLifecycleController:
 
         return True
 
+    @worker_handler(WorkerGroup.SCRIPT_SNAPSHOT)
+    def handle_snapshot_state(self, event: Worker.StateChanged) -> bool:
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, tuple) and len(result) == 2:
+                path, snapshot = result
+                if isinstance(path, Path) and path == self._pre_script_path:
+                    if isinstance(snapshot, tuple):
+                        self._pre_script_snapshot = snapshot
+        elif event.state is WorkerState.ERROR:
+            self._pre_script_snapshot = None
+        return True
+
     def handle_launch_failure(self) -> None:
         """Reset state if launching the worker raises."""
         self._script_running = False
@@ -211,6 +227,16 @@ class ScriptLifecycleController:
         app.state_store.set_status("Running")
         self._progress_lines = []
         self._progress_started_at = datetime.now()
+        current_path = app.current_path
+        self._pre_script_path = current_path
+        self._pre_script_snapshot = None
+        if current_path is not None:
+            app.run_worker(
+                lambda target=current_path: (target, snapshot_directory(target)),
+                group=WorkerGroup.SCRIPT_SNAPSHOT,
+                exclusive=True,
+                thread=True,
+            )
         app._stop_file_tree_watch()
 
         script_name = self._active_script_name or "Script"
@@ -517,6 +543,8 @@ class ScriptLifecycleController:
         self._active_worker = None
         self._abort_worker = None
         self._input_screen = None
+        self._pre_script_path = None
+        self._pre_script_snapshot = None
         if self._app.is_shutting_down:
             self._app._maybe_exit_after_script()
             return
@@ -569,8 +597,19 @@ class ScriptLifecycleController:
             file_tree_container.remove_class("dimmed")
 
     def _schedule_post_script_refresh(self) -> None:
-        self._app.suppress_watcher_refreshes(1.0)
-        self._app.schedule_refresh_listing(
-            delay=self._POST_SCRIPT_REFRESH_DELAY_S,
-            suppress_focus=True,
-        )
+        app = self._app
+        should_refresh = True
+        pre_path = self._pre_script_path
+        if pre_path is not None and pre_path == app.current_path:
+            try:
+                post_snapshot = snapshot_directory(pre_path)
+            except Exception:
+                post_snapshot = None
+            if post_snapshot is not None and post_snapshot == self._pre_script_snapshot:
+                should_refresh = False
+        if should_refresh:
+            app.suppress_watcher_refreshes(1.0)
+            app.schedule_refresh_listing(
+                delay=self._POST_SCRIPT_REFRESH_DELAY_S,
+                suppress_focus=True,
+            )

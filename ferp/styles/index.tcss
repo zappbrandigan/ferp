@@ -261,18 +261,13 @@ TopBar {
         padding: 0 1;
         border: round $secondary;
         border-title-align: right;
+        border-subtitle-align: left;
         background: $background;
     }
 
     #process_panel_list {
         height: 1fr;
         background: transparent;
-    }
-
-    #process_panel_status {
-        height: 1;
-        padding: 0 1;
-        color: $text-muted;
     }
 
     #process_panel:focus-within {

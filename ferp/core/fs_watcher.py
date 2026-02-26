@@ -29,7 +29,11 @@ class DirectoryChangeHandler(FileSystemEventHandler):
         self._notify_change = notify_change
 
     def on_any_event(self, event: FileSystemEvent | None = None) -> None:  # type: ignore[override]
-        self._notify_change()
+        if event is None:
+            self._notify_change()
+            return
+        if event.event_type in {"created", "deleted", "moved"}:
+            self._notify_change()
 
 
 class FileTreeWatcher:

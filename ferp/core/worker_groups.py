@@ -14,6 +14,7 @@ class WorkerGroup:
     FILE_INFO = "file_info"
     MONDAY_SYNC = "monday_sync"
     SCRIPT_ABORT = "script_abort"
+    SCRIPT_SNAPSHOT = "script_snapshot"
     SCRIPT_UPDATE_CHECK = "script_update_check"
     SCRIPTS = "scripts"
     SCRIPTS_REFRESH = "scripts_refresh"

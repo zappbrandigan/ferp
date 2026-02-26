@@ -42,7 +42,7 @@ class ProcessRecord:
 class ProcessRegistry:
     """Tracks processes spawned by the FSCP host."""
 
-    _MAX_RECORDS = 4
+    _MAX_RECORDS = 5
 
     def __init__(self) -> None:
         self._records: dict[str, ProcessRecord] = {}
