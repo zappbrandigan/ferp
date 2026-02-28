@@ -36,6 +36,13 @@ class Integrations(BaseModel):
     monday: dict[str, Any] = Field(default_factory=dict)
 
 
+class DriveInventoryCache(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    entries: list[dict[str, Any]] = Field(default_factory=list)
+    lastCheckedAt: float = 0.0
+
+
 class SettingsModel(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -43,3 +50,4 @@ class SettingsModel(BaseModel):
     userPreferences: UserPreferences = Field(default_factory=UserPreferences)
     logs: LogPreferences = Field(default_factory=LogPreferences)
     integrations: Integrations = Field(default_factory=Integrations)
+    driveInventory: DriveInventoryCache = Field(default_factory=DriveInventoryCache)

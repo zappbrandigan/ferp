@@ -66,6 +66,7 @@ from ferp.core.worker_groups import WorkerGroup
 from ferp.core.worker_registry import WorkerRouter, worker_handler
 from ferp.fscp.host.process_registry import ProcessRecord
 from ferp.services.file_info import FileInfoResult, build_file_info
+from ferp.services.drive_inventory import DriveInventoryService
 from ferp.services.file_listing import (
     DirectoryListingResult,
     collect_directory_listing,
@@ -138,6 +139,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     },
     "logs": {"maxFiles": 50, "maxAgeDays": 14},
     "integrations": {},
+    "driveInventory": {"entries": [], "lastCheckedAt": 0.0},
 }
 
 
@@ -231,6 +233,10 @@ class Ferp(App):
         self.app_root = self._paths.app_root
         self.settings_store = SettingsStore(self._paths.settings_file)
         self.settings = self.settings_store.load()
+        self.drive_inventory = DriveInventoryService(
+            settings=self.settings,
+            settings_store=self.settings_store,
+        )
         self.state_store = AppStateStore()
         initial_path = self._resolve_start_path(start_path)
         self.state_store.set_current_path(str(initial_path))
@@ -399,6 +405,7 @@ class Ferp(App):
                 Horizontal(
                     NavigationSidebar(
                         state_store=self.state_store,
+                        drive_inventory=self.drive_inventory,
                         id="navigator_sidebar",
                     ),
                     FileTreeContainer(
@@ -1709,7 +1716,8 @@ class Ferp(App):
             self.refresh_listing()
 
     def _request_navigation(self, path: Path) -> None:
-        if not is_navigable_directory(path):
+        is_known_drive = self.drive_inventory.is_known_drive_path(path)
+        if not is_known_drive and not is_navigable_directory(path):
             if not self.current_path.exists():
                 self._handle_missing_directory(self.current_path)
             return

@@ -61,6 +61,20 @@ class SettingsStore:
         settings.setdefault("userPreferences", {})["scriptNamespace"] = namespace
         self.save(settings)
 
+    def update_drive_inventory(
+        self,
+        settings: dict[str, Any],
+        *,
+        entries: list[dict[str, Any]],
+        last_checked_at: float,
+    ) -> None:
+        """Persist cached drive inventory metadata."""
+        settings["driveInventory"] = {
+            "entries": list(entries),
+            "lastCheckedAt": float(last_checked_at),
+        }
+        self.save(settings)
+
     def update_script_versions(
         self,
         settings: dict[str, Any],
