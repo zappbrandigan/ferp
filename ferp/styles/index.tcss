@@ -182,7 +182,6 @@ PathNavigator {
 
         #navigator_sidebar > .option-list--option-highlighted {
             background: transparent;
-            color: $text;
         }
 
         #navigator_sidebar:focus > .option-list--option-highlighted {
@@ -304,7 +303,6 @@ PathNavigator {
         ScriptItem > .script_name {
             width: 1fr;
             background: transparent;
-            color: $text;
         }
 
         ScriptItem > .script_version {
@@ -395,7 +393,6 @@ PathNavigator {
         border: round $secondary;
         border-title-align: right;
         border-subtitle-align: left;
-        color: $text;
         background: $background;
     }
 

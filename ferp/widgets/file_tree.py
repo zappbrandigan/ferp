@@ -473,6 +473,12 @@ class FileTree(OptionList):
         self._cancel_loading()
         self._cancel_info_timer()
 
+    def refresh_theme_styles(self) -> None:
+        """Rebuild visible option prompts after a theme change."""
+        if not self.is_mounted:
+            return
+        self._render_current_chunk()
+
     def action_go_parent(self) -> None:
         app = cast(AppWithPath, self.app)
         parent = parent_directory(app.current_path)

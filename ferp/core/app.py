@@ -564,6 +564,10 @@ class Ferp(App):
     def on_theme_changed(self, theme: Theme) -> None:
         self.settings_store.update_theme(self.settings, theme.name)
         self._refresh_output_panel_message()
+        try:
+            self.query_one(FileTree).refresh_theme_styles()
+        except Exception:
+            pass
 
     def _command_install_script_bundle(self) -> None:
         prompt = "Path to the script bundle (.ferp)"
