@@ -612,9 +612,19 @@ class FileTree(OptionList):
     def suppress_focus_once(self) -> None:
         self._suppress_focus_once = True
 
+    def _set_status_state(self, state: str | None) -> None:
+        self.remove_class("state-loading", "state-error", "state-notice")
+        if state == "loading":
+            self.add_class("state-loading")
+        elif state == "error":
+            self.add_class("state-error")
+        elif state == "notice":
+            self.add_class("state-notice")
+
     def show_loading(self, path: Path) -> None:
         if self._loading_visible:
             return
+        self._set_status_state("loading")
         app = self.app
         with app.batch_update():
             self.clear_options()
@@ -649,6 +659,7 @@ class FileTree(OptionList):
 
     def show_error(self, path: Path, message: str) -> None:
         self._cancel_loading()
+        self._set_status_state("error")
         app = self.app
         with app.batch_update():
             self.clear_options()
@@ -657,6 +668,7 @@ class FileTree(OptionList):
 
     def show_listing(self, path: Path, entries: Sequence[FileListingEntry]) -> None:
         self._cancel_loading()
+        self._set_status_state(None)
         app = self.app
         with app.batch_update():
             previous_path = self._current_listing_path
@@ -972,6 +984,7 @@ class FileTree(OptionList):
         return [path] if path else []
 
     def _append_notice(self, message: str) -> None:
+        self._set_status_state("notice")
         self.set_options([Option(message, disabled=True)])
 
     def _entry_prompt(

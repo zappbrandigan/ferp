@@ -232,6 +232,25 @@ PathNavigator {
             color: $text;
         }
 
+        #file_list.state-loading > .option-list--option-disabled,
+        #file_list.state-error > .option-list--option-disabled,
+        #file_list.state-notice > .option-list--option-disabled {
+            width: 100%;
+            text-align: center;
+        }
+
+        #file_list.state-loading > .option-list--option-disabled {
+            color: $primary;
+        }
+
+        #file_list.state-error > .option-list--option-disabled {
+            color: $error;
+        }
+
+        #file_list.state-notice > .option-list--option-disabled {
+            color: $text-muted;
+        }
+
         FileTree > .file-tree-dir {
             color: $text-primary;
             text-style: bold;
@@ -778,13 +797,4 @@ ListItem.-highlight .task_item_text {
 #progress_message {
     text-align: center;
     opacity: 0.5
-}
-
-
-
-.item_loading {
-    height: 1;
-    width: 100%;
-    color: $primary;
-    text-align: center;
 }

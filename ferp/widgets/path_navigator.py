@@ -27,6 +27,7 @@ class PathNavigator(Vertical):
 
     HISTORY_LIMIT = 200
     SUGGESTION_LIMIT = 20
+    BLUR_SYNC_DELAY_S = 0.01
     SUGGESTION_DEBOUNCE_S = 0.25
     SUGGESTION_VERTICAL_OVERLAP = 2
     SUGGESTION_WORKER_NAME = "path_navigator_suggestions"
@@ -78,11 +79,19 @@ class PathNavigator(Vertical):
 
     @on(DescendantBlur, "#path_nav_input")
     def _on_input_blurred(self) -> None:
-        self.call_after_refresh(self._sync_after_input_blur)
+        self.set_timer(
+            self.BLUR_SYNC_DELAY_S,
+            self._sync_after_input_blur,
+            name="path-nav-input-blur",
+        )
 
     @on(DescendantBlur, "#path_nav_suggestions")
     def _on_suggestions_blurred(self) -> None:
-        self.call_after_refresh(self._sync_after_suggestions_blur)
+        self.set_timer(
+            self.BLUR_SYNC_DELAY_S,
+            self._sync_after_suggestions_blur,
+            name="path-nav-suggestions-blur",
+        )
 
     @on(Input.Changed, "#path_nav_input")
     def _on_input_changed(self, event: Input.Changed) -> None:
