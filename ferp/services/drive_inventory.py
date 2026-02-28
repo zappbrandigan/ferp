@@ -126,7 +126,7 @@ class DriveInventoryService:
         entries: list[DriveStatus] = []
         seen: set[str] = set()
         try:
-            partitions = psutil.disk_partitions(all=False)
+            partitions = psutil.disk_partitions(all=self._partition_scan_includes_all())
         except Exception:
             partitions = []
 
@@ -149,6 +149,10 @@ class DriveInventoryService:
                 )
             )
         return entries
+
+    @staticmethod
+    def _partition_scan_includes_all() -> bool:
+        return sys.platform == "win32"
 
     @staticmethod
     def _drive_label(mountpoint: str) -> str:
@@ -178,12 +182,11 @@ class DriveInventoryService:
     @classmethod
     def _should_include_windows_mount_point(cls, partition: object) -> bool:
         mountpoint = str(getattr(partition, "mountpoint", "") or "").strip()
-        device = str(getattr(partition, "device", "") or "").strip()
         if not mountpoint:
             return False
         if len(mountpoint) < 2 or mountpoint[1] != ":":
             return False
-        if device and len(device) >= 2 and device[1] != ":":
+        if not mountpoint[0].isalpha():
             return False
         return True
 

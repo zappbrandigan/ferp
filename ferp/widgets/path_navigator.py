@@ -7,8 +7,10 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.events import Click, DescendantBlur, DescendantFocus, Key, Resize
 from textual.suggester import SuggestFromList
+from textual.timer import Timer
 from textual.widget import Widget
 from textual.widgets import Input, OptionList, Static
+from textual.worker import Worker, WorkerState
 
 from ferp.core.messages import NavigateRequest
 from ferp.core.path_navigation import (
@@ -25,7 +27,9 @@ class PathNavigator(Vertical):
 
     HISTORY_LIMIT = 200
     SUGGESTION_LIMIT = 20
+    SUGGESTION_DEBOUNCE_S = 0.25
     SUGGESTION_VERTICAL_OVERLAP = 2
+    SUGGESTION_WORKER_NAME = "path_navigator_suggestions"
 
     def __init__(self, *, state_store: AppStateStore, id: str | None = None) -> None:
         super().__init__(id=id)
@@ -41,6 +45,8 @@ class PathNavigator(Vertical):
         self._suggested_paths: list[Path] = []
         self._typing_session_active = False
         self._edit_start_value = ""
+        self._suggestion_timer: Timer | None = None
+        self._suggestion_request_id = 0
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="path_nav_row"):
@@ -88,7 +94,7 @@ class PathNavigator(Vertical):
             if event.value == self._edit_start_value:
                 return
             self._typing_session_active = True
-        self._refresh_suggestions(event.value)
+        self._schedule_suggestions(event.value)
 
     @on(Input.Submitted, "#path_nav_input")
     def _on_input_submitted(self, event: Input.Submitted) -> None:
@@ -109,6 +115,25 @@ class PathNavigator(Vertical):
     @on(OptionList.OptionSelected, "#path_nav_suggestions")
     def _on_suggestion_selected(self, event: OptionList.OptionSelected) -> None:
         self._select_suggestion(event.option_index)
+
+    @on(Worker.StateChanged)
+    def _on_worker_state(self, event: Worker.StateChanged) -> None:
+        worker = event.worker
+        if worker.name != self.SUGGESTION_WORKER_NAME:
+            return
+        if worker.state != WorkerState.SUCCESS:
+            return
+        result = worker.result
+        if not isinstance(result, tuple) or len(result) != 2:
+            return
+        request_id, candidates = result
+        if not isinstance(request_id, int) or not isinstance(candidates, list):
+            return
+        if request_id != self._suggestion_request_id:
+            return
+        if not self._user_editing or self.app.focused is not self._input:
+            return
+        self._apply_suggestions(candidates)
 
     @on(Click, ".path_nav_control")
     def _on_control_click(self, event: Click) -> None:
@@ -188,10 +213,42 @@ class PathNavigator(Vertical):
             candidate = (self._current_path / candidate).expanduser()
         return candidate.resolve()
 
-    def _refresh_suggestions(self, value: str) -> None:
+    def _schedule_suggestions(self, value: str) -> None:
+        if self._suggestion_timer is not None:
+            self._suggestion_timer.stop()
+            self._suggestion_timer = None
+        self._suggestion_request_id += 1
+        request_id = self._suggestion_request_id
+        self._suggestion_timer = self.set_timer(
+            self.SUGGESTION_DEBOUNCE_S,
+            lambda rid=request_id, query=value: self._refresh_suggestions(
+                query, request_id=rid
+            ),
+            name="path-nav-suggestion-debounce",
+        )
+
+    def _refresh_suggestions(self, value: str, *, request_id: int | None = None) -> None:
         if not self._input:
             return
-        candidates = self._directory_suggestions(value)
+        if self._suggestion_timer is not None:
+            self._suggestion_timer.stop()
+            self._suggestion_timer = None
+        if request_id is None:
+            self._suggestion_request_id += 1
+            request_id = self._suggestion_request_id
+        self.run_worker(
+            lambda rid=request_id, query=value: (
+                rid,
+                self._directory_suggestions(query),
+            ),
+            name=self.SUGGESTION_WORKER_NAME,
+            thread=True,
+            exclusive=True,
+        )
+
+    def _apply_suggestions(self, candidates: list[Path]) -> None:
+        if not self._input:
+            return
         self._input.suggester = (
             SuggestFromList(
                 [str(path) for path in candidates],
@@ -216,6 +273,12 @@ class PathNavigator(Vertical):
         self.call_after_refresh(self._position_suggestions)
 
     def _clear_suggestions(self) -> None:
+        if self._suggestion_timer is not None:
+            self._suggestion_timer.stop()
+            self._suggestion_timer = None
+        self._suggestion_request_id += 1
+        if self._input is not None:
+            self._input.suggester = None
         if self._suggestions:
             self._suggestions.display = False
             self._suggestions.clear_options()
