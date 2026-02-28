@@ -15,7 +15,8 @@ from textual.containers import Vertical
 from textual.events import Click
 from textual.timer import Timer
 from textual.widget import Widget
-from textual.widgets import Input, ListItem, ListView
+from textual.widgets import Input, ListItem, OptionList
+from textual.widgets.option_list import Option
 
 from ferp.core.messages import (
     BulkDeleteRequest,
@@ -26,6 +27,7 @@ from ferp.core.messages import (
     NavigateRequest,
     RenamePathRequest,
 )
+from ferp.core.path_navigation import parent_directory
 from ferp.core.protocols import AppWithPath
 from ferp.core.state import FileTreeState, FileTreeStateStore
 from ferp.core.worker_groups import WorkerGroup
@@ -92,11 +94,6 @@ def _replace_in_stem(
     return new_name, new_stem, count
 
 
-ROW_CHARS_WIDTH = 8
-ROW_TYPE_WIDTH = 8
-ROW_GAP = 1
-
-
 def _truncate_row_value(value: str, width: int) -> str:
     if width <= 0:
         return ""
@@ -110,23 +107,14 @@ def _truncate_row_value(value: str, width: int) -> str:
 def _render_row_text(
     *,
     name: str,
-    chars: str,
-    type_label: str,
     width: int,
     rich_style: str | Style,
 ) -> Text:
-    name_width = max(1, width - (ROW_CHARS_WIDTH + ROW_TYPE_WIDTH + (ROW_GAP * 2)))
+    name_width = max(1, width)
     name = _truncate_row_value(name, name_width)
-    chars = _truncate_row_value(chars, ROW_CHARS_WIDTH)
-    type_label = _truncate_row_value(type_label, ROW_TYPE_WIDTH)
-
     name_seg = name.ljust(name_width)
-    chars_seg = chars.ljust(ROW_CHARS_WIDTH)
-    type_seg = type_label.ljust(ROW_TYPE_WIDTH)
-    gap = " " * ROW_GAP
-
     text = Text()
-    text.append(f"{name_seg}{gap}{chars_seg}{gap}{type_seg}")
+    text.append(name_seg)
     text.stylize(rich_style)
     return text
 
@@ -157,13 +145,11 @@ class FileItem(ListItem):
             return
         parent = self.parent
         if isinstance(parent, FileTree):
-            parent._activate_item(self)
+            parent.action_activate_item()
 
     def render(self) -> Text:
         return _render_row_text(
             name=self.metadata.display_name,
-            chars=str(self.metadata.char_count),
-            type_label=self.metadata.type_label,
             width=self.size.width,
             rich_style=self.rich_style,
         )
@@ -179,26 +165,6 @@ class StaticTextItem(ListItem):
         text = Text(self._message)
         text.stylize(self.rich_style)
         return text
-
-
-class FileTreeHeader(Widget):
-    """Static header row for the file tree list."""
-
-    def __init__(self, **kwargs) -> None:
-        classes = kwargs.pop("classes", None)
-        base_classes = "file_tree_row file_tree_header file_tree_header_row"
-        if classes:
-            base_classes = f"{base_classes} {classes}"
-        super().__init__(classes=base_classes, **kwargs)
-
-    def render(self) -> Text:
-        return _render_row_text(
-            name="Name",
-            chars="Chars",
-            type_label="Type",
-            width=self.size.width,
-            rich_style=self.rich_style,
-        )
 
 
 class FileTreeFilterWidget(Widget):
@@ -288,13 +254,18 @@ class FileTreeContainer(Vertical):
     ALLOW_MAXIMIZE = True
 
 
-class FileTree(ListView):
+class FileTree(OptionList):
     ALLOW_MAXIMIZE = False
-    CHUNK_SIZE = 50
+    COMPONENT_CLASSES = {
+        "file-tree-dir",
+        "file-tree-file",
+        "file-tree-selection-marker",
+    }
+    CHUNK_SIZE = 1000
     FILTER_TITLE_MAX = 24
     CHUNK_DEBOUNCE_S = 0.25
     LOADING_DELAY_S = 0.2
-    FAST_CURSOR_STEP = 5
+    FAST_CURSOR_STEP = 10
     BINDINGS = [
         Binding("enter", "activate_item", "Select directory", show=False),
         Binding("g", "cursor_top", "To top", show=False),
@@ -398,18 +369,10 @@ class FileTree(ListView):
         ),
         Binding(
             "f",
-            "toggle_favorite",
-            "Favorite",
+            "toggle_pinned",
+            "Pin",
             show=False,
-            tooltip="Toggle favorite for highlighted item",
-        ),
-        Binding(
-            "F",
-            "open_favorites",
-            "Favorites",
-            key_display="Shift+F",
-            show=False,
-            tooltip="Open favorites list",
+            tooltip="Toggle pinned item for highlighted file or directory",
         ),
         Binding(
             "a",
@@ -461,7 +424,7 @@ class FileTree(ListView):
     ]
 
     def __init__(self, *args, state_store: FileTreeStateStore, **kwargs) -> None:
-        super().__init__(*args, initial_index=None, **kwargs)
+        super().__init__(*args, compact=True, **kwargs)
         self._state_store = state_store
         self._state_subscription = self._handle_state_update
         self._all_entries: list[FileListingEntry] = []
@@ -477,7 +440,7 @@ class FileTree(ListView):
         self._chunk_timer: Timer | None = None
         self._listing_changed = False
         self._suppress_focus_once = False
-        self._current_chunk_items: dict[Path, FileItem] = {}
+        self._visible_entries: list[FileListingEntry] = []
         self._selected_paths: set[Path] = set()
         self._selection_anchor: Path | None = None
         self._visual_clipboard_paths: list[Path] = []
@@ -488,9 +451,18 @@ class FileTree(ListView):
         self._loading_visible = False
         self._info_timer: Timer | None = None
         self._pending_info_path: Path | None = None
+        self._prompt_highlighted_index: int | None = None
 
     def set_pending_delete_index(self, index: int | None) -> None:
         self._pending_delete_index = index
+
+    @property
+    def index(self) -> int | None:
+        return self.highlighted
+
+    @index.setter
+    def index(self, value: int | None) -> None:
+        self.highlighted = value
 
     def on_mount(self) -> None:
         self._state_store.subscribe(self._state_subscription)
@@ -503,7 +475,10 @@ class FileTree(ListView):
 
     def action_go_parent(self) -> None:
         app = cast(AppWithPath, self.app)
-        self.post_message(NavigateRequest(app.current_path.parent))
+        parent = parent_directory(app.current_path)
+        if parent is None:
+            return
+        self.post_message(NavigateRequest(parent))
 
     def action_go_home(self) -> None:
         self._state_store.clear_selection_history()
@@ -515,11 +490,9 @@ class FileTree(ListView):
         self._open_with_default_app(app.current_path)
 
     def action_open_selected_file(self) -> None:
-        item = self.highlighted_child
-        if not isinstance(item, FileItem) or item.is_header:
+        path = self._selected_path()
+        if path is None:
             return
-
-        path = item.path
         if path.is_file():
             self._open_with_default_app(path)
 
@@ -567,13 +540,13 @@ class FileTree(ListView):
         pending_index = self._pending_delete_index
         if pending_index is not None:
             self._pending_delete_index = None
-            if len(self.children) <= 1:
-                self.index = None
+            if not self._visible_entries:
+                self.highlighted = None
                 return
-            if pending_index < len(self.children):
-                self.index = pending_index
+            if pending_index < len(self._visible_entries):
+                self.highlighted = pending_index
             else:
-                self.index = len(self.children) - 1
+                self.highlighted = len(self._visible_entries) - 1
             if should_focus:
                 self.focus()
             return
@@ -589,16 +562,14 @@ class FileTree(ListView):
         def _select_path(path: Path | None) -> bool:
             if path is None:
                 return False
-            item = self._current_chunk_items.get(path)
-            if item is None:
-                return False
-            try:
-                self.index = self.children.index(item)
-            except ValueError:
-                return False
-            if should_focus:
-                self.focus()
-            return True
+            for idx, entry in enumerate(self._visible_entries):
+                if entry.path != path:
+                    continue
+                self.highlighted = idx
+                if should_focus:
+                    self.focus()
+                return True
+            return False
 
         if prefer_history and _select_path(history_target):
             return
@@ -609,23 +580,13 @@ class FileTree(ListView):
         if _select_path(history_target):
             return
 
-        direction = self._last_chunk_direction
-        if direction in {"prev", "next"}:
-            for idx, child in enumerate(self.children):
-                if isinstance(child, FileItem) and not child.is_header:
-                    self.index = idx
-                    if should_focus:
-                        self.focus()
-                    return
-        else:
-            for idx, child in enumerate(self.children):
-                if isinstance(child, FileItem) and not child.is_header:
-                    self.index = idx
-                    if should_focus:
-                        self.focus()
-                    return
+        if self._visible_entries:
+            self.highlighted = 0
+            if should_focus:
+                self.focus()
+            return
 
-        self.index = None
+        self.highlighted = None
 
     def _should_focus_after_render(self) -> bool:
         if self._suppress_focus_once:
@@ -650,8 +611,8 @@ class FileTree(ListView):
             return
         app = self.app
         with app.batch_update():
-            self.clear()
-            self._current_chunk_items = {}
+            self.clear_options()
+            self._visible_entries = []
         self._loading_pending = True
         if self._loading_timer is not None:
             self._loading_timer.stop()
@@ -669,9 +630,9 @@ class FileTree(ListView):
         self._loading_visible = True
         app = self.app
         with app.batch_update():
-            self.clear()
-            self._current_chunk_items = {}
-            self.append(StaticTextItem("Loading...", classes="item_loading"))
+            self.clear_options()
+            self._visible_entries = []
+            self.set_options([Option("Loading...", disabled=True)])
 
     def _cancel_loading(self) -> None:
         self._loading_pending = False
@@ -684,9 +645,9 @@ class FileTree(ListView):
         self._cancel_loading()
         app = self.app
         with app.batch_update():
-            self.clear()
-            self._current_chunk_items = {}
-            self.append(StaticTextItem(message, classes="item_error file_tree_error"))
+            self.clear_options()
+            self._visible_entries = []
+            self.set_options([Option(message, disabled=True)])
 
     def show_listing(self, path: Path, entries: Sequence[FileListingEntry]) -> None:
         self._cancel_loading()
@@ -936,6 +897,9 @@ class FileTree(ListView):
                 subtitle = staged_label
         container.border_subtitle = subtitle
 
+    def _refresh_header(self) -> None:
+        return
+
     def _refresh_border_subtitle(self) -> None:
         self._set_border_subtitle(self._subtitle_base)
 
@@ -976,11 +940,7 @@ class FileTree(ListView):
         self._refresh_border_subtitle()
 
     def _apply_selection_to_items(self) -> None:
-        for path, item in self._current_chunk_items.items():
-            if path in self._selected_paths:
-                item.add_class("item_selected")
-            else:
-                item.remove_class("item_selected")
+        self._render_current_chunk()
 
     def _set_selected_paths(self, paths: set[Path], *, anchor: Path | None) -> None:
         self._selected_paths = paths
@@ -1006,7 +966,63 @@ class FileTree(ListView):
         return [path] if path else []
 
     def _append_notice(self, message: str) -> None:
-        self.append(StaticTextItem(message, classes="item_notice file_tree_notice"))
+        self.set_options([Option(message, disabled=True)])
+
+    def _entry_prompt(
+        self, entry: FileListingEntry, *, highlighted: bool = False
+    ) -> Text:
+        text = Text()
+        selection_marker_style = self.get_component_rich_style(
+            "file-tree-selection-marker", partial=True
+        )
+        if highlighted:
+            selection_marker_style = selection_marker_style.without_color
+        if entry.path in self._selected_paths:
+            text.append(
+                "✓ ",
+                style=selection_marker_style,
+            )
+        elif self._is_visual_mode():
+            text.append("  ")
+        else:
+            text.append("  ")
+        label = entry.display_name
+        if entry.is_dir:
+            dir_style = self.get_component_rich_style("file-tree-dir", partial=True)
+            if highlighted:
+                dir_style = dir_style.without_color
+            text.append(
+                label,
+                style=dir_style,
+            )
+        else:
+            file_style = self.get_component_rich_style("file-tree-file", partial=True)
+            if highlighted:
+                file_style = file_style.without_color
+            text.append(
+                label,
+                style=file_style,
+            )
+        return text
+
+    def _refresh_prompt_highlight(self, current: int | None) -> None:
+        previous = self._prompt_highlighted_index
+        if (
+            previous is not None
+            and previous != current
+            and 0 <= previous < len(self._visible_entries)
+        ):
+            self.replace_option_prompt_at_index(
+                previous, self._entry_prompt(self._visible_entries[previous])
+            )
+        if current is not None and 0 <= current < len(self._visible_entries):
+            self.replace_option_prompt_at_index(
+                current,
+                self._entry_prompt(self._visible_entries[current], highlighted=True),
+            )
+            self._prompt_highlighted_index = current
+        else:
+            self._prompt_highlighted_index = None
 
     def _render_current_chunk(self) -> None:
         path = self._current_listing_path
@@ -1016,8 +1032,8 @@ class FileTree(ListView):
         app = self.app
         with app.batch_update():
             self.scroll_to(y=0, animate=False)
-            self.clear()
-            self._current_chunk_items = {}
+            self.clear_options()
+            self._visible_entries = []
 
             total = len(self._filtered_entries)
             if total == 0:
@@ -1041,29 +1057,29 @@ class FileTree(ListView):
                 )
             else:
                 self._set_border_subtitle("")
-            for entry in self._filtered_entries[start:end]:
-                classes = "item_dir" if entry.is_dir else "item_file"
-                if entry.path in self._selected_paths:
-                    classes = f"{classes} item_selected"
-                item = FileItem(
-                    entry.path,
-                    metadata=entry,
-                    classes=classes,
-                )
-                self.append(item)
-                self._current_chunk_items[entry.path] = item
+            chunk_entries = list(self._filtered_entries[start:end])
+            self._visible_entries = chunk_entries
+            self._prompt_highlighted_index = None
+            self.set_options([self._entry_prompt(entry) for entry in chunk_entries])
 
             self.call_after_refresh(self._restore_selection)
 
-    @on(ListView.Highlighted)
-    def emit_highlight(self, event: ListView.Highlighted) -> None:
-        item = event.item
-
-        if isinstance(item, FileItem) and not item.is_header:
-            self._state_store.set_last_selected_path(item.path)
-            self._schedule_file_info(item.path)
-        else:
+    @on(OptionList.OptionHighlighted)
+    def emit_highlight(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option_list is not self:
+            return
+        self._refresh_prompt_highlight(self.highlighted)
+        path = self._selected_path()
+        if path is None:
             self._cancel_info_timer()
+            return
+        self._state_store.set_last_selected_path(path)
+        self._schedule_file_info(path)
+
+    def on_click(self, event: Click) -> None:
+        if event.chain < 2:
+            return
+        self.action_activate_item()
 
     def _schedule_file_info(self, path: Path) -> None:
         self._cancel_info_timer()
@@ -1088,19 +1104,13 @@ class FileTree(ListView):
         app.request_file_info(path)
 
     def action_activate_item(self) -> None:
-        item = self.highlighted_child
-        if isinstance(item, FileItem) and not item.is_header:
-            self._activate_item(item)
-
-    def _activate_item(self, item: FileItem) -> None:
-        if not item.path.is_dir():
+        path = self._selected_path()
+        if path is None or not path.is_dir():
             return
         if self._current_listing_path is not None:
-            self._state_store.update_selection_history(
-                self._current_listing_path, item.path
-            )
+            self._state_store.update_selection_history(self._current_listing_path, path)
         self._state_store.set_last_selected_path(None)
-        self.post_message(DirectorySelectRequest(item.path))
+        self.post_message(DirectorySelectRequest(path))
 
     def action_prev_chunk(self) -> None:
         self._schedule_chunk_move(-1)
@@ -1181,23 +1191,25 @@ class FileTree(ListView):
             super().action_cursor_up()
 
     def action_cursor_top(self) -> None:
-        if self.children:
-            self.index = 0
+        if self.option_count:
+            self.highlighted = 0
             self.scroll_to(y=0)
 
     def action_cursor_bottom(self) -> None:
-        if self.children:
-            self.index = len(self.children) - 1
+        if self.option_count:
+            self.highlighted = self.option_count - 1
 
     def action_toggle_visual_mode(self) -> None:
         app = cast("Ferp", self.app)
         app.action_toggle_visual_mode()
 
     def _selected_path(self) -> Path | None:
-        item = self.highlighted_child
-        if isinstance(item, FileItem) and not item.is_header:
-            return item.path
-        return None
+        highlighted = self.highlighted
+        if highlighted is None:
+            return None
+        if highlighted < 0 or highlighted >= len(self._visible_entries):
+            return None
+        return self._visible_entries[highlighted].path
 
     def _range_paths(self, anchor: Path, target: Path) -> list[Path] | None:
         entries = [entry.path for entry in self._filtered_entries]
@@ -1284,14 +1296,20 @@ class FileTree(ListView):
             )
         )
 
-    def action_toggle_favorite(self) -> None:
+    def action_toggle_pinned(self) -> None:
         app = cast("Ferp", self.app)
-        path = self._selected_path() or app.current_path
-        app.toggle_favorite(path)
-
-    def action_open_favorites(self) -> None:
-        app = cast("Ferp", self.app)
-        app.open_favorites_dialog()
+        selected = self._selected_path()
+        if selected is not None:
+            if selected.is_file():
+                app.notify(
+                    "Only folders can be pinned.",
+                    timeout=app.notify_timeouts.quick,
+                )
+                return
+            path = selected
+        else:
+            path = app.current_path
+        app.toggle_pinned(path)
 
     def action_show_info(self) -> None:
         app = cast("Ferp", self.app)

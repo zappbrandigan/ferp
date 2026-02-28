@@ -13,8 +13,6 @@ EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 class TopBar(Container):
     """Custom application title bar."""
 
-    current_path = reactive("", always_update=True)
-    status = reactive("Ready", always_update=True)
     cache_updated_at = reactive(
         datetime(1970, 1, 1, tzinfo=timezone.utc), always_update=True
     )
@@ -41,7 +39,6 @@ class TopBar(Container):
             ),
             id="app_meta_container",
         )
-        self.status_label = Label("", id="topbar_script_status")
         self.cache_label = Label("", id="topbar_cache")
 
     def on_mount(self) -> None:
@@ -50,20 +47,8 @@ class TopBar(Container):
     def on_unmount(self) -> None:
         self._state_store.unsubscribe(self._state_subscription)
 
-    def watch_current_path(self) -> None:
-        self._update_status()
-
-    def watch_status(self) -> None:
-        self._update_status()
-
     def watch_cache_updated_at(self) -> None:
         self._update_cache_status()
-
-    def _update_status(self) -> None:
-        if not self.current_path:
-            self.status_label.update("")
-            return
-        self.status_label.update(f"{self.current_path}")
 
     def _update_cache_status(self) -> None:
         if self.cache_updated_at == EPOCH:
@@ -93,11 +78,8 @@ class TopBar(Container):
         return f"{seconds // 86400} days ago"
 
     def _handle_state_update(self, state: AppState) -> None:
-        self.current_path = state.current_path
-        self.status = state.status
         self.cache_updated_at = state.cache_updated_at
 
     def compose(self) -> ComposeResult:
         yield self.title_label
-        yield self.status_label
         yield self.cache_label

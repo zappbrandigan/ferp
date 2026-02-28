@@ -45,8 +45,7 @@ Input .input--cursor, #prompt_textarea .text-area--cursor {
 TopBar {
     layout: horizontal;
     height: 1;
-    padding: 0 2 0 2;
-    margin-bottom: 1;
+    padding: 0 1;
     color: $text;
     background: $primary;
 
@@ -64,11 +63,6 @@ TopBar {
         }
     }
 
-    #topbar_script_status {
-        width: 4fr;
-        text-align: center;
-    }
-
     #topbar_cache {
         width: 1fr;
         text-align: right;
@@ -76,11 +70,76 @@ TopBar {
 
 }
 
+PathNavigator {
+    height: 3;
+    margin: 0 1;
+    padding: 0 1;
+    border: round $secondary;
+
+    #path_nav_row {
+        height: 1;
+    }
+
+    .path_nav_control {
+        width: 3;
+        content-align: center middle;
+        color: $text;
+        background: $panel-darken-1;
+        margin-right: 1;
+    }
+
+    .path_nav_control:hover {
+        background: $secondary;
+    }
+
+    .path_nav_control.disabled {
+        color: $text-muted;
+        opacity: 0.6;
+        background: $surface-darken-1;
+    }
+
+    #path_nav_input {
+        width: 1fr;
+        border: none;
+        background: $background;
+    }
+
+    #path_nav_input_wrap {
+        width: 1fr;
+        height: 1;
+    }
+
+    #path_nav_suggestions {
+        display: none;
+        margin: 0;
+        position: absolute;
+        overlay: screen;
+        border: round $secondary;
+        background: $background;
+        padding: 0 0 0 1;
+        max-height: 8;
+    }
+
+    #path_nav_suggestions:blur > .option-list--option-highlighted {
+        background: $background;
+    }
+
+    #path_nav_suggestions:focus-within {
+        background: $background;
+        background-tint: $background
+    }
+
+    &.show_suggestions #path_nav_suggestions {
+        display: block;
+    }
+}
+
 #app_main_container {
+    margin: 0 1;
+
     #main_pane {
         layout: horizontal;
         height: 3fr;
-        padding: 0 1 0 1;
         background: $background;
 
         /* ============================================================================
@@ -95,46 +154,51 @@ TopBar {
             background: $primary;
         }
 
-        ListItem.file_tree_row {
-            color: $text-primary;
-        }
-
-        ListItem.-highlight.file_tree_row {
-            color: $text;
-        }
-
-        ListItem.item_selected:dark {
-            background: $panel-lighten-1;
-        }
-
-        ListItem.item_selected {
-            background: $panel-darken-1;
-        }
-
-        ListItem.-highlight.item_selected {
-            background: $secondary-lighten-3;
-        }
-
-        ListItem.item_selected.file_tree_row {
-            color: $text;
-        }
-
-        ListItem.-highlight.item_selected.file_tree_row {
-            color: $text;
-        }
-
         .file_tree_header {
             text-style: bold;
         }
         /* ============================================================================
+        Navigation Sidebar
+        ============================================================================ */
+        #navigator_pane {
+            width: 5fr;
+            height: 1fr;
+            layout: horizontal;
+        }
+
+        #navigator_sidebar {
+            width: 24;
+            height: 1fr;
+            margin-right: 1;
+            border: round $secondary;
+            background: $background;
+            border-title-align: right;
+        }
+
+        #navigator_sidebar:focus {
+            border: round $secondary-lighten-3;
+            background-tint: $foreground 5%;
+        }
+
+        #navigator_sidebar > .option-list--option-highlighted {
+            background: transparent;
+            color: $text;
+        }
+
+        #navigator_sidebar:focus > .option-list--option-highlighted {
+            background: $primary;
+            color: $text;
+        }
+
+        /* ============================================================================
         File Tree
         ============================================================================ */
         #file_list_container {
-            width: 4fr;
+            width: 1fr;
             height: 1fr;
             min-height: 1;
             max-width: 100%;
-            padding: 0 1;
+            padding: 0 0 0 0;
             border: round $secondary;
             border-title-align: right;
             border-subtitle-align: center;
@@ -152,15 +216,34 @@ TopBar {
             min-height: 1;
             background: transparent;
             scrollbar-gutter: stable;
+            border: none;
+            padding: 0;
         }
 
-        #file_list_header {
-            height: 1;
+        #file_list > .option-list--option {
+            color: $text-primary;
+        }
+
+        #file_list > .option-list--option-highlighted {
             color: $text;
-            padding-right: 1;
         }
 
-        .file_tree_header {
+        #file_list:focus > .option-list--option-highlighted {
+            background: $primary;
+            color: $text;
+        }
+
+        FileTree > .file-tree-dir {
+            color: $text-primary;
+            text-style: bold;
+        }
+
+        FileTree > .file-tree-file {
+            color: $text-accent;
+        }
+
+        FileTree > .file-tree-selection-marker {
+            color: $success;
             text-style: bold;
         }
 
@@ -189,7 +272,7 @@ TopBar {
         Scripts Panel
         ============================================================================ */
         #scripts_panel {
-            height: 2fr;
+            height: 1fr;
             border: round $secondary;
             border-title-align: right;
             border-subtitle-align: left;
@@ -232,8 +315,6 @@ TopBar {
 
     #output_panel_section {
         height: 1fr;
-        padding: 0 1 0 1;
-        margin-bottom: 1;
     }
 
     /* ============================================================================
@@ -335,11 +416,13 @@ TopBar {
         padding: 0;
         background: $background;
         background-tint: $foreground 5%;
-        height: 3;
+        height: 2;
 
         Input {
             width: 100%;
-            border: round $secondary-lighten-3;
+            # border: round $secondary-lighten-3;
+            border: none;
+            border-top: solid $secondary;
         }
 
         Input:focus {

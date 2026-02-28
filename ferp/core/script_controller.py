@@ -232,7 +232,13 @@ class ScriptLifecycleController:
         self._pre_script_snapshot = None
         if current_path is not None:
             app.run_worker(
-                lambda target=current_path: (target, snapshot_directory(target)),
+                lambda target=current_path: (
+                    target,
+                    snapshot_directory(
+                        target,
+                        hide_filtered_entries=app.hide_filtered_entries,
+                    ),
+                ),
                 group=WorkerGroup.SCRIPT_SNAPSHOT,
                 exclusive=True,
                 thread=True,
@@ -602,7 +608,10 @@ class ScriptLifecycleController:
         pre_path = self._pre_script_path
         if pre_path is not None and pre_path == app.current_path:
             try:
-                post_snapshot = snapshot_directory(pre_path)
+                post_snapshot = snapshot_directory(
+                    pre_path,
+                    hide_filtered_entries=app.hide_filtered_entries,
+                )
             except Exception:
                 post_snapshot = None
             if post_snapshot is not None and post_snapshot == self._pre_script_snapshot:

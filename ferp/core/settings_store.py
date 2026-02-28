@@ -47,6 +47,15 @@ class SettingsStore:
         settings.setdefault("userPreferences", {})["startupPath"] = str(path)
         self.save(settings)
 
+    def update_hide_filtered_entries(
+        self,
+        settings: dict[str, Any],
+        value: bool,
+    ) -> None:
+        """Store whether hidden / filtered entries should be excluded."""
+        settings.setdefault("userPreferences", {})["hideFilteredEntries"] = bool(value)
+        self.save(settings)
+
     def update_script_namespace(self, settings: dict[str, Any], namespace: str) -> None:
         """Store the installed default scripts namespace."""
         settings.setdefault("userPreferences", {})["scriptNamespace"] = namespace

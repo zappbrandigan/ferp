@@ -16,13 +16,32 @@ class DirectoryListingResult:
     error: str | None = None
 
 
-def collect_directory_listing(directory: Path, token: int) -> DirectoryListingResult:
+def _sort_key(entry: os.DirEntry[str]) -> tuple[int, str]:
+    try:
+        is_dir = entry.is_dir(follow_symlinks=False)
+    except OSError:
+        is_dir = False
+    name = entry.name
+    underscore_dir_rank = 0 if is_dir and name.startswith("_") else 1
+    return (underscore_dir_rank, name.casefold())
+
+
+def collect_directory_listing(
+    directory: Path,
+    token: int,
+    *,
+    hide_filtered_entries: bool = True,
+) -> DirectoryListingResult:
     try:
         with os.scandir(directory) as scan:
             visible = []
             for entry in scan:
                 entry_path = Path(entry.path)
-                if _should_skip_entry(entry_path, directory):
+                if not is_entry_visible(
+                    entry_path,
+                    directory,
+                    hide_filtered_entries=hide_filtered_entries,
+                ):
                     continue
                 visible.append(entry)
             entries = sorted(visible, key=_sort_key)
@@ -38,23 +57,21 @@ def collect_directory_listing(directory: Path, token: int) -> DirectoryListingRe
     return DirectoryListingResult(directory, token, rows)
 
 
-def _sort_key(entry: os.DirEntry[str]) -> tuple[int, str]:
-    try:
-        is_dir = entry.is_dir(follow_symlinks=False)
-    except OSError:
-        is_dir = False
-    name = entry.name
-    underscore_dir_rank = 0 if is_dir and name.startswith("_") else 1
-    return (underscore_dir_rank, name.casefold())
-
-
-def snapshot_directory(path: Path) -> tuple[str, ...]:
+def snapshot_directory(
+    path: Path,
+    *,
+    hide_filtered_entries: bool = True,
+) -> tuple[str, ...]:
     try:
         with os.scandir(path) as scan:
             entries = []
             for entry in scan:
                 entry_path = Path(entry.path)
-                if _should_skip_entry(entry_path, path):
+                if not is_entry_visible(
+                    entry_path,
+                    path,
+                    hide_filtered_entries=hide_filtered_entries,
+                ):
                     continue
                 entries.append(entry)
     except OSError:
@@ -78,8 +95,7 @@ def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
     except OSError:
         return None
     name = entry.name
-    stem = Path(name).stem
-    display_name = f"{name}/" if is_dir else stem
+    display_name = f"{name}/" if is_dir else name
 
     type_label = "dir" if is_dir else entry_path.suffix.lstrip(".").lower()
     if not type_label:
@@ -89,11 +105,22 @@ def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
     return FileListingEntry(
         path=entry_path,
         display_name=display_name,
-        char_count=len(name) if is_dir else len(stem),
+        char_count=len(name),
         type_label=type_label,
         is_dir=is_dir,
         search_blob=search_blob,
     )
+
+
+def is_entry_visible(
+    entry: Path,
+    directory: Path,
+    *,
+    hide_filtered_entries: bool = True,
+) -> bool:
+    if not hide_filtered_entries:
+        return True
+    return not _should_skip_entry(entry, directory)
 
 
 def _should_skip_entry(entry: Path, directory: Path) -> bool:

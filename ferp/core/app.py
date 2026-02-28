@@ -18,10 +18,11 @@ from textual.binding import Binding
 from textual.command import CommandPalette
 from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
+from textual.events import Key
 from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
 from textual.timer import Timer
-from textual.widgets import Footer
+from textual.widgets import Input, TextArea
 from textual.worker import Worker, WorkerState
 
 from ferp import __version__
@@ -46,6 +47,7 @@ from ferp.core.messages import (
 )
 from ferp.core.notify import NotifyTimeouts
 from ferp.core.path_actions import PathActionController
+from ferp.core.path_navigation import is_navigable_directory
 from ferp.core.paths import (
     APP_AUTHOR,
     APP_NAME,
@@ -84,10 +86,11 @@ from ferp.widgets.file_tree import (
     FileTree,
     FileTreeContainer,
     FileTreeFilterWidget,
-    FileTreeHeader,
 )
 from ferp.widgets.metadata_panel import MetadataPanel
+from ferp.widgets.navigation_sidebar import NavigationSidebar
 from ferp.widgets.output_panel import OutputPanelContainer, ScriptOutputPanel
+from ferp.widgets.path_navigator import PathNavigator
 from ferp.widgets.process_panel import ProcessListPanel
 from ferp.widgets.readme_modal import ReadmeScreen
 from ferp.widgets.scripts import ScriptManager, load_scripts_configs
@@ -128,6 +131,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "userPreferences": {
         "theme": "slate-copper",
         "startupPath": str(Path().home()),
+        "hideFilteredEntries": True,
         "scriptNamespace": "",
         "scriptVersions": {"core": "", "namespaces": {}},
         "favorites": [],
@@ -150,7 +154,7 @@ class Ferp(App):
             "t", "capture_task", "Add task", show=False, tooltip="Capture new task"
         ),
         Binding(
-            "m",
+            "z",
             "toggle_maximize",
             "Maximize",
             show=False,
@@ -178,39 +182,11 @@ class Ferp(App):
             tooltip="Toggle focus between file navigator and scripts panel",
         ),
         Binding(
-            "1",
-            "focus_file_tree",
-            "Focus file tree",
+            ".",
+            "toggle_hidden_entries",
+            "Toggle hidden",
             show=False,
-            tooltip="Focus file navigator",
-        ),
-        Binding(
-            "2",
-            "focus_scripts_panel",
-            "Focus scripts panel",
-            show=False,
-            tooltip="Focus scripts panel",
-        ),
-        Binding(
-            "3",
-            "focus_output_panel",
-            "Focus output panel",
-            show=False,
-            tooltip="Focus output panel",
-        ),
-        Binding(
-            "4",
-            "focus_metadata_panel",
-            "Focus metadata panel",
-            show=False,
-            tooltip="Focus metadata panel",
-        ),
-        Binding(
-            "5",
-            "focus_process_panel",
-            "Focus process panel",
-            show=False,
-            tooltip="Focus process panel",
+            tooltip="Show or hide filtered entries",
         ),
     ]
 
@@ -234,6 +210,12 @@ class Ferp(App):
     @current_path.setter
     def current_path(self, value: Path) -> None:
         self.state_store.set_current_path(str(value))
+
+    @property
+    def hide_filtered_entries(self) -> bool:
+        preferences = self.settings.get("userPreferences", {})
+        value = preferences.get("hideFilteredEntries", True)
+        return bool(value)
 
     def __init__(self, start_path: Path | None = None) -> None:
         self.runtime_config = get_runtime_config()
@@ -267,13 +249,18 @@ class Ferp(App):
         self._is_shutting_down = False
         self._suppress_watcher_until = 0.0
         self._visual_mode = False
+        self._focus_mode_active = False
+        self._focus_mode_timer: Timer | None = None
         super().__init__()
         self.fs_controller = FileSystemController()
         self._file_tree_watcher = FileTreeWatcher(
             call_from_thread=self.call_from_thread,
             refresh_callback=self._refresh_listing_from_watcher,
             missing_callback=self._handle_missing_directory,
-            snapshot_func=snapshot_directory,
+            snapshot_func=lambda path: snapshot_directory(
+                path,
+                hide_filtered_entries=self.hide_filtered_entries,
+            ),
             worker_factory=lambda fn: self.run_worker(
                 fn,
                 group=WorkerGroup.WATCHER_SNAPSHOT,
@@ -406,16 +393,23 @@ class Ferp(App):
             app_version=__version__,
             state_store=self.state_store,
         )
+        yield PathNavigator(state_store=self.state_store, id="path_navigator")
         with Vertical(id="app_main_container"):
             yield Horizontal(
-                FileTreeContainer(
-                    FileTreeHeader(id="file_list_header"),
-                    FileTree(id="file_list", state_store=self.file_tree_store),
-                    FileTreeFilterWidget(
-                        id="file_tree_filter",
-                        state_store=self.file_tree_store,
+                Horizontal(
+                    NavigationSidebar(
+                        state_store=self.state_store,
+                        id="navigator_sidebar",
                     ),
-                    id="file_list_container",
+                    FileTreeContainer(
+                        FileTree(id="file_list", state_store=self.file_tree_store),
+                        FileTreeFilterWidget(
+                            id="file_tree_filter",
+                            state_store=self.file_tree_store,
+                        ),
+                        id="file_list_container",
+                    ),
+                    id="navigator_pane",
                 ),
                 Vertical(
                     ScriptManager(
@@ -436,7 +430,7 @@ class Ferp(App):
                 scroll_container,
                 id="output_panel_section",
             )
-        yield Footer(id="app_footer")
+        # yield Footer(id="app_footer")
 
     def _refresh_output_panel_message(self) -> None:
         try:
@@ -496,14 +490,6 @@ class Ferp(App):
             script_manager.add_class("dimmed")
         else:
             script_manager.remove_class("dimmed")
-
-        file_tree = self.query_one(FileTree)
-        file_tree_container = self.query_one("#file_list_container")
-        file_tree.disabled = disabled
-        if disabled:
-            file_tree_container.add_class("dimmed")
-        else:
-            file_tree_container.remove_class("dimmed")
 
     def _set_details_disabled(self, disabled: bool) -> None:
         script_manager = self.query_one(ScriptManager)
@@ -573,6 +559,7 @@ class Ferp(App):
         self._check_for_updates()
         self.refresh_listing()
         self.task_store.subscribe(self._handle_task_update)
+        self.call_after_refresh(self.action_focus_file_tree)
 
     def on_theme_changed(self, theme: Theme) -> None:
         self.settings_store.update_theme(self.settings, theme.name)
@@ -882,53 +869,36 @@ class Ferp(App):
 
         self.push_screen(InputDialog(prompt), after)
 
-    def toggle_favorite(self, path: Path) -> None:
-        favorites = self._favorites()
+    def toggle_pinned(self, path: Path) -> None:
+        pinned_entries = self._pinned_entries()
         entry = str(path)
-        if entry in favorites:
-            favorites = [item for item in favorites if item != entry]
-            self._set_favorites(favorites)
+        if entry in pinned_entries:
+            pinned_entries = [item for item in pinned_entries if item != entry]
+            self._set_pinned_entries(pinned_entries)
+            self._refresh_navigation_sidebar()
             self.notify(
-                f"Removed favorite: {path.name}", timeout=self.notify_timeouts.quick
+                f"Removed pinned item: {path.name}",
+                timeout=self.notify_timeouts.quick,
             )
             return
-        favorites.append(entry)
-        self._set_favorites(favorites)
-        self.notify(f"Added favorite: {path.name}", timeout=self.notify_timeouts.quick)
+        pinned_entries.append(entry)
+        self._set_pinned_entries(pinned_entries)
+        self._refresh_navigation_sidebar()
+        self.notify(f"Pinned: {path.name}", timeout=self.notify_timeouts.quick)
 
-    def open_favorites_dialog(self) -> None:
-        favorites = self._favorites()
-        if not favorites:
-            self.notify("No favorites yet.", timeout=self.notify_timeouts.quick)
-            return
-
-        def after(value: str | None) -> None:
-            if not value:
-                return
-            selected = Path(value).expanduser()
-            if not selected.exists():
-                updated = [item for item in favorites if item != value]
-                self._set_favorites(updated)
-                self.notify(
-                    "Favorite path missing; removed.",
-                    timeout=self.notify_timeouts.short,
-                )
-                return
-            if selected.is_dir():
-                self._request_navigation(selected)
-                return
-            parent = selected.parent
-            self.file_tree_store.update_selection_history(parent, selected)
-            if parent == self.current_path:
-                self.file_tree_store.set_last_selected_path(selected)
-                self.refresh_listing()
-                return
-            self._request_navigation(parent)
-
-        self.push_screen(
-            SelectDialog("Jump to favorite", favorites),
-            after,
-        )
+    def prune_stale_pinned_entries(self) -> int:
+        pinned_entries = self._pinned_entries()
+        valid_entries: list[str] = []
+        removed = 0
+        for entry in pinned_entries:
+            path = Path(entry).expanduser()
+            if is_navigable_directory(path):
+                valid_entries.append(entry)
+                continue
+            removed += 1
+        if removed:
+            self._set_pinned_entries(valid_entries)
+        return removed
 
     def request_file_info(self, path: Path) -> None:
         if self.script_controller.is_running:
@@ -1343,21 +1313,24 @@ class Ferp(App):
                     namespace_versions[key_text] = version
         return core_version, namespace_versions
 
-    def _favorites(self) -> list[str]:
+    def _pinned_entries(self) -> list[str]:
         preferences = self.settings.get("userPreferences", {})
-        favorites = preferences.get("favorites", [])
-        if not isinstance(favorites, list):
+        stored_entries = preferences.get("favorites", [])
+        if not isinstance(stored_entries, list):
             return []
         normalized: list[str] = []
-        for entry in favorites:
+        for entry in stored_entries:
             text = str(entry).strip()
             if text:
                 normalized.append(text)
         return normalized
 
-    def _set_favorites(self, favorites: list[str]) -> None:
+    def pinned_paths(self) -> list[Path]:
+        return [Path(entry).expanduser() for entry in self._pinned_entries()]
+
+    def _set_pinned_entries(self, pinned_entries: list[str]) -> None:
         preferences = self.settings.setdefault("userPreferences", {})
-        preferences["favorites"] = favorites
+        preferences["favorites"] = pinned_entries
         self.settings_store.save(self.settings)
 
     def _monday_settings(self) -> dict[str, Any] | None:
@@ -1567,7 +1540,6 @@ class Ferp(App):
                 self.notify(
                     "Updating default scripts...", timeout=self.notify_timeouts.long
                 )
-            self.action_focus_output_panel()
             self._set_main_controls_disabled(True)
             self.run_worker(
                 lambda ns=namespace: self._install_default_scripts(ns),
@@ -1624,6 +1596,8 @@ class Ferp(App):
 
         self._listing_in_progress = True
         self.state_store.set_current_path(str(self.current_path))
+        if self.prune_stale_pinned_entries():
+            self._refresh_navigation_sidebar()
 
         try:
             file_tree = self.query_one(FileTree)
@@ -1641,7 +1615,9 @@ class Ferp(App):
 
         self.run_worker(
             lambda directory=path, token=token: collect_directory_listing(
-                directory, token
+                directory,
+                token,
+                hide_filtered_entries=self.hide_filtered_entries,
             ),
             group=WorkerGroup.DIRECTORY_LISTING,
             exclusive=True,
@@ -1729,7 +1705,7 @@ class Ferp(App):
             self.refresh_listing()
 
     def _request_navigation(self, path: Path) -> None:
-        if not path.exists() or not path.is_dir():
+        if not is_navigable_directory(path):
             if not self.current_path.exists():
                 self._handle_missing_directory(self.current_path)
             return
@@ -1835,36 +1811,134 @@ class Ferp(App):
         file_tree = self.query_one(FileTree)
         script_manager = self.query_one(ScriptManager)
         focused = self.screen.focused
-
-        def is_descendant(node, ancestor) -> bool:
-            while node is not None:
-                if node is ancestor:
-                    return True
-                node = node.parent
-            return False
-
-        if focused is not None and is_descendant(focused, file_tree):
-            script_manager.focus()
+        if focused is not None and self._is_descendant(focused, file_tree):
+            self._focus_widget(script_manager)
         else:
-            file_tree.focus()
+            self._focus_widget(file_tree)
 
     def action_focus_file_tree(self) -> None:
-        self.query_one(FileTree).focus()
+        self._focus_widget(self.query_one(FileTree))
 
     def action_focus_scripts_panel(self) -> None:
-        self.query_one(ScriptManager).focus()
+        self._focus_widget(self.query_one(ScriptManager))
 
     def action_focus_output_panel(self) -> None:
-        self.query_one("#output_panel_container").focus()
+        self._focus_widget(self.query_one("#output_panel_container"))
 
     def action_focus_metadata_panel(self) -> None:
-        self.query_one("#metadata_panel").focus()
+        self._focus_widget(self.query_one("#metadata_panel"))
 
     def action_focus_process_panel(self) -> None:
         try:
-            self.query_one("#process_panel_list").focus()
+            self._focus_widget(self.query_one("#process_panel_list"))
         except Exception:
-            self.query_one("#process_panel").focus()
+            self._focus_widget(self.query_one("#process_panel"))
+
+    def action_focus_path_navigator(self) -> None:
+        self._focus_widget(self.query_one("#path_nav_input"))
+
+    def action_focus_sidebar(self) -> None:
+        self._focus_widget(self.query_one("#navigator_sidebar"))
+
+    def _refresh_navigation_sidebar(self) -> None:
+        try:
+            sidebar = self.query_one(NavigationSidebar)
+        except Exception:
+            return
+        sidebar.refresh_items()
+
+    def action_toggle_hidden_entries(self) -> None:
+        hide_filtered_entries = not self.hide_filtered_entries
+        self.settings_store.update_hide_filtered_entries(
+            self.settings,
+            hide_filtered_entries,
+        )
+        if hide_filtered_entries:
+            self.notify(
+                "Filtered entries are now hidden.",
+                timeout=self.notify_timeouts.short,
+            )
+        else:
+            self.notify(
+                "Filtered entries are now visible.",
+                timeout=self.notify_timeouts.short,
+            )
+        try:
+            path_navigator = self.query_one(PathNavigator)
+            path_navigator.refresh_visible_suggestions()
+        except Exception:
+            pass
+        self.refresh_listing()
+
+    @staticmethod
+    def _is_descendant(node, ancestor) -> bool:
+        while node is not None:
+            if node is ancestor:
+                return True
+            node = node.parent
+        return False
+
+    def _focus_widget(self, target) -> None:
+        screen = self.screen
+        maximized = screen.maximized
+        if maximized is not None and not self._is_descendant(target, maximized):
+            screen.action_minimize()
+            self.call_after_refresh(target.focus)
+            return
+        target.focus()
+
+    def on_key(self, event: Key) -> None:
+        if not self._should_handle_focus_mode():
+            self._deactivate_focus_mode()
+            return
+
+        if self._focus_mode_active:
+            event.stop()
+            event.prevent_default()
+            if event.key == "escape":
+                self._deactivate_focus_mode()
+                return
+            key = (event.character or "").lower()
+            action = {
+                "b": self.action_focus_sidebar,
+                "f": self.action_focus_file_tree,
+                "g": self.action_focus_path_navigator,
+                "s": self.action_focus_scripts_panel,
+                "o": self.action_focus_output_panel,
+                "m": self.action_focus_metadata_panel,
+                "p": self.action_focus_process_panel,
+            }.get(key)
+            self._deactivate_focus_mode()
+            if action is not None:
+                action()
+            return
+
+        if event.key != "space":
+            return
+
+        event.stop()
+        event.prevent_default()
+        self._activate_focus_mode()
+
+    def _should_handle_focus_mode(self) -> bool:
+        if isinstance(self.screen, ModalScreen):
+            return False
+        focused = self.screen.focused
+        if isinstance(focused, (Input, TextArea)):
+            return False
+        return True
+
+    def _activate_focus_mode(self) -> None:
+        self._focus_mode_active = True
+        if self._focus_mode_timer is not None:
+            self._focus_mode_timer.stop()
+        self._focus_mode_timer = self.set_timer(1.2, self._deactivate_focus_mode)
+
+    def _deactivate_focus_mode(self) -> None:
+        self._focus_mode_active = False
+        if self._focus_mode_timer is not None:
+            self._focus_mode_timer.stop()
+            self._focus_mode_timer = None
 
     def action_toggle_maximize(self) -> None:
         screen = self.screen
@@ -2069,7 +2143,9 @@ class Ferp(App):
                 error = result.get("error")
                 if error:
                     scripts_panel.call_after_refresh(
-                        lambda err=str(error): scripts_panel.apply_scripts(None, error=err)
+                        lambda err=str(error): scripts_panel.apply_scripts(
+                            None, error=err
+                        )
                     )
                     return True
                 scripts = result.get("scripts")

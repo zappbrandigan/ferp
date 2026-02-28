@@ -27,6 +27,7 @@ def build_file_info(path: Path) -> FileInfoResult:
     display_name = path.name or str(path)
     info: dict[str, str] = {
         name_label: display_name,
+        "Name Length": str(len(display_name)),
         "Modified": _format_timestamp(stat.st_mtime),
         "Created": _format_timestamp(stat.st_ctime),
         "Size": _format_bytes(stat.st_size),
