@@ -53,13 +53,19 @@ def _safe_stat(entry: os.DirEntry[str]) -> os.stat_result | None:
         return None
 
 
-def _entry_sort_key(entry: os.DirEntry[str], sort_by: SortMode) -> tuple[object, ...]:
+def _entry_sort_key(
+    entry: os.DirEntry[str],
+    sort_by: SortMode,
+    *,
+    is_dir: bool | None = None,
+) -> tuple[object, ...]:
     path = Path(entry.path)
     name = entry.name
-    try:
-        is_dir = entry.is_dir(follow_symlinks=False)
-    except OSError:
-        is_dir = False
+    if is_dir is None:
+        try:
+            is_dir = entry.is_dir(follow_symlinks=False)
+        except OSError:
+            is_dir = False
 
     if sort_by == "name":
         underscore_dir_rank = 0 if is_dir and name.startswith("_") else 1
@@ -101,28 +107,37 @@ def collect_directory_listing(
 ) -> DirectoryListingResult:
     try:
         with os.scandir(directory) as scan:
-            visible: list[os.DirEntry[str]] = []
+            filter_windows_home = _precompute_windows_home_filter(
+                directory,
+                hide_filtered_entries=hide_filtered_entries,
+            )
+            visible: list[tuple[os.DirEntry[str], bool]] = []
             for entry in scan:
                 entry_path = Path(entry.path)
                 if not is_entry_visible(
                     entry_path,
                     directory,
                     hide_filtered_entries=hide_filtered_entries,
+                    filter_windows_home=filter_windows_home,
                 ):
                     continue
-                visible.append(entry)
+                try:
+                    is_dir = entry.is_dir(follow_symlinks=False)
+                except OSError:
+                    is_dir = False
+                visible.append((entry, is_dir))
             mode = normalize_sort_mode(sort_by)
             entries = sorted(
                 visible,
-                key=lambda item: _entry_sort_key(item, mode),
+                key=lambda item: _entry_sort_key(item[0], mode, is_dir=item[1]),
                 reverse=sort_descending,
             )
     except OSError as exc:
         return DirectoryListingResult(directory, token, [], error=str(exc))
 
     rows: list[FileListingEntry] = []
-    for entry in entries:
-        listing_entry = _build_listing_entry(entry)
+    for entry, is_dir in entries:
+        listing_entry = _build_listing_entry(entry, is_dir=is_dir)
         if listing_entry is not None:
             rows.append(listing_entry)
 
@@ -141,28 +156,36 @@ def snapshot_directory(
 ) -> tuple[str, ...]:
     try:
         with os.scandir(path) as scan:
-            entries: list[os.DirEntry[str]] = []
+            filter_windows_home = _precompute_windows_home_filter(
+                path,
+                hide_filtered_entries=hide_filtered_entries,
+            )
+            entries: list[tuple[os.DirEntry[str], bool]] = []
             for entry in scan:
                 entry_path = Path(entry.path)
                 if not is_entry_visible(
                     entry_path,
                     path,
                     hide_filtered_entries=hide_filtered_entries,
+                    filter_windows_home=filter_windows_home,
                 ):
                     continue
-                entries.append(entry)
+                try:
+                    is_dir = entry.is_dir(follow_symlinks=False)
+                except OSError:
+                    continue
+                entries.append((entry, is_dir))
     except OSError:
         return tuple()
 
     mode = normalize_sort_mode("name")
-    entries = sorted(entries, key=lambda item: _entry_sort_key(item, mode))
+    entries = sorted(
+        entries,
+        key=lambda item: _entry_sort_key(item[0], mode, is_dir=item[1]),
+    )
 
     signatures: list[str] = []
-    for entry in entries:
-        try:
-            is_dir = entry.is_dir(follow_symlinks=False)
-        except OSError:
-            continue
+    for entry, is_dir in entries:
         signature = f"{entry.name}:{int(is_dir)}"
         signatures.append(signature)
     return tuple(signatures)
@@ -179,12 +202,17 @@ def build_listing_signature(entries: list[FileListingEntry]) -> tuple[str, ...]:
     return tuple(f"{entry.path.name}:{int(entry.is_dir)}" for entry in ordered)
 
 
-def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
+def _build_listing_entry(
+    entry: os.DirEntry[str],
+    *,
+    is_dir: bool | None = None,
+) -> FileListingEntry | None:
     entry_path = Path(entry.path)
-    try:
-        is_dir = entry.is_dir(follow_symlinks=False)
-    except OSError:
-        return None
+    if is_dir is None:
+        try:
+            is_dir = entry.is_dir(follow_symlinks=False)
+        except OSError:
+            return None
     name = entry.name
     display_name = f"{name}/" if is_dir else name
 
@@ -208,19 +236,34 @@ def is_entry_visible(
     directory: Path,
     *,
     hide_filtered_entries: bool = True,
+    filter_windows_home: bool | None = None,
 ) -> bool:
     if not hide_filtered_entries:
         return True
-    return not _should_skip_entry(entry, directory)
+    return not _should_skip_entry(
+        entry,
+        directory,
+        filter_windows_home=filter_windows_home,
+    )
 
 
-def _should_skip_entry(entry: Path, directory: Path) -> bool:
+def _should_skip_entry(
+    entry: Path,
+    directory: Path,
+    *,
+    filter_windows_home: bool | None = None,
+) -> bool:
     name = entry.name
     if name.startswith((".", "~$")):
         return True
     if name.casefold() == "desktop.ini":
         return True
-    if sys.platform == "win32" and _should_filter_windows_home(directory):
+    if filter_windows_home is None:
+        filter_windows_home = _precompute_windows_home_filter(
+            directory,
+            hide_filtered_entries=True,
+        )
+    if filter_windows_home:
         name_folded = name.casefold()
         if name_folded.startswith("ntuser") or name_folded in _WINDOWS_HIDDEN_NAMES:
             return True
@@ -248,3 +291,13 @@ def _should_filter_windows_home(directory: Path) -> bool:
         return directory.resolve() == Path.home().resolve()
     except OSError:
         return False
+
+
+def _precompute_windows_home_filter(
+    directory: Path,
+    *,
+    hide_filtered_entries: bool,
+) -> bool:
+    if not hide_filtered_entries or sys.platform != "win32":
+        return False
+    return _should_filter_windows_home(directory)

@@ -1769,7 +1769,6 @@ class Ferp(App):
         if not file_tree.is_attached:
             self._listing_in_progress = False
             return
-        file_tree.show_loading(self.current_path)
 
         self._directory_listing_token += 1
         token = self._directory_listing_token
@@ -1909,7 +1908,6 @@ class Ferp(App):
         self._pending_refresh = False
         self.current_path = path
         self.state_store.set_current_path(str(self.current_path))
-        self._stop_file_tree_watch()
         self.refresh_listing()
 
     def _start_file_tree_watch(self) -> None:

@@ -266,7 +266,6 @@ class FileTree(OptionList):
     CHUNK_SIZE = 1000
     FILTER_TITLE_MAX = 24
     CHUNK_DEBOUNCE_S = 0.25
-    LOADING_DELAY_S = 0.2
     FAST_CURSOR_STEP = 10
     BINDINGS = [
         Binding("enter", "activate_item", "Select directory", show=False),
@@ -487,9 +486,6 @@ class FileTree(OptionList):
         self._visual_clipboard_paths: list[Path] = []
         self._visual_clipboard_mode: str | None = None
         self._subtitle_base = ""
-        self._loading_timer: Timer | None = None
-        self._loading_pending = False
-        self._loading_visible = False
         self._info_timer: Timer | None = None
         self._pending_info_path: Path | None = None
         self._prompt_highlighted_index: int | None = None
@@ -511,7 +507,6 @@ class FileTree(OptionList):
 
     def on_unmount(self) -> None:
         self._state_store.unsubscribe(self._state_subscription)
-        self._cancel_loading()
         self._cancel_info_timer()
 
     def refresh_theme_styles(self) -> None:
@@ -699,44 +694,7 @@ class FileTree(OptionList):
         elif state == "notice":
             self.add_class("state-notice")
 
-    def show_loading(self, path: Path) -> None:
-        if self._loading_visible:
-            return
-        self._set_status_state("loading")
-        app = self.app
-        with app.batch_update():
-            self.clear_options()
-            self._visible_entries = []
-        self._loading_pending = True
-        if self._loading_timer is not None:
-            self._loading_timer.stop()
-            self._loading_timer = None
-        self._loading_timer = self.set_timer(
-            self.LOADING_DELAY_S,
-            self._show_loading_now,
-            name="file-tree-loading-delay",
-        )
-
-    def _show_loading_now(self) -> None:
-        self._loading_timer = None
-        if not self._loading_pending:
-            return
-        self._loading_visible = True
-        app = self.app
-        with app.batch_update():
-            self.clear_options()
-            self._visible_entries = []
-            self.set_options([Option("Loading...", disabled=True)])
-
-    def _cancel_loading(self) -> None:
-        self._loading_pending = False
-        self._loading_visible = False
-        if self._loading_timer is not None:
-            self._loading_timer.stop()
-            self._loading_timer = None
-
     def show_error(self, path: Path, message: str) -> None:
-        self._cancel_loading()
         self._set_status_state("error")
         app = self.app
         with app.batch_update():
@@ -745,7 +703,6 @@ class FileTree(OptionList):
             self.set_options([Option(message, disabled=True)])
 
     def show_listing(self, path: Path, entries: Sequence[FileListingEntry]) -> None:
-        self._cancel_loading()
         self._set_status_state(None)
         app = self.app
         with app.batch_update():
@@ -907,7 +864,6 @@ class FileTree(OptionList):
                 return
             self._set_filter("")
             app._stop_file_tree_watch()
-            self.show_loading(app.current_path)
             app.notify(
                 f"Renaming {len(plan)} file(s)...",
                 timeout=app.notify_timeouts.quick,

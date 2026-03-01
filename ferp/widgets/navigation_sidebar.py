@@ -51,7 +51,9 @@ class NavigationSidebar(OptionList):
         self._option_sections: dict[str, str] = {}
         self._current_path: Path | None = None
         self._drive_state = drive_inventory.state
-        self._known_place_entries: list[tuple[str, Path]] = self._known_place_candidates()
+        self._known_place_entries: list[tuple[str, Path]] = (
+            self._known_place_candidates()
+        )
         self._pinned_place_entries: list[tuple[str, Path]] = []
         self._path_scan_request_id = 0
 
@@ -60,8 +62,7 @@ class NavigationSidebar(OptionList):
         self._state_store.subscribe(self._state_subscription)
         self._drive_inventory.subscribe(self._drive_subscription)
         self.refresh_items()
-        self.refresh_path_entries()
-        self._ensure_drive_scan()
+        self.call_after_refresh(self._start_background_scans)
 
     def on_unmount(self) -> None:
         self._state_store.unsubscribe(self._state_subscription)
@@ -123,7 +124,9 @@ class NavigationSidebar(OptionList):
             request_id, known_places, pinned_places = result
             if request_id != self._path_scan_request_id:
                 return
-            if not isinstance(known_places, list) or not isinstance(pinned_places, list):
+            if not isinstance(known_places, list) or not isinstance(
+                pinned_places, list
+            ):
                 return
             self._known_place_entries = cast(list[tuple[str, Path]], known_places)
             self._pinned_place_entries = cast(list[tuple[str, Path]], pinned_places)
@@ -215,6 +218,10 @@ class NavigationSidebar(OptionList):
             return
         self._current_path = new_path
         self.refresh_items()
+        self._ensure_drive_scan()
+
+    def _start_background_scans(self) -> None:
+        self.refresh_path_entries()
         self._ensure_drive_scan()
 
     def refresh_path_entries(self) -> None:
