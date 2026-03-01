@@ -24,6 +24,7 @@ class NavigationSidebar(OptionList):
 
     LABEL_MAX_WIDTH = 20
     DRIVE_SCAN_WORKER_NAME = "navigation_sidebar_drive_scan"
+    PATH_SCAN_WORKER_NAME = "navigation_sidebar_path_scan"
 
     BINDINGS = [
         Binding("g", "first", "Top", show=False),
@@ -47,14 +48,19 @@ class NavigationSidebar(OptionList):
         self._drive_subscription = self._handle_drive_inventory_update
         self._option_paths: dict[str, Path] = {}
         self._option_drive_access: dict[str, bool] = {}
+        self._option_sections: dict[str, str] = {}
         self._current_path: Path | None = None
         self._drive_state = drive_inventory.state
+        self._known_place_entries: list[tuple[str, Path]] = self._known_place_candidates()
+        self._pinned_place_entries: list[tuple[str, Path]] = []
+        self._path_scan_request_id = 0
 
     def on_mount(self) -> None:
         self.border_title = "Quick Nav"
         self._state_store.subscribe(self._state_subscription)
         self._drive_inventory.subscribe(self._drive_subscription)
         self.refresh_items()
+        self.refresh_path_entries()
         self._ensure_drive_scan()
 
     def on_unmount(self) -> None:
@@ -69,6 +75,7 @@ class NavigationSidebar(OptionList):
         target = self._option_paths.get(option_id)
         if target is None:
             return
+        section = self._option_sections.get(option_id, "")
         drive_accessible = self._option_drive_access.get(option_id)
         if drive_accessible is False:
             notify = getattr(self.app, "notify", None)
@@ -82,18 +89,21 @@ class NavigationSidebar(OptionList):
             self.post_message(NavigateRequest(target))
             return
         if not is_navigable_directory(target):
-            pruner = cast(
-                Callable[[], int] | None,
-                getattr(self.app, "prune_stale_pinned_entries", None),
-            )
-            removed = pruner() if callable(pruner) else 0
+            if section == "pinned":
+                remover = cast(
+                    Callable[[Path], bool] | None,
+                    getattr(self.app, "remove_pinned_entry", None),
+                )
+                if callable(remover):
+                    remover(target)
+                    self.refresh_path_entries()
             self.refresh_items()
             notify = getattr(self.app, "notify", None)
             if callable(notify):
                 message = (
                     "Pinned folder no longer exists."
-                    if removed <= 1
-                    else f"Removed {removed} stale pinned folders."
+                    if section == "pinned"
+                    else "Folder is not currently available."
                 )
                 notify(message)
             return
@@ -103,6 +113,21 @@ class NavigationSidebar(OptionList):
     def _handle_worker_state(self, event: Worker.StateChanged) -> None:
         worker = event.worker
         if worker.name != self.DRIVE_SCAN_WORKER_NAME:
+            if worker.name != self.PATH_SCAN_WORKER_NAME:
+                return
+            if worker.state != WorkerState.SUCCESS:
+                return
+            result = worker.result
+            if not isinstance(result, tuple) or len(result) != 3:
+                return
+            request_id, known_places, pinned_places = result
+            if request_id != self._path_scan_request_id:
+                return
+            if not isinstance(known_places, list) or not isinstance(pinned_places, list):
+                return
+            self._known_place_entries = cast(list[tuple[str, Path]], known_places)
+            self._pinned_place_entries = cast(list[tuple[str, Path]], pinned_places)
+            self.refresh_items()
             return
         if worker.state == WorkerState.SUCCESS:
             result = cast(list[DriveStatus], worker.result or [])
@@ -115,11 +140,17 @@ class NavigationSidebar(OptionList):
         content: list[Option | None] = []
         option_paths: dict[str, Path] = {}
         option_drive_access: dict[str, bool] = {}
+        option_sections: dict[str, str] = {}
         highlight_id: str | None = None
         best_depth = -1
         option_index = 0
 
-        def add_section(title: str, items: list[tuple[str, Path]]) -> None:
+        def add_section(
+            title: str,
+            items: list[tuple[str, Path]],
+            *,
+            section: str,
+        ) -> None:
             nonlocal option_index, highlight_id, best_depth
             if not items:
                 return
@@ -131,13 +162,14 @@ class NavigationSidebar(OptionList):
                 option_index += 1
                 content.append(Option(self._truncate_label(label), id=option_id))
                 option_paths[option_id] = path
+                option_sections[option_id] = section
                 depth = self._match_depth(path)
                 if depth > best_depth:
                     best_depth = depth
                     highlight_id = option_id
 
-        add_section("Places", self._known_places())
-        add_section("Pinned", self._pinned_places())
+        add_section("Places", self._known_places(), section="place")
+        add_section("Pinned", self._pinned_places(), section="pinned")
 
         if content:
             content.append(None)
@@ -155,6 +187,7 @@ class NavigationSidebar(OptionList):
                 content.append(Option(label, id=option_id))
                 option_paths[option_id] = drive.path
                 option_drive_access[option_id] = drive.accessible
+                option_sections[option_id] = "drive"
                 if drive.accessible:
                     depth = self._match_depth(drive.path)
                     if depth > best_depth:
@@ -165,6 +198,7 @@ class NavigationSidebar(OptionList):
 
         self._option_paths = option_paths
         self._option_drive_access = option_drive_access
+        self._option_sections = option_sections
         self.set_options(content)
 
         if highlight_id is None:
@@ -182,6 +216,27 @@ class NavigationSidebar(OptionList):
         self._current_path = new_path
         self.refresh_items()
         self._ensure_drive_scan()
+
+    def refresh_path_entries(self) -> None:
+        self._path_scan_request_id += 1
+        request_id = self._path_scan_request_id
+        pinned_getter = cast(
+            Callable[[], list[Path]] | None,
+            getattr(self.app, "pinned_paths", None),
+        )
+        pinned_paths = pinned_getter() if callable(pinned_getter) else []
+        self.run_worker(
+            lambda rid=request_id, paths=tuple(pinned_paths): (
+                rid,
+                self._resolve_entries(self._known_place_candidates()),
+                self._resolve_entries(
+                    [(path.name or str(path), path) for path in paths]
+                ),
+            ),
+            name=self.PATH_SCAN_WORKER_NAME,
+            thread=True,
+            exclusive=True,
+        )
 
     def _handle_drive_inventory_update(self, state: DriveInventoryState) -> None:
         self._drive_state = state
@@ -205,32 +260,23 @@ class NavigationSidebar(OptionList):
         return True
 
     def _known_places(self) -> list[tuple[str, Path]]:
+        return list(self._known_place_entries)
+
+    def _pinned_places(self) -> list[tuple[str, Path]]:
+        return list(self._pinned_place_entries)
+
+    @staticmethod
+    def _known_place_candidates() -> list[tuple[str, Path]]:
         home = Path.home()
-        candidates = [
+        return [
             ("Home", home),
             ("Desktop", home / "Desktop"),
             ("Documents", home / "Documents"),
             ("Downloads", home / "Downloads"),
         ]
-        return self._normalize_entries(candidates)
 
-    def _pinned_places(self) -> list[tuple[str, Path]]:
-        pinned_getter = cast(
-            Callable[[], list[Path]] | None,
-            getattr(self.app, "pinned_paths", None),
-        )
-        if not callable(pinned_getter):
-            return []
-        candidates: list[tuple[str, Path]] = []
-        for path in pinned_getter():
-            if not is_navigable_directory(path):
-                continue
-            label = path.name or str(path)
-            candidates.append((label, path))
-        return self._normalize_entries(candidates)
-
-    def _normalize_entries(
-        self,
+    @staticmethod
+    def _resolve_entries(
         entries: list[tuple[str, Path]],
     ) -> list[tuple[str, Path]]:
         normalized: list[tuple[str, Path]] = []

@@ -49,7 +49,6 @@ from ferp.core.messages import (
 )
 from ferp.core.notify import NotifyTimeouts
 from ferp.core.path_actions import PathActionController
-from ferp.core.path_navigation import is_navigable_directory
 from ferp.core.paths import (
     APP_AUTHOR,
     APP_NAME,
@@ -941,19 +940,14 @@ class Ferp(App):
         self._refresh_navigation_sidebar()
         self.notify(f"Pinned: {path.name}", timeout=self.notify_timeouts.quick)
 
-    def prune_stale_pinned_entries(self) -> int:
+    def remove_pinned_entry(self, path: Path) -> bool:
         pinned_entries = self._pinned_entries()
-        valid_entries: list[str] = []
-        removed = 0
-        for entry in pinned_entries:
-            path = Path(entry).expanduser()
-            if is_navigable_directory(path):
-                valid_entries.append(entry)
-                continue
-            removed += 1
-        if removed:
-            self._set_pinned_entries(valid_entries)
-        return removed
+        entry = str(path)
+        updated_entries = [item for item in pinned_entries if item != entry]
+        if len(updated_entries) == len(pinned_entries):
+            return False
+        self._set_pinned_entries(updated_entries)
+        return True
 
     def request_file_info(self, path: Path) -> None:
         if self.script_controller.is_running:
@@ -1766,8 +1760,6 @@ class Ferp(App):
 
         self._listing_in_progress = True
         self.state_store.set_current_path(str(self.current_path))
-        if self.prune_stale_pinned_entries():
-            self._refresh_navigation_sidebar()
 
         try:
             file_tree = self.query_one(FileTree)
@@ -1880,11 +1872,6 @@ class Ferp(App):
             self.refresh_listing()
 
     def _request_navigation(self, path: Path) -> None:
-        is_known_drive = self.drive_inventory.is_known_drive_path(path)
-        if not is_known_drive and not is_navigable_directory(path):
-            if not self.current_path.exists():
-                self._handle_missing_directory(self.current_path)
-            return
         if self._listing_in_progress:
             self._pending_navigation_path = path
             return
@@ -2028,6 +2015,7 @@ class Ferp(App):
         except Exception:
             return
         sidebar.refresh_items()
+        sidebar.refresh_path_entries()
 
     def action_toggle_hidden_entries(self) -> None:
         hide_filtered_entries = not self.hide_filtered_entries
