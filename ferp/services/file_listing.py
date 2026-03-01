@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -111,6 +112,14 @@ def collect_directory_listing(
     sort_by: SortMode = "name",
     sort_descending: bool = False,
 ) -> DirectoryListingResult:
+    if _should_preflight_windows_remote_path(directory):
+        if not _probe_windows_directory_access(directory):
+            return DirectoryListingResult(
+                directory,
+                token,
+                [],
+                error="Drive is not currently accessible.",
+            )
     try:
         with os.scandir(directory) as scan:
             filter_windows_home = _precompute_windows_home_filter(
@@ -323,3 +332,42 @@ def _precompute_windows_home_filter(
     if not hide_filtered_entries or sys.platform != "win32":
         return False
     return _should_filter_windows_home(directory)
+
+
+def _should_preflight_windows_remote_path(directory: Path) -> bool:
+    if sys.platform != "win32":
+        return False
+    root = _windows_path_root(directory)
+    if root is None:
+        return False
+    try:
+        import ctypes
+
+        drive_type = ctypes.windll.kernel32.GetDriveTypeW(root)
+    except Exception:
+        return False
+    return int(drive_type) == 4
+
+
+def _windows_path_root(directory: Path) -> str | None:
+    drive = directory.drive
+    if len(drive) != 2 or drive[1] != ":":
+        return None
+    return f"{drive}\\"
+
+
+def _probe_windows_directory_access(directory: Path, *, timeout: float = 1.0) -> bool:
+    target = str(directory)
+    if not target:
+        return False
+    try:
+        result = subprocess.run(
+            ["cmd", "/d", "/c", f'cd /d "{target}"'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0

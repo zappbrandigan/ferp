@@ -239,7 +239,8 @@ class FileTreeFilterWidget(Widget):
         if self._debounce_timer is not None:
             self._debounce_timer.stop()
             self._debounce_timer = None
-        self._state_store.set_filter_query(_filter_query_for_input(self._pending_value))
+        file_tree = self.app.query_one("#file_list", FileTree)
+        file_tree.handle_filter_preview(self._pending_value)
 
 
 class FileTreeContainer(Vertical):
@@ -704,7 +705,7 @@ class FileTree(OptionList):
             if previous_path != path:
                 self._state_store.set_last_selected_path(None)
                 self._clear_selection()
-                self._set_filter("")
+                self._clear_filter_for_navigation()
             else:
                 self._prune_selection({entry.path for entry in self._all_entries})
             self._apply_filter()
@@ -895,16 +896,29 @@ class FileTree(OptionList):
 
     def _set_filter(self, value: str, *, from_store: bool = False) -> None:
         query = value.strip()
-        if query == self._filter_query:
+        if not self._update_filter_query(query, from_store=from_store):
             return
+        self._apply_filter_change()
+
+    def _update_filter_query(self, value: str, *, from_store: bool = False) -> bool:
+        query = value.strip()
+        if query == self._filter_query:
+            return False
         self._filter_query = query
         if not from_store:
             self._state_store.set_filter_query(self._filter_query)
+        return True
+
+    def _apply_filter_change(self) -> None:
         self._apply_filter()
         self._update_border_title()
         self._chunk_start = 0
         self._last_chunk_direction = None
         self._render_current_chunk()
+
+    def _clear_filter_for_navigation(self) -> None:
+        if not self._update_filter_query(""):
+            return
 
     def handle_filter_preview(self, value: str) -> None:
         self._set_filter(_filter_query_for_input(value))
@@ -1092,11 +1106,11 @@ class FileTree(OptionList):
         app = self.app
         with app.batch_update():
             self.scroll_to(y=0, animate=False)
-            self.clear_options()
             self._visible_entries = []
 
             total = len(self._filtered_entries)
             if total == 0:
+                self.clear_options()
                 self._set_border_subtitle("")
                 if self._all_entries:
                     self._append_notice("No items match the current filter.")

@@ -1748,18 +1748,17 @@ class Ferp(App):
         )
         self.update_cache_timestamp()
 
-    def refresh_listing(self) -> None:
+    def refresh_listing(self, *, supersede: bool = False) -> None:
         if self._is_shutting_down:
             return
         if self._refresh_timer is not None:
             self._refresh_timer.stop()
             self._refresh_timer = None
-        if self._listing_in_progress:
+        if self._listing_in_progress and not supersede:
             self._pending_refresh = True
             return
 
         self._listing_in_progress = True
-        self.state_store.set_current_path(str(self.current_path))
 
         try:
             file_tree = self.query_one(FileTree)
@@ -1783,7 +1782,6 @@ class Ferp(App):
                 sort_descending=self.sort_descending,
             ),
             group=WorkerGroup.DIRECTORY_LISTING,
-            exclusive=True,
             thread=True,
         )
 
@@ -1871,9 +1869,6 @@ class Ferp(App):
             self.refresh_listing()
 
     def _request_navigation(self, path: Path) -> None:
-        if self._listing_in_progress:
-            self._pending_navigation_path = path
-            return
         self._begin_navigation(path)
 
     def _handle_missing_directory(self, missing: Path) -> None:
@@ -1907,8 +1902,7 @@ class Ferp(App):
         self._pending_navigation_path = None
         self._pending_refresh = False
         self.current_path = path
-        self.state_store.set_current_path(str(self.current_path))
-        self.refresh_listing()
+        self.refresh_listing(supersede=True)
 
     def _start_file_tree_watch(self) -> None:
         if self._file_tree_watcher is not None:
