@@ -18,6 +18,8 @@ class UserPreferences(BaseModel):
     theme: str = ""
     startupPath: str = ""
     hideFilteredEntries: bool = True
+    sortBy: str = "name"
+    sortDescending: bool = False
     scriptNamespace: str = ""
     scriptVersions: ScriptVersions = Field(default_factory=ScriptVersions)
     favorites: list[str] = Field(default_factory=list)

@@ -37,9 +37,11 @@ from ferp.core.logging import configure_logging, get_logger, log_event
 from ferp.core.messages import (
     BulkDeleteRequest,
     BulkPasteRequest,
+    CreateArchiveRequest,
     CreatePathRequest,
     DeletePathRequest,
     DirectorySelectRequest,
+    ExtractArchiveRequest,
     NavigateRequest,
     RenamePathRequest,
     RunScriptRequest,
@@ -65,11 +67,19 @@ from ferp.core.transcript_logger import TranscriptLogger
 from ferp.core.worker_groups import WorkerGroup
 from ferp.core.worker_registry import WorkerRouter, worker_handler
 from ferp.fscp.host.process_registry import ProcessRecord
-from ferp.services.file_info import FileInfoResult, build_file_info
+from ferp.services.archive_ops import (
+    ArchiveFormat,
+    create_archive,
+    extract_archive,
+)
 from ferp.services.drive_inventory import DriveInventoryService
+from ferp.services.file_info import FileInfoResult, build_file_info
 from ferp.services.file_listing import (
+    SORT_MODE_LABELS,
     DirectoryListingResult,
+    SortMode,
     collect_directory_listing,
+    normalize_sort_mode,
     snapshot_directory,
 )
 from ferp.services.monday import sync_monday_board
@@ -82,7 +92,13 @@ from ferp.services.releases import (
 from ferp.services.scripts import build_execution_context
 from ferp.services.update_check import UpdateCheckResult, check_for_update
 from ferp.themes.themes import ALL_THEMES
-from ferp.widgets.dialogs import ConfirmDialog, InputDialog, SelectDialog
+from ferp.widgets.archive_dialogs import ArchiveCreateDialog
+from ferp.widgets.dialogs import (
+    ConfirmDialog,
+    InputDialog,
+    SelectDialog,
+    SortOrderDialog,
+)
 from ferp.widgets.file_tree import (
     FileTree,
     FileTreeContainer,
@@ -128,11 +144,21 @@ class BulkPathResult:
     errors: list[str]
 
 
+@dataclass(frozen=True)
+class ArchiveActionResult:
+    action: str
+    output_path: Path
+    entry_count: int
+    source_count: int = 0
+
+
 DEFAULT_SETTINGS: dict[str, Any] = {
     "userPreferences": {
         "theme": "slate-copper",
         "startupPath": str(Path().home()),
         "hideFilteredEntries": True,
+        "sortBy": "name",
+        "sortDescending": False,
         "scriptNamespace": "",
         "scriptVersions": {"core": "", "namespaces": {}},
         "favorites": [],
@@ -150,10 +176,15 @@ class Ferp(App):
 
     BINDINGS = [
         Binding(
-            "l", "show_task_list", "Show tasks", show=False, tooltip="Show task list"
+            "t", "show_task_list", "Show tasks", show=False, tooltip="Show task list"
         ),
         Binding(
-            "t", "capture_task", "Add task", show=False, tooltip="Capture new task"
+            "T",
+            "capture_task",
+            "Add task",
+            key_display="T",
+            show=False,
+            tooltip="Capture new task",
         ),
         Binding(
             "z",
@@ -219,6 +250,16 @@ class Ferp(App):
         value = preferences.get("hideFilteredEntries", True)
         return bool(value)
 
+    @property
+    def sort_by(self) -> SortMode:
+        preferences = self.settings.get("userPreferences", {})
+        return normalize_sort_mode(preferences.get("sortBy", "name"))
+
+    @property
+    def sort_descending(self) -> bool:
+        preferences = self.settings.get("userPreferences", {})
+        return bool(preferences.get("sortDescending", False))
+
     def __init__(self, start_path: Path | None = None) -> None:
         self.runtime_config = get_runtime_config()
         self._dev_config_enabled = self.runtime_config.dev_config
@@ -283,6 +324,7 @@ class Ferp(App):
         self.bundle_installer = ScriptBundleInstaller(self)
         self.path_actions = PathActionController(
             present_input=self._present_input_dialog,
+            present_archive_create=self._present_archive_create_dialog,
             present_confirm=self._present_confirm_dialog,
             show_error=self.show_error,
             refresh_listing=self.schedule_refresh_listing,
@@ -291,6 +333,8 @@ class Ferp(App):
             delete_handler=self._start_delete_path,
             bulk_delete_handler=self._start_delete_paths,
             bulk_paste_handler=self._start_paste_paths,
+            archive_create_handler=self._start_create_archive,
+            archive_extract_handler=self._start_extract_archive,
         )
         self._worker_router = WorkerRouter()
         self._worker_router.bind(self)
@@ -1144,6 +1188,13 @@ class Ferp(App):
     ) -> None:
         self.push_screen(dialog, callback)
 
+    def _present_archive_create_dialog(
+        self,
+        dialog: ArchiveCreateDialog,
+        callback: Callable[[Any], None],
+    ) -> None:
+        self.push_screen(dialog, callback)
+
     def _present_confirm_dialog(
         self,
         dialog: ConfirmDialog,
@@ -1182,6 +1233,14 @@ class Ferp(App):
             event.destination,
             move=event.move,
         )
+
+    @on(CreateArchiveRequest)
+    def handle_create_archive(self, event: CreateArchiveRequest) -> None:
+        self.path_actions.create_archive(list(event.sources), event.destination_dir)
+
+    @on(ExtractArchiveRequest)
+    def handle_extract_archive(self, event: ExtractArchiveRequest) -> None:
+        self.path_actions.extract_archive(event.target, event.destination_dir)
 
     @on(ShowReadmeRequest)
     def show_readme(self, event: ShowReadmeRequest) -> None:
@@ -1493,6 +1552,106 @@ class Ferp(App):
             errors=errors,
         )
 
+    def _start_create_archive(
+        self,
+        sources: list[Path],
+        output_path: Path,
+        archive_format: ArchiveFormat,
+        compression_level: int,
+        overwrite: bool,
+    ) -> None:
+        if not sources:
+            return
+        self.notify(
+            f"Creating archive: {output_path.name}...",
+            timeout=self.notify_timeouts.quick,
+        )
+        self.state_store.set_status("Creating archive...")
+        self._stop_file_tree_watch()
+        self.run_worker(
+            lambda: self._create_archive_worker(
+                sources,
+                output_path,
+                archive_format,
+                compression_level,
+                overwrite,
+            ),
+            group=WorkerGroup.CREATE_ARCHIVE,
+            thread=True,
+        )
+
+    def _create_archive_worker(
+        self,
+        sources: list[Path],
+        output_path: Path,
+        archive_format: ArchiveFormat,
+        compression_level: int,
+        overwrite: bool,
+    ) -> ArchiveActionResult:
+        if output_path.exists():
+            if not overwrite:
+                raise FerpError(
+                    code="archive_create_failed",
+                    message="Archive output already exists.",
+                    detail=str(output_path),
+                )
+            if output_path.is_dir():
+                shutil.rmtree(output_path)
+            else:
+                output_path.unlink()
+        result = create_archive(
+            sources,
+            output_path,
+            format=archive_format,
+            compression_level=compression_level,
+        )
+        return ArchiveActionResult(
+            action="create",
+            output_path=result.output_path,
+            entry_count=result.entry_count,
+            source_count=result.source_count,
+        )
+
+    def _start_extract_archive(
+        self,
+        target: Path,
+        output_dir: Path,
+        overwrite: bool,
+    ) -> None:
+        self.notify(
+            f"Extracting archive: {target.name}...",
+            timeout=self.notify_timeouts.quick,
+        )
+        self.state_store.set_status("Extracting archive...")
+        self._stop_file_tree_watch()
+        self.run_worker(
+            lambda: self._extract_archive_worker(target, output_dir, overwrite),
+            group=WorkerGroup.EXTRACT_ARCHIVE,
+            thread=True,
+        )
+
+    def _extract_archive_worker(
+        self,
+        target: Path,
+        output_dir: Path,
+        overwrite: bool,
+    ) -> ArchiveActionResult:
+        if output_dir.exists():
+            if not overwrite:
+                raise FerpError(
+                    code="archive_extract_failed",
+                    message="Extraction destination already exists.",
+                    detail=str(output_dir),
+                )
+            shutil.rmtree(output_dir) if output_dir.is_dir() else output_dir.unlink()
+        result = extract_archive(target, output_dir)
+        return ArchiveActionResult(
+            action="extract",
+            output_path=result.output_dir,
+            entry_count=result.entry_count,
+            source_count=1,
+        )
+
     def _render_default_scripts_update(self, payload: dict[str, Any]) -> None:
         error = payload.get("error")
         if error:
@@ -1629,6 +1788,8 @@ class Ferp(App):
                 directory,
                 token,
                 hide_filtered_entries=self.hide_filtered_entries,
+                sort_by=self.sort_by,
+                sort_descending=self.sort_descending,
             ),
             group=WorkerGroup.DIRECTORY_LISTING,
             exclusive=True,
@@ -1852,6 +2013,12 @@ class Ferp(App):
     def action_focus_sidebar(self) -> None:
         self._focus_widget(self.query_one("#navigator_sidebar"))
 
+    def action_navigate_history_back(self) -> None:
+        self.query_one(PathNavigator).navigate_back()
+
+    def action_navigate_history_forward(self) -> None:
+        self.query_one(PathNavigator).navigate_forward()
+
     def _refresh_navigation_sidebar(self) -> None:
         try:
             sidebar = self.query_one(NavigationSidebar)
@@ -1881,6 +2048,45 @@ class Ferp(App):
         except Exception:
             pass
         self.refresh_listing()
+
+    def action_set_sort_mode(self) -> None:
+        def after(value: str | None) -> None:
+            if not value:
+                return
+            if value == "descending":
+                next_value = not self.sort_descending
+                self.settings_store.update_sort_preferences(
+                    self.settings,
+                    sort_descending=next_value,
+                )
+                direction_label = "descending" if next_value else "ascending"
+                self.notify(
+                    f"Sort direction set to {direction_label}.",
+                    timeout=self.notify_timeouts.short,
+                )
+                self.refresh_listing()
+                return
+            if value == self.sort_by:
+                return
+            label = SORT_MODE_LABELS.get(normalize_sort_mode(value), value.title())
+            self.settings_store.update_sort_preferences(
+                self.settings,
+                sort_by=value,
+            )
+            direction_label = "descending" if self.sort_descending else "ascending"
+            self.notify(
+                f"Sorting by {label.lower()} ({direction_label}).",
+                timeout=self.notify_timeouts.short,
+            )
+            self.refresh_listing()
+
+        self.push_screen(
+            SortOrderDialog(
+                current_mode=self.sort_by,
+                sort_descending=self.sort_descending,
+            ),
+            after,
+        )
 
     @staticmethod
     def _is_descendant(node, ancestor) -> bool:
@@ -2346,6 +2552,52 @@ class Ferp(App):
                 FerpError(
                     code="paste_failed",
                     message="Paste failed.",
+                    detail=str(error),
+                )
+            )
+            self._start_file_tree_watch()
+        return True
+
+    @worker_handler(WorkerGroup.CREATE_ARCHIVE)
+    def _handle_create_archive_worker(self, event: Worker.StateChanged) -> bool:
+        self.state_store.set_status("Ready")
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, ArchiveActionResult):
+                self.notify(
+                    f"Archive created: {result.output_path.name} ({result.entry_count} item(s)).",
+                    timeout=self.notify_timeouts.short,
+                )
+                self.refresh_listing()
+        elif event.state is WorkerState.ERROR:
+            error = event.worker.error or RuntimeError("Archive creation failed.")
+            self.show_error(
+                FerpError(
+                    code="archive_create_failed",
+                    message="Archive creation failed.",
+                    detail=str(error),
+                )
+            )
+            self._start_file_tree_watch()
+        return True
+
+    @worker_handler(WorkerGroup.EXTRACT_ARCHIVE)
+    def _handle_extract_archive_worker(self, event: Worker.StateChanged) -> bool:
+        self.state_store.set_status("Ready")
+        if event.state is WorkerState.SUCCESS:
+            result = event.worker.result
+            if isinstance(result, ArchiveActionResult):
+                self.notify(
+                    f"Archive extracted to '{escape(result.output_path.name)}'.",
+                    timeout=self.notify_timeouts.short,
+                )
+                self.refresh_listing()
+        elif event.state is WorkerState.ERROR:
+            error = event.worker.error or RuntimeError("Archive extraction failed.")
+            self.show_error(
+                FerpError(
+                    code="archive_extract_failed",
+                    message="Archive extraction failed.",
                     detail=str(error),
                 )
             )

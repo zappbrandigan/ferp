@@ -190,7 +190,7 @@ class TaskListScreen(ModalScreen[None]):
         Binding("escape", "close", "Close", show=True),
         Binding("q", "close", "Close", show=False),
         Binding("space", "toggle_task", "Toggle completion", show=True),
-        Binding("t", "capture_task", "Add ", show=True),
+        Binding("T", "capture_task", "Add", key_display="T", show=True),
         Binding("e", "edit_task", "Edit", show=True),
         Binding("delete", "delete_task", "Delete", show=True),
         Binding("j", "cursor_down", "Next", show=False),

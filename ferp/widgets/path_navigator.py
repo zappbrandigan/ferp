@@ -162,6 +162,12 @@ class PathNavigator(Vertical):
             return
         self.post_message(NavigateRequest(parent))
 
+    def navigate_back(self) -> None:
+        self._navigate_history(-1)
+
+    def navigate_forward(self) -> None:
+        self._navigate_history(1)
+
     def _navigate_history(self, delta: int) -> None:
         if not self._history:
             return
@@ -236,7 +242,9 @@ class PathNavigator(Vertical):
             name="path-nav-suggestion-debounce",
         )
 
-    def _refresh_suggestions(self, value: str, *, request_id: int | None = None) -> None:
+    def _refresh_suggestions(
+        self, value: str, *, request_id: int | None = None
+    ) -> None:
         if not self._input:
             return
         if self._suggestion_timer is not None:

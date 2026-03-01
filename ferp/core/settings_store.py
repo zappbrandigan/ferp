@@ -56,6 +56,21 @@ class SettingsStore:
         settings.setdefault("userPreferences", {})["hideFilteredEntries"] = bool(value)
         self.save(settings)
 
+    def update_sort_preferences(
+        self,
+        settings: dict[str, Any],
+        *,
+        sort_by: str | None = None,
+        sort_descending: bool | None = None,
+    ) -> None:
+        """Store file listing sort preferences."""
+        preferences = settings.setdefault("userPreferences", {})
+        if sort_by is not None:
+            preferences["sortBy"] = str(sort_by)
+        if sort_descending is not None:
+            preferences["sortDescending"] = bool(sort_descending)
+        self.save(settings)
+
     def update_script_namespace(self, settings: dict[str, Any], namespace: str) -> None:
         """Store the installed default scripts namespace."""
         settings.setdefault("userPreferences", {})["scriptNamespace"] = namespace

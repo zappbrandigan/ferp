@@ -24,7 +24,7 @@ class ProcessListPanel(Vertical):
     BINDINGS = [
         Binding("r", "refresh", "Refresh", show=True),
         Binding("p", "prune_finished", "Prune finished", show=True),
-        Binding("k", "kill_selected", "Kill selected", show=True),
+        Binding("x", "kill_selected", "Kill selected", show=True),
     ]
 
     def __init__(

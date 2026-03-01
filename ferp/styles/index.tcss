@@ -1,6 +1,15 @@
 /* ============================================================================
    Layout
 ============================================================================ */
+$panel-background: $background;
+$panel-border: round $primary-darken-1;
+$panel-border-focus: round $primary-lighten-2;
+$panel-focus-tint: $foreground 5%;
+$modal-surface: $panel;
+$modal-overlay: $background 50%;
+$muted-opacity: 0.6;
+$dialog-button-width: 25%;
+
 *, HelpPanel VerticalScroll {
     scrollbar-size: 0 1;
 }
@@ -22,13 +31,13 @@ Button {
 Input .input--cursor, #prompt_textarea .text-area--cursor {
     background: transparent;
     color: $text-muted;
-    opacity: 0.6;
+    opacity: $muted-opacity;
     text-style: underline;
 }
 
 #prompt_input .input--suggestion {
     color: $text-muted; 
-    opacity: 0.6;
+    opacity: $muted-opacity;
     text-style: italic;
 }
 
@@ -74,7 +83,7 @@ PathNavigator {
     height: 3;
     margin: 0 1;
     padding: 0 1;
-    border: round $secondary;
+    border: $panel-border;
 
     #path_nav_row {
         height: 1;
@@ -114,8 +123,8 @@ PathNavigator {
         margin: 0;
         position: absolute;
         overlay: screen;
-        border: round $secondary;
-        background: $background;
+        border: $panel-border;
+        background: $panel-background;
         padding: 0 0 0 1;
         max-height: 8;
     }
@@ -125,8 +134,8 @@ PathNavigator {
     }
 
     #path_nav_suggestions:focus-within {
-        background: $background;
-        background-tint: $background
+        background: $panel-background;
+        background-tint: $panel-background
     }
 
     &.show_suggestions #path_nav_suggestions {
@@ -170,14 +179,14 @@ PathNavigator {
             width: 24;
             height: 1fr;
             margin-right: 1;
-            border: round $secondary;
-            background: $background;
+            border: $panel-border;
+            background: $panel-background;
             border-title-align: right;
         }
 
         #navigator_sidebar:focus {
-            border: round $secondary-lighten-3;
-            background-tint: $foreground 5%;
+            border: $panel-border-focus;
+            background-tint: transparent;
         }
 
         #navigator_sidebar > .option-list--option-highlighted {
@@ -197,17 +206,17 @@ PathNavigator {
             height: 1fr;
             min-height: 1;
             max-width: 100%;
-            padding: 0 0 0 0;
-            border: round $secondary;
+            padding: 0;
+            border: $panel-border;
             border-title-align: right;
             border-subtitle-align: center;
-            background: $background;
+            background: $panel-background;
             layout: vertical;
         }
 
         #file_list_container:focus-within {
-            border: round $secondary-lighten-3;
-            background-tint: $foreground 5%;
+            border: $panel-border-focus;
+            background-tint: transparent;
         }
 
         #file_list {
@@ -291,15 +300,15 @@ PathNavigator {
         ============================================================================ */
         #scripts_panel {
             height: 1fr;
-            border: round $secondary;
+            border: $panel-border;
             border-title-align: right;
             border-subtitle-align: left;
-            background: $background;
+            background: $panel-background;
         }
 
         #scripts_panel:focus {
-            border: round $secondary-lighten-3;
-            background-tint: $foreground 5%;
+            border: $panel-border-focus;
+            background-tint: transparent;
         }
 
         #scripts_panel:blur ListItem.-highlight {
@@ -326,7 +335,7 @@ PathNavigator {
 
         ScriptItem > .script_version {
             color: $text;
-            text-style: italic dim; 
+            text-style: italic dim;
         }
     }
 
@@ -341,14 +350,14 @@ PathNavigator {
         width: 1fr;
         height: 1fr;
         padding: 0 1;
-        background: $background;
-        border: round $secondary;
+        background: $panel-background;
+        border: $panel-border;
         border-title-align: right;
     }
 
     #metadata_panel:focus {
-        border: round $secondary-lighten-3;
-        background-tint: $foreground 5%;
+        border: $panel-border-focus;
+        background-tint: transparent;
     }
 
     /* ============================================================================
@@ -357,10 +366,10 @@ PathNavigator {
     #process_panel {
         width: 1fr;
         padding: 0 1;
-        border: round $secondary;
+        border: $panel-border;
         border-title-align: right;
         border-subtitle-align: left;
-        background: $background;
+        background: $panel-background;
     }
 
     #process_panel_list {
@@ -369,8 +378,8 @@ PathNavigator {
     }
 
     #process_panel:focus-within {
-        border: round $secondary-lighten-3;
-        background-tint: $foreground 5%;
+        border: $panel-border-focus;
+        background-tint: transparent;
     }
 
     .process_row {
@@ -409,10 +418,10 @@ PathNavigator {
     Output Panel
     ============================================================================ */
     #output_panel_container {
-        border: round $secondary;
+        border: $panel-border;
         border-title-align: right;
         border-subtitle-align: left;
-        background: $background;
+        background: $panel-background;
     }
 
     #output_panel {
@@ -420,8 +429,8 @@ PathNavigator {
     }
 
     #output_panel_container:focus {
-        border: round $secondary-lighten-3;
-        background-tint: $foreground 5%;
+        border: $panel-border-focus;
+        background-tint: transparent;
     }
 
     /* ============================================================================
@@ -430,8 +439,7 @@ PathNavigator {
     #file_tree_filter {
         display: none;
         padding: 0;
-        background: $background;
-        background-tint: $foreground 5%;
+        background: $panel-background;
         height: 2;
 
         Input {
@@ -453,23 +461,12 @@ PathNavigator {
 /* ============================================================================
    Dialogs & Prompt Forms
 ============================================================================ */
-#prompt_dialog {
-    align: center middle;
-}
-
-#input_dialog {
-    align: center middle;
-}
-
-#confirm_dialog {
-    align: center middle;
-}
-
-#select_dialog {
-    align: center middle;
-}
-
-#bulk_rename_confirm_dialog {
+#prompt_dialog,
+#input_dialog,
+#confirm_dialog,
+#select_dialog,
+#bulk_rename_confirm_dialog,
+#sort_dialog {
     align: center middle;
 }
 
@@ -480,7 +477,7 @@ PathNavigator {
 }
 
 #bulk_rename_confirm_dialog .dialog_buttons Button {
-    width: 25%;
+    width: $dialog-button-width;
 }
 
 #dialog_container {
@@ -488,8 +485,8 @@ PathNavigator {
     height: auto;
     width: 110;
     padding: 1 2;
-    border: round $secondary;
-    background: $panel;
+    border: $panel-border;
+    background: $modal-surface;
 }
 
 #bulk_rename_dialog_container {
@@ -497,8 +494,8 @@ PathNavigator {
     max-height: 20;
     max-width: 160;
     padding: 1 1;
-    border: round $secondary;
-    background: $panel;
+    border: $panel-border;
+    background: $modal-surface;
 }
 
 #bulk_rename_dialog_container #bulk_rename_dialog_message {
@@ -555,17 +552,103 @@ PathNavigator {
     }
 }
 
-#dialog_container #prompt_input, #dialog_container #input_container {
+#sort_dialog_container {
+    height: auto;
+    width: 25;
+    padding: 0 0;
+    border: $panel-border;
+    background: $panel-background;
+}
+
+#input_dialog {
+    background: $modal-overlay;
+}
+
+#sort_order_list {
+    margin: 0;
+    height: auto;
+    max-height: 11;
+    border: none;
+    background: transparent;
+}
+
+#sort_order_list > .option-list--option {
+    padding: 0 1;
+}
+
+#sort_order_list > .option-list--option-highlighted {
+    color: $text;
+}
+
+ArchiveCreateDialog {
+    align: center middle;
+    background: $modal-overlay;
+}
+
+#archive_create_dialog {
+    width: 110;
+    height: auto;
+    align: center middle;
+}
+
+#archive_output_input {
+    width: 110;
+    height: 3;
+    padding: 0 1;
+    border: $panel-border;
+    background: transparent;
+}
+
+#archive_output_input:focus {
+    background: transparent;
+}
+
+#archive_options_row {
+    width: 110;
+    height: 10;
+    margin-top: 0;
+}
+
+#archive_format_list,
+#archive_compression_list {
+    width: 1fr;
+    height: 10;
+    border: $panel-border;
+    background: transparent;
+}
+
+#archive_format_list {
+    margin-right: 1;
+}
+
+#archive_format_list:focus,
+#archive_compression_list:focus {
+    border: $panel-border-focus;
+    background-tint: transparent;
+}
+
+#archive_format_list > .option-list--option,
+#archive_compression_list > .option-list--option {
+    padding: 0 1;
+}
+
+#dialog_container #prompt_input {
     height: 3;
     margin: 1 5 0 5;
-    border: round $secondary;
+    border: $panel-border;
     background: transparent;
+}
 
-    /* dialogs/InputDialog */
-    #input {
-        border: none;
-        background: transparent;
-    }
+#input_dialog_input {
+    width: 110;
+    height: 3;
+    padding: 0 1;
+    border: $panel-border;
+    background: transparent;
+}
+
+#input_dialog_input:focus {
+    background: transparent;
 }
 
 /* scripts */
@@ -594,12 +677,12 @@ PathNavigator {
 
 #dialog_container #prompt_flags Checkbox .toggle--button {
     border: round $primary;
-    background: $surface;    
-}   
+    background: $surface;
+}
 
 #dialog_container #prompt_flags Checkbox.-on > .toggle--button {
     color: $text-primary;
-}   
+}
 
 #dialog_container #prompt_flags Checkbox:focus .toggle--label {
     text-style: bold;
@@ -611,7 +694,7 @@ PathNavigator {
 #dialog_container .prompt_selection_list {
     height: 10;
     margin: 0 5 0 5;
-    border: round $secondary;
+    border: $panel-border;
     background: transparent;
 }
 
@@ -641,7 +724,7 @@ SelectionList .selection-list--button-highlighted {
 
 #dialog_container .dialog_buttons Button {
     height: 3;
-    width: 25%;
+    width: $dialog-button-width;
 }
 
 #dialog_container .hidden {
@@ -654,16 +737,16 @@ SelectionList .selection-list--button-highlighted {
 
 #readme_screen {
     align: center middle;
-    background: $background 70%;
+    background: $modal-overlay;
 }
 
-#readme_modal{
+#readme_modal {
     max-width: 100;
     max-height: 50;
 }
 
 #readme_content {
-    border: round $secondary;
+    border: $panel-border;
 }
 
 /* ============================================================================
@@ -671,27 +754,37 @@ SelectionList .selection-list--button-highlighted {
 ============================================================================ */
 TaskEditModal, TaskCaptureModal {
     align: center middle;
-    
-    Footer {
-        background: transparent;
-    }
 }
 
-#task_capture_modal,
+TaskCaptureModal {
+    background: $modal-overlay;
+}
+
 #task_edit_modal {
     align: center middle;
     max-height: 10;
     max-width: 130;
     padding: 1 1;
-    border: round $secondary;
-    background: $panel;
+    border: $panel-border;
+    background: $modal-surface;
 }
 
-#task_capture_input,
 #task_edit_input {
     width: 100%;
     height: 3;
-    border: round $secondary;
+    border: $panel-border;
+    background: transparent;
+}
+
+#task_capture_input {
+    width: 110;
+    height: 3;
+    padding: 0 1;
+    border: $panel-border;
+    background: transparent;
+}
+
+#task_capture_input:focus {
     background: transparent;
 }
 
@@ -699,7 +792,7 @@ TaskEditModal, TaskCaptureModal {
    Task List Screen
 ============================================================================ */
 TaskListScreen {
-    background: $background 70%;
+    background: $modal-overlay;
     align: center middle;
 }
 
@@ -713,24 +806,23 @@ TaskListScreen {
 
 #task_list_view {
     height: 1fr;
-    margin: 0 0;
-    border: round $secondary;
-    background: $background;
+    margin: 0;
+    border: $panel-border;
+    background: $panel-background;
 }
 
 #task_filter_container {
     width: 1fr;
-    padding: 0 0 0 0;
+    padding: 0;
     height: 3;
 }
 
 #task_filter_input {
     width: 1fr;
-    border: round $secondary;
-    background: $background;
+    border: $panel-border;
+    background: $panel-background;
     padding: 0 1;
     height: auto;
-    margin-bottom: 1;
 }
 
 .task_item {
@@ -765,7 +857,7 @@ ListItem.-highlight .task_item_text {
 }
 
 #task_list_footer {
-    background: $background;
+    background: $panel-background;
 }
 
 /* ============================================================================
@@ -787,7 +879,7 @@ ListItem.-highlight .task_item_text {
 
 #script_progress_bar #bar > .bar--bar, Bar > .bar--indeterminate {
     color: $secondary;
-    background: $panel;
+    background: $modal-surface;
 }
 
 #progress_status {
@@ -796,5 +888,5 @@ ListItem.-highlight .task_item_text {
 
 #progress_message {
     text-align: center;
-    opacity: 0.5
+    opacity: 0.5;
 }

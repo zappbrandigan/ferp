@@ -3,10 +3,9 @@ from __future__ import annotations
 from typing import Callable
 
 from textual.binding import Binding
-from textual.containers import Container, Vertical
 from textual.screen import ModalScreen
 from textual.timer import Timer
-from textual.widgets import Footer, Input, Static
+from textual.widgets import Input
 
 
 class CaptureInput(Input):
@@ -33,22 +32,19 @@ class TaskCaptureModal(ModalScreen[None]):
         super().__init__()
         self._on_submit = on_submit
         self._area: CaptureInput | None = None
-        self._status: Static | None = None
         self._clear_timer: Timer | None = None
+        self._default_subtitle = "Enter save | Esc close"
 
     def compose(self):
         self._area = CaptureInput(self.action_submit)
-        self._status = Static("", classes="task_capture_status")
-        yield Container(
-            Vertical(self._area, self._status, Footer()),
-            id="task_capture_modal",
-        )
+        yield self._area
 
     def on_mount(self) -> None:
-        container = self.query_one("#task_capture_modal", Container)
-        container.border_title = "Add a New Task"
-        if self._area:
-            self._area.focus()
+        area = self._area or self.query_one("#task_capture_input", CaptureInput)
+        area.border_title = "Add Task"
+        area.border_subtitle = self._default_subtitle
+        area.focus()
+        self._area = area
 
     def action_submit(self) -> None:
         area = self._area or self.query_one(Input)
@@ -57,15 +53,14 @@ class TaskCaptureModal(ModalScreen[None]):
             return
         self._on_submit(text)
         area.value = ""
-        if self._status:
-            self._status.update("[$success]Task saved[/]")
+        area.border_subtitle = "[$success]Task saved[/] | Enter save | Esc close"
         if self._clear_timer:
             self._clear_timer.stop()
         self._clear_timer = self.set_timer(1.5, self._clear_status)
 
     def _clear_status(self) -> None:
-        if self._status:
-            self._status.update("")
+        if self._area is not None:
+            self._area.border_subtitle = self._default_subtitle
         if self._clear_timer:
             self._clear_timer.stop()
             self._clear_timer = None

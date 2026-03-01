@@ -21,3 +21,5 @@ ferp.egg-info/
 tests
 
 *.ps1
+
+_tmp/

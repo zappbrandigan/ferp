@@ -1,8 +1,10 @@
 from rich.style import Style
 from rich.text import Text
+from textual import on
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Input, Label, Select
+from textual.widgets import Button, DataTable, Input, Label, OptionList, Select
+from textual.widgets.option_list import Option
 
 
 class ConfirmDialog(ModalScreen[bool | None]):
@@ -90,35 +92,35 @@ class BulkRenameConfirmDialog(ModalScreen[bool | None]):
 
 class InputDialog(ModalScreen[str | None]):
     def __init__(
-        self, message: str, id: str = "input_dialog", default: str | None = None
+        self,
+        message: str,
+        id: str = "input_dialog",
+        default: str | None = None,
+        subtitle: str | None = "Enter confirm | Esc cancel",
     ) -> None:
         super().__init__(id=id)
         self._message = message
         self._default = default
+        self._subtitle = subtitle
 
     def compose(self):
-        yield Vertical(
-            Label(self._message, id="dialog_message"),
-            Container(
-                Input(value=self._default or "", id="input"),
-                id="input_container",
-            ),
-            Horizontal(
-                Button("OK", id="ok", variant="primary", flat=True),
-                Button("Cancel", id="cancel", flat=True),
-                classes="dialog_buttons",
-            ),
-            id="dialog_container",
+        yield Input(
+            value=self._default or "",
+            id="input_dialog_input",
         )
 
     def on_mount(self) -> None:
-        self.query_one(Input).focus()
+        input_widget = self.query_one("#input_dialog_input", Input)
+        input_widget.border_title = self._message
+        input_widget.border_subtitle = self._subtitle or ""
+        input_widget.focus()
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "ok":
-            value = self.query_one(Input).value
-            self.dismiss(value)
-        else:
+    @on(Input.Submitted, "#input_dialog_input")
+    def _on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value)
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
             self.dismiss(None)
 
 
@@ -128,15 +130,21 @@ class SelectDialog(ModalScreen[str | None]):
         message: str,
         options: list[str],
         *,
+        default: str | None = None,
         id: str = "select_dialog",
     ) -> None:
         super().__init__(id=id)
         self._message = message
         self._options = options
+        self._default = default
 
     def compose(self):
         select_options = [(option, option) for option in self._options]
-        default = self._options[0] if self._options else ""
+        default = (
+            self._default
+            if self._default in self._options
+            else (self._options[0] if self._options else "")
+        )
         yield Vertical(
             Label(self._message, id="dialog_message"),
             Container(
@@ -165,3 +173,77 @@ class SelectDialog(ModalScreen[str | None]):
             self.dismiss(str(value) if value is not None else None)
         else:
             self.dismiss(None)
+
+
+class SortOrderDialog(ModalScreen[str | None]):
+    _MODE_ROWS: tuple[tuple[str, str, str], ...] = (
+        ("name", "a", "Name"),
+        ("extension", "e", "Extension"),
+        ("natural", "n", "Natural"),
+        ("size", "s", "Size"),
+        ("created", "c", "Created"),
+        ("modified", "m", "Modified"),
+    )
+
+    def __init__(
+        self,
+        *,
+        current_mode: str,
+        sort_descending: bool,
+        id: str = "sort_dialog",
+    ) -> None:
+        super().__init__(id=id)
+        self._current_mode = current_mode
+        self._sort_descending = sort_descending
+        self._option_ids: list[str] = []
+
+    def compose(self):
+        yield Container(
+            OptionList(*self._build_options(), id="sort_order_list"),
+            id="sort_dialog_container",
+        )
+
+    def on_mount(self) -> None:
+        option_list = self.query_one(OptionList)
+        option_list.focus()
+        if self._current_mode in self._option_ids:
+            option_list.highlighted = self._option_ids.index(self._current_mode)
+
+    def _build_options(self) -> list[Option]:
+        self._option_ids = []
+        options: list[Option] = []
+        for mode_id, key_hint, label in self._MODE_ROWS:
+            marker = "☑" if mode_id == self._current_mode else "☐"
+            options.append(
+                Option(f"{marker} [dim]{key_hint}[/dim] {label}", id=mode_id)
+            )
+            self._option_ids.append(mode_id)
+        options.append(Option("[dim]----------------[/dim]", disabled=True))
+        direction_prefix = "☑" if self._sort_descending else "☐"
+        options.append(
+            Option(f"{direction_prefix} [dim]d[/dim] Descending", id="descending")
+        )
+        self._option_ids.append("descending")
+        return options
+
+    @on(OptionList.OptionSelected)
+    def _handle_selected(self, event: OptionList.OptionSelected) -> None:
+        option_id = event.option_id
+        self.dismiss(option_id if option_id else None)
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+            return
+        key_map = {
+            "a": "name",
+            "e": "extension",
+            "n": "natural",
+            "s": "size",
+            "c": "created",
+            "m": "modified",
+            "d": "descending",
+        }
+        option_id = key_map.get((event.character or "").lower())
+        if option_id is not None:
+            self.dismiss(option_id)

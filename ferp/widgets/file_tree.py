@@ -21,9 +21,11 @@ from textual.widgets.option_list import Option
 from ferp.core.messages import (
     BulkDeleteRequest,
     BulkPasteRequest,
+    CreateArchiveRequest,
     CreatePathRequest,
     DeletePathRequest,
     DirectorySelectRequest,
+    ExtractArchiveRequest,
     NavigateRequest,
     RenamePathRequest,
 )
@@ -282,6 +284,14 @@ class FileTree(OptionList):
         ),
         Binding("ctrl+t", "open_terminal", "Terminal", show=False),
         Binding(
+            "E",
+            "create_archive",
+            "Archive",
+            key_display="Shift+E",
+            show=False,
+            tooltip="Create an archive from the current selection",
+        ),
+        Binding(
             "u",
             "go_parent",
             "Go to parent",
@@ -289,14 +299,29 @@ class FileTree(OptionList):
             tooltip="Go to parent directory",
         ),
         Binding(
-            "h",
+            "tilde",
             "go_home",
             "Go to start",
+            key_display="~",
             show=True,
             tooltip="Go to default startup path",
         ),
         Binding(
-            "e",
+            "h",
+            "history_back",
+            "History back",
+            show=False,
+            tooltip="Go back in path history",
+        ),
+        Binding(
+            "l",
+            "history_forward",
+            "History forward",
+            show=False,
+            tooltip="Go forward in path history",
+        ),
+        Binding(
+            "r,f2",
             "rename_entry",
             "Rename",
             show=False,
@@ -347,30 +372,31 @@ class FileTree(OptionList):
             tooltip="Select range (visual mode)",
         ),
         Binding(
-            "c",
+            "y,ctrl+c",
             "copy_selection",
             "Copy",
             show=False,
             tooltip="Copy selected items (visual mode)",
         ),
         Binding(
-            "x",
+            "x,ctrl+x",
             "move_selection",
             "Move",
             show=False,
             tooltip="Move selected items (visual mode)",
         ),
         Binding(
-            "p",
+            "p,ctrl+v",
             "paste_selection",
             "Paste",
             show=False,
             tooltip="Paste copied/moved items (visual mode)",
         ),
         Binding(
-            "f",
+            "P",
             "toggle_pinned",
             "Pin",
+            key_display="Shift+P",
             show=False,
             tooltip="Toggle pinned item for highlighted file or directory",
         ),
@@ -397,18 +423,25 @@ class FileTree(OptionList):
             tooltip="Clear staged items (visual mode)",
         ),
         Binding(
-            "ctrl+f",
+            "o",
             "open_finder",
             "Open in FS",
             show=True,
             tooltip="Open current directory in system file explorer",
         ),
         Binding(
-            "ctrl+o",
+            "O",
             "open_selected_file",
             "Open file",
             show=True,
             tooltip="Open selected file with default application",
+        ),
+        Binding(
+            "ctrl+e",
+            "extract_archive",
+            "Extract",
+            show=False,
+            tooltip="Extract the selected archive",
         ),
         Binding(
             "[", "prev_chunk", "Prev chunk", show=False, tooltip="Load previous chunk"
@@ -419,6 +452,14 @@ class FileTree(OptionList):
         ),
         Binding(
             "}", "last_chunk", "Last chunk", show=False, tooltip="Jump to last chunk"
+        ),
+        Binding(
+            "comma",
+            "open_sort_order",
+            "Sort",
+            key_display=",",
+            show=False,
+            tooltip="Open file sort options",
         ),
         Binding("/", "filter_entries", "Filter", show=True, tooltip="Filter entries"),
     ]
@@ -491,6 +532,16 @@ class FileTree(OptionList):
         app = cast(AppWithPath, self.app)
         self.post_message(NavigateRequest(app.resolve_startup_path()))
 
+    def action_history_back(self) -> None:
+        navigator = getattr(self.app, "action_navigate_history_back", None)
+        if callable(navigator):
+            navigator()
+
+    def action_history_forward(self) -> None:
+        navigator = getattr(self.app, "action_navigate_history_forward", None)
+        if callable(navigator):
+            navigator()
+
     def action_open_finder(self) -> None:
         app = cast(AppWithPath, self.app)
         self._open_with_default_app(app.current_path)
@@ -501,6 +552,33 @@ class FileTree(OptionList):
             return
         if path.is_file():
             self._open_with_default_app(path)
+
+    def action_create_archive(self) -> None:
+        paths = self._selected_or_highlighted()
+        if not paths:
+            app = cast("Ferp", self.app)
+            app.notify(
+                "No files selected to archive.",
+                severity="warning",
+                timeout=app.notify_timeouts.short,
+            )
+            return
+        app = cast(AppWithPath, self.app)
+        self.post_message(CreateArchiveRequest(paths, app.current_path))
+
+    def action_extract_archive(self) -> None:
+        paths = self._selected_or_highlighted()
+        app = cast("Ferp", self.app)
+        if len(paths) != 1:
+            app.notify(
+                "Select exactly one archive to extract.",
+                severity="warning",
+                timeout=app.notify_timeouts.short,
+            )
+            return
+        self.post_message(
+            ExtractArchiveRequest(paths[0], cast(AppWithPath, self.app).current_path)
+        )
 
     def _open_with_default_app(self, path: Path) -> None:
         target = str(path)
@@ -929,6 +1007,10 @@ class FileTree(OptionList):
         except Exception:
             return
         filter_widget.show(self._filter_query)
+
+    def action_open_sort_order(self) -> None:
+        app = cast("Ferp", self.app)
+        app.action_set_sort_mode()
 
     def _handle_state_update(self, state: FileTreeState) -> None:
         self._current_listing_path = state.current_listing_path

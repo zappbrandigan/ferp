@@ -5,6 +5,8 @@ from typing import Callable
 
 from ferp.core.errors import FerpError
 from ferp.core.fs_controller import FileSystemController
+from ferp.services.archive_ops import ArchiveFormat
+from ferp.widgets.archive_dialogs import ArchiveCreateDialog, ArchiveCreateDialogResult
 from ferp.widgets.dialogs import ConfirmDialog, InputDialog
 
 
@@ -23,8 +25,19 @@ class PathActionController:
         delete_handler: Callable[[Path], None],
         bulk_delete_handler: Callable[[list[Path]], None],
         bulk_paste_handler: Callable[[list[tuple[Path, Path]], bool, bool], None],
+        present_archive_create: Callable[
+            [ArchiveCreateDialog, Callable[[ArchiveCreateDialogResult | None], None]],
+            None,
+        ]
+        | None = None,
+        archive_create_handler: Callable[
+            [list[Path], Path, ArchiveFormat, int, bool], None
+        ]
+        | None = None,
+        archive_extract_handler: Callable[[Path, Path, bool], None] | None = None,
     ) -> None:
         self._present_input = present_input
+        self._present_archive_create = present_archive_create
         self._present_confirm = present_confirm
         self._show_error = show_error
         self._refresh_listing = refresh_listing
@@ -33,6 +46,8 @@ class PathActionController:
         self._delete_handler = delete_handler
         self._bulk_delete_handler = bulk_delete_handler
         self._bulk_paste_handler = bulk_paste_handler
+        self._archive_create_handler = archive_create_handler
+        self._archive_extract_handler = archive_extract_handler
 
     def create_path(self, base: Path, *, is_directory: bool) -> None:
         parent = base if base.is_dir() else base.parent
@@ -232,3 +247,201 @@ class PathActionController:
             return
 
         perform(False)
+
+    def create_archive(self, sources: list[Path], destination_dir: Path) -> None:
+        if not self._present_archive_create or not self._archive_create_handler:
+            self._show_error(
+                FerpError(
+                    code="archive_create_failed",
+                    message="Archive creation is not available.",
+                )
+            )
+            return
+        archive_create_handler = self._archive_create_handler
+        present_archive_create = self._present_archive_create
+        if not destination_dir.exists() or not destination_dir.is_dir():
+            self._show_error(
+                FerpError(
+                    code="archive_create_failed",
+                    message="Destination must be an existing directory.",
+                )
+            )
+            return
+
+        unique_sources: list[Path] = []
+        seen: set[Path] = set()
+        missing: list[Path] = []
+        for source in sources:
+            resolved = source.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            if not source.exists():
+                missing.append(source)
+                continue
+            unique_sources.append(source)
+
+        if missing:
+            sample = ", ".join(path.name for path in missing[:3])
+            suffix = "..." if len(missing) > 3 else ""
+            self._show_error(
+                FerpError(
+                    code="archive_create_failed",
+                    message=f"Missing source item(s): {sample}{suffix}",
+                )
+            )
+            return
+
+        if not unique_sources:
+            self._show_error(
+                FerpError(
+                    code="archive_create_failed",
+                    message="No files selected to archive.",
+                    severity="warning",
+                )
+            )
+            return
+
+        default_output = self._default_archive_name(unique_sources, destination_dir)
+
+        def after(result: ArchiveCreateDialogResult | None) -> None:
+            if result is None:
+                return
+            output_path = self._resolve_destination_path(
+                destination_dir, result.output_path
+            )
+            output_path = self._ensure_archive_suffix(output_path, result.format)
+            if any(
+                output_path.resolve() == source.resolve() for source in unique_sources
+            ):
+                self._show_error(
+                    FerpError(
+                        code="archive_create_failed",
+                        message="Archive output cannot overwrite a selected source.",
+                    )
+                )
+                return
+            for source in unique_sources:
+                if not source.is_dir():
+                    continue
+                try:
+                    output_path.resolve().relative_to(source.resolve())
+                except ValueError:
+                    continue
+                self._show_error(
+                    FerpError(
+                        code="archive_create_failed",
+                        message="Cannot create an archive inside a selected folder.",
+                    )
+                )
+                return
+
+            def perform(overwrite: bool) -> None:
+                archive_create_handler(
+                    unique_sources,
+                    output_path,
+                    result.format,
+                    result.compression_level,
+                    overwrite,
+                )
+
+            if output_path.exists():
+                self._present_confirm(
+                    ConfirmDialog(f"'{output_path.name}' exists. Overwrite?"),
+                    lambda confirmed: perform(True) if confirmed else None,
+                )
+                return
+            perform(False)
+
+        present_archive_create(
+            ArchiveCreateDialog(default_output=default_output),
+            after,
+        )
+
+    def extract_archive(self, target: Path, destination_dir: Path) -> None:
+        if not self._archive_extract_handler:
+            self._show_error(
+                FerpError(
+                    code="archive_extract_failed",
+                    message="Archive extraction is not available.",
+                )
+            )
+            return
+        archive_extract_handler = self._archive_extract_handler
+        if not target.exists() or not target.is_file():
+            self._show_error(
+                FerpError(
+                    code="archive_invalid_target",
+                    message="Select a valid archive file.",
+                )
+            )
+            return
+        if target.suffix.lower() not in {".zip", ".7z"}:
+            self._show_error(
+                FerpError(
+                    code="archive_invalid_target",
+                    message="Only .zip and .7z archives can be extracted.",
+                )
+            )
+            return
+
+        default_output = target.stem
+
+        def after(value: str | None) -> None:
+            if not value:
+                return
+            candidate = Path(value).expanduser()
+            if not candidate.is_absolute() and len(candidate.parts) != 1:
+                self._show_error(
+                    FerpError(
+                        code="archive_invalid_target",
+                        message="Enter a single destination folder name.",
+                    )
+                )
+                return
+            output_dir = self._resolve_destination_path(destination_dir, value)
+
+            def perform(overwrite: bool) -> None:
+                archive_extract_handler(target, output_dir, overwrite)
+
+            if output_dir.exists():
+                self._present_confirm(
+                    ConfirmDialog(f"'{output_dir.name}' exists. Overwrite?"),
+                    lambda confirmed: perform(True) if confirmed else None,
+                )
+                return
+            perform(False)
+
+        self._present_input(
+            InputDialog(
+                "Extract Archive: Destination Folder",
+                default=default_output,
+                subtitle="Enter confirm | Esc cancel",
+            ),
+            after,
+        )
+
+    @staticmethod
+    def _default_archive_name(sources: list[Path], destination_dir: Path) -> str:
+        if len(sources) == 1:
+            source = sources[0]
+            base = source.stem if source.is_file() else source.name
+        else:
+            base = destination_dir.name or "archive"
+        return f"{base}.zip"
+
+    @staticmethod
+    def _resolve_destination_path(base_dir: Path, value: str) -> Path:
+        candidate = Path(value).expanduser()
+        if not candidate.is_absolute():
+            candidate = (base_dir / candidate).expanduser()
+        return candidate.resolve()
+
+    @staticmethod
+    def _ensure_archive_suffix(path: Path, archive_format: str) -> Path:
+        suffix = ".zip" if archive_format == "zip" else ".7z"
+        if path.name.endswith(suffix):
+            return path
+        if path.suffix.lower() in {".zip", ".7z"}:
+            return path.with_suffix(suffix)
+        return path.with_name(f"{path.name}{suffix}")

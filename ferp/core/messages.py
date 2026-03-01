@@ -64,3 +64,17 @@ class BulkPasteRequest(Message):
         self.sources = tuple(sources)
         self.destination = destination
         self.move = move
+
+
+class CreateArchiveRequest(Message):
+    def __init__(self, sources: Sequence[Path], destination_dir: Path) -> None:
+        super().__init__()
+        self.sources = tuple(sources)
+        self.destination_dir = destination_dir
+
+
+class ExtractArchiveRequest(Message):
+    def __init__(self, target: Path, destination_dir: Path) -> None:
+        super().__init__()
+        self.target = target
+        self.destination_dir = destination_dir
