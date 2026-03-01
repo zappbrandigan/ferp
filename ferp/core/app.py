@@ -79,7 +79,7 @@ from ferp.services.file_listing import (
     SortMode,
     collect_directory_listing,
     normalize_sort_mode,
-    snapshot_directory,
+    poll_directory_names,
 )
 from ferp.services.monday import sync_monday_board
 from ferp.services.releases import (
@@ -303,7 +303,7 @@ class Ferp(App):
             call_from_thread=self.call_from_thread,
             refresh_callback=self._refresh_listing_from_watcher,
             missing_callback=self._handle_missing_directory,
-            snapshot_func=lambda path: snapshot_directory(
+            snapshot_func=lambda path: poll_directory_names(
                 path,
                 hide_filtered_entries=self.hide_filtered_entries,
             ),

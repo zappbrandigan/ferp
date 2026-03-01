@@ -24,7 +24,7 @@ class DirectoryListingResult:
     path: Path
     token: int
     entries: list[FileListingEntry]
-    signature: tuple[str, ...] = ()
+    signature: frozenset[str] = frozenset()
     error: str | None = None
 
 
@@ -205,8 +205,31 @@ def snapshot_directory(
     return tuple(signatures)
 
 
-def build_listing_signature(entries: list[FileListingEntry]) -> tuple[str, ...]:
-    return tuple(f"{entry.name}:{int(entry.is_dir)}" for entry in entries)
+def build_listing_signature(entries: list[FileListingEntry]) -> frozenset[str]:
+    return frozenset(entry.name for entry in entries)
+
+
+def poll_directory_names(
+    path: Path,
+    *,
+    hide_filtered_entries: bool = True,
+) -> frozenset[str]:
+    names: set[str] = set()
+    with os.scandir(path) as scan:
+        filter_windows_home = _precompute_windows_home_filter(
+            path,
+            hide_filtered_entries=hide_filtered_entries,
+        )
+        for entry in scan:
+            if not is_entry_visible(
+                entry.name,
+                path,
+                hide_filtered_entries=hide_filtered_entries,
+                filter_windows_home=filter_windows_home,
+            ):
+                continue
+            names.add(entry.name)
+    return frozenset(names)
 
 
 def _build_listing_entry(

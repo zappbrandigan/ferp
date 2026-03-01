@@ -81,10 +81,6 @@ class NavigationSidebar(OptionList):
         section = self._option_sections.get(option_id, "")
         drive_accessible = self._option_drive_access.get(option_id)
         if section == "drive":
-            if drive_accessible is False:
-                self._notify_drive_unavailable()
-                self._ensure_drive_scan(force=True)
-                return
             self._pending_drive_check = target
             self.run_worker(
                 lambda drive=target: (
