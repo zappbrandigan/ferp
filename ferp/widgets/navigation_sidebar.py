@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import ctypes
+import sys
+import uuid
 from pathlib import Path
 from typing import Callable, cast
 
@@ -17,6 +20,53 @@ from ferp.services.drive_inventory import (
     DriveInventoryState,
     DriveStatus,
 )
+
+
+class _Guid(ctypes.Structure):
+    _fields_ = [
+        ("Data1", ctypes.c_uint32),
+        ("Data2", ctypes.c_uint16),
+        ("Data3", ctypes.c_uint16),
+        ("Data4", ctypes.c_ubyte * 8),
+    ]
+
+
+def _guid_from_string(value: str) -> _Guid:
+    raw = uuid.UUID(value).bytes_le
+    data4 = (ctypes.c_ubyte * 8).from_buffer_copy(raw[8:])
+    return _Guid(
+        int.from_bytes(raw[0:4], "little"),
+        int.from_bytes(raw[4:6], "little"),
+        int.from_bytes(raw[6:8], "little"),
+        data4,
+    )
+
+
+def _windows_known_folder_path(folder_id: str) -> Path | None:
+    if sys.platform != "win32":
+        return None
+    windll = getattr(ctypes, "windll", None)
+    if windll is None:
+        return None
+    raw_path = ctypes.c_void_p()
+    try:
+        result = windll.shell32.SHGetKnownFolderPath(
+            ctypes.byref(_guid_from_string(folder_id)),
+            0,
+            None,
+            ctypes.byref(raw_path),
+        )
+    except Exception:
+        return None
+    if result != 0 or not raw_path.value:
+        return None
+    try:
+        return Path(ctypes.wstring_at(raw_path.value))
+    finally:
+        try:
+            windll.ole32.CoTaskMemFree(raw_path)
+        except Exception:
+            pass
 
 
 class NavigationSidebar(OptionList):
@@ -259,11 +309,20 @@ class NavigationSidebar(OptionList):
     @staticmethod
     def _known_place_candidates() -> list[tuple[str, Path]]:
         home = Path.home()
+        desktop = _windows_known_folder_path(
+            "{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}"
+        ) or (home / "Desktop")
+        documents = _windows_known_folder_path(
+            "{FDD39AD0-238F-46AF-ADB4-6C85480369C7}"
+        ) or (home / "Documents")
+        downloads = _windows_known_folder_path(
+            "{374DE290-123F-4565-9164-39C4925E467B}"
+        ) or (home / "Downloads")
         return [
             ("Home", home),
-            ("Desktop", home / "Desktop"),
-            ("Documents", home / "Documents"),
-            ("Downloads", home / "Downloads"),
+            ("Desktop", desktop),
+            ("Documents", documents),
+            ("Downloads", downloads),
         ]
 
     @staticmethod

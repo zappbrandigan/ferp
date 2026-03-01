@@ -356,7 +356,7 @@ def _windows_path_root(directory: Path) -> str | None:
     return f"{drive}\\"
 
 
-def _probe_windows_directory_access(directory: Path, *, timeout: float = 1.0) -> bool:
+def _probe_windows_directory_access(directory: Path, *, timeout: float = 4.0) -> bool:
     target = str(directory)
     if not target:
         return False
