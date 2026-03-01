@@ -95,12 +95,18 @@ class FileTreeWatcher:
         self._observer = None
         self._handler = None
 
-    def update_snapshot(self, directory: Path) -> None:
+    def update_snapshot(
+        self,
+        directory: Path,
+        signature: tuple[str, ...] | None = None,
+    ) -> None:
         """Record the latest directory signature to prevent redundant refreshes."""
         if not directory.exists():
             self._last_snapshot = None
             return
-        self._last_snapshot = self._snapshot_func(directory)
+        self._last_snapshot = (
+            signature if signature is not None else self._snapshot_func(directory)
+        )
         self._current_directory = directory
 
     def _ensure_observer(self) -> None:

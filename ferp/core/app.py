@@ -1861,7 +1861,10 @@ class Ferp(App):
         file_tree.show_listing(result.path, result.entries)
 
         if self._file_tree_watcher is not None:
-            self._file_tree_watcher.update_snapshot(result.path)
+            self._file_tree_watcher.update_snapshot(
+                result.path,
+                result.signature,
+            )
             self._start_file_tree_watch()
         self._finalize_directory_listing()
 

@@ -26,6 +26,7 @@ class DirectoryListingResult:
     path: Path
     token: int
     entries: list[FileListingEntry]
+    signature: tuple[str, ...] = ()
     error: str | None = None
 
 
@@ -117,7 +118,7 @@ def collect_directory_listing(
                 reverse=sort_descending,
             )
     except OSError as exc:
-        return DirectoryListingResult(directory, token, [], str(exc))
+        return DirectoryListingResult(directory, token, [], error=str(exc))
 
     rows: list[FileListingEntry] = []
     for entry in entries:
@@ -125,7 +126,12 @@ def collect_directory_listing(
         if listing_entry is not None:
             rows.append(listing_entry)
 
-    return DirectoryListingResult(directory, token, rows)
+    return DirectoryListingResult(
+        directory,
+        token,
+        rows,
+        build_listing_signature(rows),
+    )
 
 
 def snapshot_directory(
@@ -160,6 +166,17 @@ def snapshot_directory(
         signature = f"{entry.name}:{int(is_dir)}"
         signatures.append(signature)
     return tuple(signatures)
+
+
+def build_listing_signature(entries: list[FileListingEntry]) -> tuple[str, ...]:
+    ordered = sorted(
+        entries,
+        key=lambda entry: (
+            0 if entry.is_dir and entry.path.name.startswith("_") else 1,
+            entry.path.name.casefold(),
+        ),
+    )
+    return tuple(f"{entry.path.name}:{int(entry.is_dir)}" for entry in ordered)
 
 
 def _build_listing_entry(entry: os.DirEntry[str]) -> FileListingEntry | None:
