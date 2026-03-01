@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -92,7 +93,9 @@ class DriveInventoryService:
     def is_known_drive_path(self, path: Path) -> bool:
         target = str(path).casefold() if os.name == "nt" else str(path)
         for entry in self._state.entries:
-            candidate = str(entry.path).casefold() if os.name == "nt" else str(entry.path)
+            candidate = (
+                str(entry.path).casefold() if os.name == "nt" else str(entry.path)
+            )
             if candidate == target:
                 return True
         return False
@@ -114,6 +117,34 @@ class DriveInventoryService:
             last_checked_at=checked_at,
         )
         self._persist()
+
+    def set_drive_access(self, path: Path, accessible: bool) -> bool:
+        target = str(path).casefold() if os.name == "nt" else str(path)
+        updated = False
+        entries: list[DriveStatus] = []
+        for entry in self._state.entries:
+            candidate = (
+                str(entry.path).casefold() if os.name == "nt" else str(entry.path)
+            )
+            if candidate == target:
+                if entry.accessible != accessible:
+                    updated = True
+                    entries.append(
+                        DriveStatus(
+                            label=entry.label,
+                            path=entry.path,
+                            accessible=accessible,
+                        )
+                    )
+                else:
+                    entries.append(entry)
+            else:
+                entries.append(entry)
+        if not updated:
+            return False
+        self._update_state(entries=tuple(entries))
+        self._persist()
+        return True
 
     def fail_scan(self) -> None:
         self._update_state(
@@ -163,7 +194,23 @@ class DriveInventoryService:
         return Path(mountpoint).name or mountpoint
 
     @staticmethod
+    def probe_access(path: Path) -> bool:
+        return DriveInventoryService._probe_access(path)
+
+    @staticmethod
     def _probe_access(path: Path) -> bool:
+        if sys.platform == "win32":
+            try:
+                result = subprocess.run(
+                    ["cmd", "/c", "dir", "/b", str(path)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=1.5,
+                    check=False,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return False
+            return result.returncode == 0
         try:
             with os.scandir(path) as iterator:
                 next(iterator, None)

@@ -2,7 +2,6 @@ import re
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Pattern, Sequence, cast
 
@@ -33,20 +32,11 @@ from ferp.core.path_navigation import parent_directory
 from ferp.core.protocols import AppWithPath
 from ferp.core.state import FileTreeState, FileTreeStateStore
 from ferp.core.worker_groups import WorkerGroup
+from ferp.services.file_listing import FileListingEntry
 from ferp.widgets.dialogs import BulkRenameConfirmDialog
 
 if TYPE_CHECKING:
     from ferp.core.app import Ferp
-
-
-@dataclass(frozen=True)
-class FileListingEntry:
-    path: Path
-    display_name: str
-    char_count: int
-    type_label: str
-    is_dir: bool
-    search_blob: str
 
 
 def _split_replace_input(value: str) -> tuple[str, str, str] | None:
@@ -753,12 +743,25 @@ class FileTree(OptionList):
                 self._filtered_entries = self._all_entries
                 return
             self._filtered_entries = [
-                entry for entry in self._all_entries if query not in entry.search_blob
+                entry
+                for entry in self._all_entries
+                if query not in self._entry_search_text(entry)
             ]
             return
         self._filtered_entries = [
-            entry for entry in self._all_entries if query in entry.search_blob
+            entry
+            for entry in self._all_entries
+            if query in self._entry_search_text(entry)
         ]
+
+    @staticmethod
+    def _entry_search_text(entry: FileListingEntry) -> str:
+        if entry.is_dir:
+            type_label = "dir"
+        else:
+            suffix = Path(entry.name).suffix.lstrip(".").lower()
+            type_label = suffix or "file"
+        return f"{entry.display_name}\n{type_label}\n{entry.name}".casefold()
 
     def handle_filter_submit(self, value: str) -> None:
         parsed = self._parse_replace_request(value)

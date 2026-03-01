@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from ferp.widgets.file_tree import FileListingEntry
-
 SortMode = Literal["name", "natural", "extension", "modified", "created", "size"]
 
 SORT_MODE_LABELS: dict[SortMode, str] = {
@@ -28,6 +26,14 @@ class DirectoryListingResult:
     entries: list[FileListingEntry]
     signature: tuple[str, ...] = ()
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class FileListingEntry:
+    path: Path
+    name: str
+    display_name: str
+    is_dir: bool
 
 
 def normalize_sort_mode(value: object) -> SortMode:
@@ -113,9 +119,8 @@ def collect_directory_listing(
             )
             visible: list[tuple[os.DirEntry[str], bool]] = []
             for entry in scan:
-                entry_path = Path(entry.path)
                 if not is_entry_visible(
-                    entry_path,
+                    entry.name,
                     directory,
                     hide_filtered_entries=hide_filtered_entries,
                     filter_windows_home=filter_windows_home,
@@ -127,11 +132,21 @@ def collect_directory_listing(
                     is_dir = False
                 visible.append((entry, is_dir))
             mode = normalize_sort_mode(sort_by)
-            entries = sorted(
-                visible,
-                key=lambda item: _entry_sort_key(item[0], mode, is_dir=item[1]),
-                reverse=sort_descending,
-            )
+            if mode == "name":
+                entries = sorted(
+                    visible,
+                    key=lambda item: (
+                        0 if item[1] and item[0].name.startswith("_") else 1,
+                        item[0].name.casefold(),
+                    ),
+                    reverse=sort_descending,
+                )
+            else:
+                entries = sorted(
+                    visible,
+                    key=lambda item: _entry_sort_key(item[0], mode, is_dir=item[1]),
+                    reverse=sort_descending,
+                )
     except OSError as exc:
         return DirectoryListingResult(directory, token, [], error=str(exc))
 
@@ -162,9 +177,8 @@ def snapshot_directory(
             )
             entries: list[tuple[os.DirEntry[str], bool]] = []
             for entry in scan:
-                entry_path = Path(entry.path)
                 if not is_entry_visible(
-                    entry_path,
+                    entry.name,
                     path,
                     hide_filtered_entries=hide_filtered_entries,
                     filter_windows_home=filter_windows_home,
@@ -192,14 +206,7 @@ def snapshot_directory(
 
 
 def build_listing_signature(entries: list[FileListingEntry]) -> tuple[str, ...]:
-    ordered = sorted(
-        entries,
-        key=lambda entry: (
-            0 if entry.is_dir and entry.path.name.startswith("_") else 1,
-            entry.path.name.casefold(),
-        ),
-    )
-    return tuple(f"{entry.path.name}:{int(entry.is_dir)}" for entry in ordered)
+    return tuple(f"{entry.name}:{int(entry.is_dir)}" for entry in entries)
 
 
 def _build_listing_entry(
@@ -215,24 +222,16 @@ def _build_listing_entry(
             return None
     name = entry.name
     display_name = f"{name}/" if is_dir else name
-
-    type_label = "dir" if is_dir else entry_path.suffix.lstrip(".").lower()
-    if not type_label:
-        type_label = "file"
-
-    search_blob = f"{display_name}\n{type_label}\n{entry_path.name}".casefold()
     return FileListingEntry(
         path=entry_path,
+        name=name,
         display_name=display_name,
-        char_count=len(name),
-        type_label=type_label,
         is_dir=is_dir,
-        search_blob=search_blob,
     )
 
 
 def is_entry_visible(
-    entry: Path,
+    entry: Path | str,
     directory: Path,
     *,
     hide_filtered_entries: bool = True,
@@ -248,12 +247,12 @@ def is_entry_visible(
 
 
 def _should_skip_entry(
-    entry: Path,
+    entry: Path | str,
     directory: Path,
     *,
     filter_windows_home: bool | None = None,
 ) -> bool:
-    name = entry.name
+    name = entry if isinstance(entry, str) else entry.name
     if name.startswith((".", "~$")):
         return True
     if name.casefold() == "desktop.ini":
