@@ -58,7 +58,6 @@ class NavigationSidebar(OptionList):
         self._pinned_place_entries: list[tuple[str, Path]] = []
         self._path_scan_request_id = 0
         self._pending_drive_check: Path | None = None
-        self._background_scans_started = False
 
     def on_mount(self) -> None:
         self.border_title = "Quick Nav"
@@ -66,11 +65,6 @@ class NavigationSidebar(OptionList):
         self._drive_inventory.subscribe(self._drive_subscription)
         self.refresh_items()
         self.call_after_refresh(self.refresh_path_entries)
-        self.set_timer(
-            0.1,
-            self._start_background_drive_scan,
-            name="nav-sidebar-start-drive-scan",
-        )
 
     def on_unmount(self) -> None:
         self._state_store.unsubscribe(self._state_subscription)
@@ -258,12 +252,6 @@ class NavigationSidebar(OptionList):
             return
         self._current_path = new_path
         self.refresh_items()
-        if self._background_scans_started:
-            self._ensure_drive_scan()
-
-    def _start_background_drive_scan(self) -> None:
-        self._background_scans_started = True
-        self._ensure_drive_scan()
 
     def refresh_path_entries(self) -> None:
         self._path_scan_request_id += 1

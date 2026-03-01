@@ -172,11 +172,12 @@ class DriveInventoryService:
                 continue
             seen.add(key)
             path = Path(mountpoint)
+            accessible = True if sys.platform == "win32" else self._probe_access(path)
             entries.append(
                 DriveStatus(
                     label=self._drive_label(mountpoint),
                     path=path,
-                    accessible=self._probe_access(path),
+                    accessible=accessible,
                 )
             )
         return entries
@@ -202,7 +203,7 @@ class DriveInventoryService:
         if sys.platform == "win32":
             try:
                 result = subprocess.run(
-                    ["cmd", "/c", "dir", "/b", str(path)],
+                    ["cmd", "/c", "cd", "/d", str(path)],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     timeout=1.5,
