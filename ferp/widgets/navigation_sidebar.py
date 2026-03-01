@@ -24,7 +24,6 @@ class NavigationSidebar(OptionList):
 
     LABEL_MAX_WIDTH = 20
     DRIVE_SCAN_WORKER_NAME = "navigation_sidebar_drive_scan"
-    DRIVE_ACCESS_CHECK_WORKER_NAME = "navigation_sidebar_drive_access_check"
     PATH_SCAN_WORKER_NAME = "navigation_sidebar_path_scan"
 
     BINDINGS = [
@@ -57,7 +56,6 @@ class NavigationSidebar(OptionList):
         )
         self._pinned_place_entries: list[tuple[str, Path]] = []
         self._path_scan_request_id = 0
-        self._pending_drive_check: Path | None = None
 
     def on_mount(self) -> None:
         self.border_title = "Quick Nav"
@@ -79,21 +77,8 @@ class NavigationSidebar(OptionList):
         if target is None:
             return
         section = self._option_sections.get(option_id, "")
-        drive_accessible = self._option_drive_access.get(option_id)
         if section == "drive":
-            self._pending_drive_check = target
-            self.run_worker(
-                lambda drive=target: (
-                    drive,
-                    self._drive_inventory.probe_access(drive),
-                ),
-                name=self.DRIVE_ACCESS_CHECK_WORKER_NAME,
-                thread=True,
-            )
-            return
-        if drive_accessible is False:
-            self._notify_drive_unavailable()
-            self._ensure_drive_scan(force=True)
+            self.post_message(NavigateRequest(target))
             return
         if not is_navigable_directory(target):
             if section == "pinned":
@@ -119,30 +104,6 @@ class NavigationSidebar(OptionList):
     @on(Worker.StateChanged)
     def _handle_worker_state(self, event: Worker.StateChanged) -> None:
         worker = event.worker
-        if worker.name == self.DRIVE_ACCESS_CHECK_WORKER_NAME:
-            if worker.state != WorkerState.SUCCESS:
-                self._pending_drive_check = None
-                self._notify_drive_unavailable()
-                return
-            result = worker.result
-            if (
-                not isinstance(result, tuple)
-                or len(result) != 2
-                or not isinstance(result[0], Path)
-                or not isinstance(result[1], bool)
-            ):
-                self._pending_drive_check = None
-                return
-            target, accessible = result
-            if target != self._pending_drive_check:
-                return
-            self._pending_drive_check = None
-            self._drive_inventory.set_drive_access(target, accessible)
-            if not accessible:
-                self._notify_drive_unavailable()
-                return
-            self.post_message(NavigateRequest(target))
-            return
         if worker.name != self.DRIVE_SCAN_WORKER_NAME:
             if worker.name != self.PATH_SCAN_WORKER_NAME:
                 return
@@ -272,13 +233,6 @@ class NavigationSidebar(OptionList):
     def _handle_drive_inventory_update(self, state: DriveInventoryState) -> None:
         self._drive_state = state
         self.refresh_items()
-
-    def _notify_drive_unavailable(self) -> None:
-        notify = getattr(self.app, "notify", None)
-        if callable(notify):
-            notify(
-                "Drive is mounted but not currently accessible. Connect to VPN and try again."
-            )
 
     def action_refresh_drives(self) -> None:
         if self._ensure_drive_scan(force=True):
