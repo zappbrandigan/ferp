@@ -357,16 +357,16 @@ def _windows_path_root(directory: Path) -> str | None:
 
 
 def _probe_windows_directory_access(directory: Path, *, timeout: float = 4.0) -> bool:
-    target = str(directory)
-    if not target:
+    if not str(directory):
         return False
     try:
         result = subprocess.run(
-            ["cmd", "/d", "/c", f'cd /d "{target}"'],
+            ["cmd", "/d", "/c", "exit", "0"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=timeout,
             check=False,
+            cwd=directory,
         )
     except (OSError, subprocess.SubprocessError):
         return False

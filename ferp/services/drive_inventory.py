@@ -201,16 +201,16 @@ class DriveInventoryService:
     @staticmethod
     def _probe_access(path: Path) -> bool:
         if sys.platform == "win32":
-            drive_target = str(path).rstrip("\\/")
-            if len(drive_target) == 2 and drive_target[1] == ":":
-                drive_target = f"{drive_target}\\"
+            if not str(path):
+                return False
             try:
                 result = subprocess.run(
-                    ["cmd", "/d", "/c", f'cd /d "{drive_target}"'],
+                    ["cmd", "/d", "/c", "exit", "0"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     timeout=1.5,
                     check=False,
+                    cwd=path,
                 )
             except (OSError, subprocess.SubprocessError):
                 return False
