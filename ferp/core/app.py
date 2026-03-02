@@ -103,6 +103,7 @@ from ferp.widgets.file_tree import (
     FileTreeContainer,
     FileTreeFilterWidget,
 )
+from ferp.widgets.key_help import KeyHelpScreen
 from ferp.widgets.metadata_panel import MetadataPanel
 from ferp.widgets.navigation_sidebar import NavigationSidebar
 from ferp.widgets.output_panel import OutputPanelContainer, ScriptOutputPanel
@@ -297,6 +298,7 @@ class Ferp(App):
         self._visual_mode = False
         self._focus_mode_active = False
         self._focus_mode_timer: Timer | None = None
+        self._archive_operation_active = False
         super().__init__()
         self.fs_controller = FileSystemController()
         self._file_tree_watcher = FileTreeWatcher(
@@ -461,13 +463,10 @@ class Ferp(App):
                     ),
                     id="navigator_pane",
                 ),
-                Vertical(
-                    ScriptManager(
-                        self._resolve_script_config_paths(),
-                        scripts_root=self._paths.scripts_dir,
-                        id="scripts_panel",
-                    ),
-                    id="details_pane",
+                ScriptManager(
+                    self._resolve_script_config_paths(),
+                    scripts_root=self._paths.scripts_dir,
+                    id="scripts_panel",
                 ),
                 id="main_pane",
             )
@@ -533,7 +532,7 @@ class Ferp(App):
 
         return "\n".join(lines)
 
-    def _set_main_controls_disabled(self, disabled: bool) -> None:
+    def _set_scripts_panel_disabled(self, disabled: bool) -> None:
         script_manager = self.query_one(ScriptManager)
         script_manager.disabled = disabled
         if disabled:
@@ -541,16 +540,16 @@ class Ferp(App):
         else:
             script_manager.remove_class("dimmed")
 
-    def _set_details_disabled(self, disabled: bool) -> None:
-        script_manager = self.query_one(ScriptManager)
-        details_pane = self.query_one("#details_pane")
+    def _set_archive_operation_active(self, active: bool) -> None:
+        self._archive_operation_active = active
+        self._set_scripts_panel_disabled(active)
 
-        script_manager.disabled = disabled
-
-        if disabled:
-            details_pane.add_class("dimmed")
-        else:
-            details_pane.remove_class("dimmed")
+    def _show_archive_output(self, title: str, lines: list[str]) -> None:
+        try:
+            panel = self.query_one(ScriptOutputPanel)
+        except Exception:
+            return
+        panel.show_info(title, lines)
 
     @property
     def visual_mode(self) -> bool:
@@ -560,10 +559,10 @@ class Ferp(App):
         self._visual_mode = not self._visual_mode
         file_tree = self.query_one(FileTree)
         script_manager = self.query_one(ScriptManager)
-        details_pane = self.query_one("#details_pane")
 
         if self._visual_mode:
-            self._set_details_disabled(True)
+            script_manager.disabled = True
+            script_manager.add_class("dimmed")
             file_tree.focus()
             file_tree._update_border_title()
             return
@@ -571,12 +570,12 @@ class Ferp(App):
         file_tree.clear_visual_state()
         file_tree._update_border_title()
         if self.script_controller.is_running:
-            details_pane.remove_class("dimmed")
             script_manager.disabled = True
             script_manager.add_class("dimmed")
             return
 
-        self._set_details_disabled(False)
+        script_manager.disabled = False
+        script_manager.remove_class("dimmed")
 
     def _resolve_script_config_paths(self) -> list[Path]:
         if not self._dev_config_enabled:
@@ -853,7 +852,7 @@ class Ferp(App):
                 )
                 return
             self.notify("Upgrading FERP via pipx...", timeout=self.notify_timeouts.long)
-            self._set_main_controls_disabled(True)
+            self._set_scripts_panel_disabled(True)
             self.run_worker(
                 lambda: self._upgrade_app(pipx_path),
                 group=WorkerGroup.APP_UPGRADE,
@@ -1248,6 +1247,13 @@ class Ferp(App):
 
     @on(RunScriptRequest)
     def handle_script_run(self, event: RunScriptRequest) -> None:
+        if self._archive_operation_active:
+            self.notify(
+                "Wait for archive processing to finish.",
+                severity="warning",
+                timeout=self.notify_timeouts.short,
+            )
+            return
         if self.script_controller.is_running:
             return  # ignore silently for now
 
@@ -1561,6 +1567,16 @@ class Ferp(App):
             timeout=self.notify_timeouts.quick,
         )
         self.state_store.set_status("Creating archive...")
+        self._set_archive_operation_active(True)
+        self._show_archive_output(
+            "Archive Status",
+            [
+                "[bold $primary]Creating archive[/bold $primary]",
+                escape(output_path.name),
+                "",
+                f"Sources: {len(sources)}",
+            ],
+        )
         self._stop_file_tree_watch()
         self.run_worker(
             lambda: self._create_archive_worker(
@@ -1617,6 +1633,16 @@ class Ferp(App):
             timeout=self.notify_timeouts.quick,
         )
         self.state_store.set_status("Extracting archive...")
+        self._set_archive_operation_active(True)
+        self._show_archive_output(
+            "Archive Status",
+            [
+                "[bold $primary]Extracting archive[/bold $primary]",
+                escape(target.name),
+                "",
+                f"Destination: {escape(output_dir.name)}",
+            ],
+        )
         self._stop_file_tree_watch()
         self.run_worker(
             lambda: self._extract_archive_worker(target, output_dir, overwrite),
@@ -1654,7 +1680,7 @@ class Ferp(App):
                 severity="error",
                 timeout=self.notify_timeouts.normal,
             )
-            self._set_main_controls_disabled(False)
+            self._set_scripts_panel_disabled(False)
             return
         release_version = payload.get("release_version", "")
         namespace = payload.get("namespace")
@@ -1679,7 +1705,7 @@ class Ferp(App):
             exclusive=True,
             thread=True,
         )
-        self._set_main_controls_disabled(False)
+        self._set_scripts_panel_disabled(False)
 
     def _prompt_default_scripts_namespace(self, options: list[str]) -> None:
         prompt = "Select a namespace to install"
@@ -1704,7 +1730,7 @@ class Ferp(App):
                 self.notify(
                     "Updating default scripts...", timeout=self.notify_timeouts.long
                 )
-            self._set_main_controls_disabled(True)
+            self._set_scripts_panel_disabled(True)
             self.run_worker(
                 lambda ns=namespace: self._install_default_scripts(ns),
                 group=WorkerGroup.DEFAULT_SCRIPTS_UPDATE,
@@ -1933,12 +1959,11 @@ class Ferp(App):
         return self._task_list_screen
 
     def action_toggle_help(self) -> None:
-        try:
-            self.screen.query_one("HelpPanel")
-        except NoMatches:
-            self.action_show_help_panel()
-        else:
-            self.action_hide_help_panel()
+        screen = self.screen
+        if isinstance(screen, KeyHelpScreen):
+            screen.dismiss(None)
+            return
+        self.push_screen(KeyHelpScreen())
 
     def action_focus_next(self) -> None:
         if self._visual_mode:
@@ -2317,7 +2342,7 @@ class Ferp(App):
             if isinstance(result, dict):
                 self._render_default_scripts_update(result)
             else:
-                self._set_main_controls_disabled(False)
+                self._set_scripts_panel_disabled(False)
         elif event.state is WorkerState.ERROR:
             error = event.worker.error or RuntimeError("Default script update failed.")
             self.show_error(
@@ -2327,7 +2352,7 @@ class Ferp(App):
                     detail=str(error),
                 )
             )
-            self._set_main_controls_disabled(False)
+            self._set_scripts_panel_disabled(False)
         return True
 
     @worker_handler(WorkerGroup.SCRIPTS_REFRESH)
@@ -2381,7 +2406,7 @@ class Ferp(App):
                         else "FERP is already up to date."
                     )
                     self.notify(message, timeout=self.notify_timeouts.long)
-                    self._set_main_controls_disabled(False)
+                    self._set_scripts_panel_disabled(False)
                     return True
                 check_error = result.get("check_error")
                 if check_error:
@@ -2419,9 +2444,9 @@ class Ferp(App):
                             detail=message,
                         )
                     )
-                    self._set_main_controls_disabled(False)
+                    self._set_scripts_panel_disabled(False)
             else:
-                self._set_main_controls_disabled(False)
+                self._set_scripts_panel_disabled(False)
         elif event.state is WorkerState.ERROR:
             error = event.worker.error or RuntimeError("Upgrade failed.")
             self.show_error(
@@ -2431,7 +2456,7 @@ class Ferp(App):
                     detail=str(error),
                 )
             )
-            self._set_main_controls_disabled(False)
+            self._set_scripts_panel_disabled(False)
         return True
 
     @worker_handler(WorkerGroup.DELETE_PATH)
@@ -2543,10 +2568,20 @@ class Ferp(App):
 
     @worker_handler(WorkerGroup.CREATE_ARCHIVE)
     def _handle_create_archive_worker(self, event: Worker.StateChanged) -> bool:
+        self._set_archive_operation_active(False)
         self.state_store.set_status("Ready")
         if event.state is WorkerState.SUCCESS:
             result = event.worker.result
             if isinstance(result, ArchiveActionResult):
+                self._show_archive_output(
+                    "Archive Status",
+                    [
+                        "[bold $success]Archive created[/bold $success]",
+                        escape(result.output_path.name),
+                        "",
+                        f"Items: {result.entry_count}",
+                    ],
+                )
                 self.notify(
                     f"Archive created: {result.output_path.name} ({result.entry_count} item(s)).",
                     timeout=self.notify_timeouts.short,
@@ -2554,6 +2589,13 @@ class Ferp(App):
                 self.refresh_listing()
         elif event.state is WorkerState.ERROR:
             error = event.worker.error or RuntimeError("Archive creation failed.")
+            self._show_archive_output(
+                "Archive Status",
+                [
+                    "[bold $error]Archive creation failed[/bold $error]",
+                    escape(str(error)),
+                ],
+            )
             self.show_error(
                 FerpError(
                     code="archive_create_failed",
@@ -2566,10 +2608,20 @@ class Ferp(App):
 
     @worker_handler(WorkerGroup.EXTRACT_ARCHIVE)
     def _handle_extract_archive_worker(self, event: Worker.StateChanged) -> bool:
+        self._set_archive_operation_active(False)
         self.state_store.set_status("Ready")
         if event.state is WorkerState.SUCCESS:
             result = event.worker.result
             if isinstance(result, ArchiveActionResult):
+                self._show_archive_output(
+                    "Archive Status",
+                    [
+                        "[bold $success]Archive extracted[/bold $success]",
+                        escape(result.output_path.name),
+                        "",
+                        f"Items: {result.entry_count}",
+                    ],
+                )
                 self.notify(
                     f"Archive extracted to '{escape(result.output_path.name)}'.",
                     timeout=self.notify_timeouts.short,
@@ -2577,6 +2629,13 @@ class Ferp(App):
                 self.refresh_listing()
         elif event.state is WorkerState.ERROR:
             error = event.worker.error or RuntimeError("Archive extraction failed.")
+            self._show_archive_output(
+                "Archive Status",
+                [
+                    "[bold $error]Archive extraction failed[/bold $error]",
+                    escape(str(error)),
+                ],
+            )
             self.show_error(
                 FerpError(
                     code="archive_extract_failed",

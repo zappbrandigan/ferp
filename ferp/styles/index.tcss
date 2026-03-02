@@ -290,53 +290,48 @@ PathNavigator {
 
     }
 
-    #details_pane {
-        layout: vertical;
+    /* ============================================================================
+    Scripts Panel
+    ============================================================================ */
+    #scripts_panel {
         width: 2fr;
-        background: $background;
+        height: 1fr;
+        border: $panel-border;
+        border-title-align: right;
+        border-subtitle-align: left;
+        background: $panel-background;
+    }
 
-        /* ============================================================================
-        Scripts Panel
-        ============================================================================ */
-        #scripts_panel {
-            height: 1fr;
-            border: $panel-border;
-            border-title-align: right;
-            border-subtitle-align: left;
-            background: $panel-background;
-        }
+    #scripts_panel:focus {
+        border: $panel-border-focus;
+        background-tint: transparent;
+    }
 
-        #scripts_panel:focus {
-            border: $panel-border-focus;
-            background-tint: transparent;
-        }
+    #scripts_panel:blur ListItem.-highlight {
+        background: transparent;
+    }
 
-        #scripts_panel:blur ListItem.-highlight {
-            background: transparent;
-        }
+    .script_row {
+        height: 1;
+        padding: 0 1 0 1;
+    }
 
-        .script_row {
-            height: 1;
-            padding: 0 1 0 1;
-        }
+    ScriptItem > .script_category {
+        color: $text-accent;
+    }
 
-        ScriptItem > .script_category {
-            color: $text-accent;
-        }
+    #scripts_panel:focus ScriptItem.-highlight > .script_category {
+        color: $text;
+    }
 
-        #scripts_panel:focus ScriptItem.-highlight > .script_category {
-            color: $text;
-        }
+    ScriptItem > .script_name {
+        width: 1fr;
+        background: transparent;
+    }
 
-        ScriptItem > .script_name {
-            width: 1fr;
-            background: transparent;
-        }
-
-        ScriptItem > .script_version {
-            color: $text;
-            text-style: italic dim;
-        }
+    ScriptItem > .script_version {
+        color: $text;
+        text-style: italic dim;
     }
 
     #output_panel_section {
@@ -554,7 +549,7 @@ PathNavigator {
 
 #sort_dialog_container {
     height: auto;
-    width: 25;
+    width: 23;
     padding: 0 0;
     border: $panel-border;
     background: $panel-background;
@@ -889,4 +884,65 @@ ListItem.-highlight .task_item_text {
 #progress_message {
     text-align: center;
     opacity: 0.5;
+}
+
+/* ============================================================================
+   Key Help Screen
+============================================================================ */
+KeyHelpScreen {
+    background: $modal-overlay;
+    align: center middle;
+}
+
+#key_help_scroll {
+    width: 1fr;
+    height: 1fr;
+    padding: 1;
+    background: $panel-background;
+}
+
+#key_help_modal {
+    width: 125;
+    height: 46;
+    border: $panel-border;
+    background: $panel-background;
+}
+
+.key_help_intro {
+    width: 100%;
+    margin-bottom: 1;
+    padding: 0 1 1 1;
+    border-bottom: tall $panel-border;
+    color: $text-muted;
+}
+
+.key_help_section_block {
+    width: 100%;
+    margin: 1 0 0 0;
+    padding: 0 0 1 0;
+    border-left: tall $primary;
+    background: $surface;
+}
+
+.key_help_section_title {
+    width: 100%;
+    padding: 0 1;
+    margin-top: 1;
+    color: $primary;
+    text-style: bold;
+}
+
+.key_help_section_subtitle {
+    width: 100%;
+    padding: 0 1;
+    margin-bottom: 1;
+    color: $text-muted;
+}
+
+.key_help_table {
+    width: 100%;
+    height: auto;
+    margin: 0 1;
+    border: round $panel-border;
+    background: $panel-background;
 }

@@ -213,13 +213,13 @@ class SortOrderDialog(ModalScreen[str | None]):
         self._option_ids = []
         options: list[Option] = []
         for mode_id, key_hint, label in self._MODE_ROWS:
-            marker = "☑" if mode_id == self._current_mode else "☐"
+            marker = "✓" if mode_id == self._current_mode else " "
             options.append(
                 Option(f"{marker} [dim]{key_hint}[/dim] {label}", id=mode_id)
             )
             self._option_ids.append(mode_id)
         options.append(Option("[dim]----------------[/dim]", disabled=True))
-        direction_prefix = "☑" if self._sort_descending else "☐"
+        direction_prefix = "✓" if self._sort_descending else " "
         options.append(
             Option(f"{direction_prefix} [dim]d[/dim] Descending", id="descending")
         )

@@ -1,0 +1,108 @@
+{
+  "intro": "Press ? or Escape to close. 'Space + key' are sequential chords.",
+  "sections": [
+    {
+      "title": "Common Navigation",
+      "subtitle": "Used in most lists/panels.",
+      "rows": [
+        { "keys": "j / k", "shortcut": "Move selection down or up", "context": "Multiple" },
+        { "keys": "J / K", "shortcut": "Move selection down or up faster", "context": "Multiple" },
+        { "keys": "g / G", "shortcut": "Jump to the top or bottom of the list", "context": "Multiple" }
+      ]
+    },
+    {
+      "title": "Global App",
+      "subtitle": "App-wide shortcuts from the main workspace.",
+      "rows": [
+        {"keys": "t", "shortcut": "Open the task list screen", "context": "Global"},
+        {"keys": "T", "shortcut": "Open the quick-add task modal", "context": "Global"},
+        {"keys": "z", "shortcut": "Maximize or restore the focused panel", "context": "Global"},
+        {"keys": "?", "shortcut": "Open or close this shortcut reference", "context": "Global"},
+        {"keys": "Tab", "shortcut": "Switch primary focus between file and scripts panes", "context": "Global"},
+        {"keys": "Shift+Tab", "shortcut": "Switch primary focus backward", "context": "Global"},
+        {"keys": ".", "shortcut": "Toggle hidden files/folders", "context": "Global"},
+        {"keys": "Space + f", "shortcut": "Focus file tree", "context": "Global"},
+        {"keys": "Space + s", "shortcut": "Focus scripts panel", "context": "Global"},
+        {"keys": "Space + b", "shortcut": "Focus sidebar panel", "context": "Global"},
+        {"keys": "Space + g", "shortcut": "Focus path navigator panel", "context": "Global"},
+        {"keys": "Space + o", "shortcut": "Focus output panel", "context": "Global"},
+        {"keys": "Space + m", "shortcut": "Focus metadata panel", "context": "Global"},
+        {"keys": "Space + p", "shortcut": "Focus processes panel", "context": "Global"}
+      ]
+    },
+    {
+      "title": "File Navigation",
+      "subtitle": "Browsing, selection, archive, sorting, and filtering in the file tree.",
+      "rows": [
+        {"keys": "Enter", "shortcut": "Open the highlighted directory", "context": "File Tree"},
+        {"keys": "/", "shortcut": "Open the file-tree filter", "context": "File Tree"},
+        {"keys": ",", "shortcut": "Open the sort-order dialog", "context": "File Tree"},
+        {"keys": "P", "shortcut": "Pin or unpin the highlighted folder", "context": "File Tree"},
+        {"keys": "o", "shortcut": "Open the folder or selected file in system file explorer", "context": "File Tree"},
+        {"keys": "O", "shortcut": "Open the folder or selected file with default application", "context": "File Tree"},
+        {"keys": "Ctrl+t", "shortcut": "Open a terminal in the current directory", "context": "File Tree"},
+        {"keys": "E", "shortcut": "Create an archive from the current selection", "context": "File Tree"},
+        {"keys": "Ctrl+e", "shortcut": "Extract the selected archive", "context": "File Tree"},
+        {"keys": "u", "shortcut": "Go to the parent directory", "context": "File Tree"},
+        {"keys": "~", "shortcut": "Go to the configured start path", "context": "File Tree"},
+        {"keys": "h / l", "shortcut": "Go backward or forward in path history", "context": "File Tree"},
+        {"keys": "r or F2", "shortcut": "Rename the highlighted item", "context": "File Tree"},
+        {"keys": "n", "shortcut": "Create a new file", "context": "File Tree"},
+        {"keys": "N", "shortcut": "Create a new directory", "context": "File Tree"},
+        {"keys": "Delete", "shortcut": "Delete the highlighted item", "context": "File Tree"},
+        {"keys": "v", "shortcut": "Toggle visual selection mode", "context": "File Tree"},
+        {"keys": "s / S", "shortcut": "Toggle select or select a range", "context": "Visual mode"},
+        {"keys": "y or Ctrl+c", "shortcut": "Stage selected items to copy", "context": "Visual mode"},
+        {"keys": "x or Ctrl+x", "shortcut": "Stage selected items to move", "context": "Visual mode"},
+        {"keys": "p or Ctrl+v", "shortcut": "Paste staged items", "context": "Visual mode"},
+        {"keys": "a", "shortcut": "Select all items", "context": "Visual mode"},
+        {"keys": "A", "shortcut": "Deselect all items", "context": "Visual mode"},
+        {"keys": "Escape", "shortcut": "Clear items that are staged for copy or move", "context": "Visual mode"},
+        {"keys": "[ / ]", "shortcut": "Move to the previous or next chunk", "context": "Large directories"},
+        {"keys": "{ / }", "shortcut": "Jump to the first or last chunk", "context": "Large directories"}
+      ]
+    },
+    {
+      "title": "Sidebar",
+      "subtitle": "Quick navigation for places, pinned paths, and drives.",
+      "rows": [
+        {"keys": "r", "shortcut": "Refresh drive discovery", "context": "Sidebar"}
+      ]
+    },
+    {
+      "title": "Scripts",
+      "subtitle": "Script browser shortcuts.",
+      "rows": [
+        {"keys": "R", "shortcut": "Run the selected script", "context": "Scripts panel"},
+        {"keys": "Enter", "shortcut": "Open the selected script README", "context": "Scripts panel"}
+      ]
+    },
+    {
+      "title": "Status and Processes",
+      "subtitle": "Output and process management.",
+      "rows": [
+        {"keys": "c", "shortcut": "Clear the output panel content", "context": "Output panel"},
+        {"keys": "r", "shortcut": "Refresh the process list", "context": "Process panel"},
+        {"keys": "p", "shortcut": "Prune finished process records", "context": "Process panel"},
+        {"keys": "x", "shortcut": "Request termination of the selected process", "context": "Process panel"}
+      ]
+    },
+    {
+      "title": "Tasks",
+      "subtitle": "Task capture, edit, and full task list shortcuts.",
+      "rows": [
+        {"keys": "Escape", "shortcut": "Close the quick-add task modal", "context": "Task capture modal"},
+        {"keys": "Enter", "shortcut": "Save the new task", "context": "Task capture modal"},
+        {"keys": "Escape", "shortcut": "Cancel task editing", "context": "Task edit modal"},
+        {"keys": "Enter", "shortcut": "Save the edited task", "context": "Task edit modal"},
+        {"keys": "Escape or q", "shortcut": "Close the task list", "context": "Task list"},
+        {"keys": "Space", "shortcut": "Toggle completion for the highlighted task", "context": "Task list"},
+        {"keys": "T", "shortcut": "Open the add-task modal", "context": "Task list"},
+        {"keys": "e", "shortcut": "Edit the highlighted task", "context": "Task list"},
+        {"keys": "Delete", "shortcut": "Delete the highlighted task", "context": "Task list"},
+        {"keys": "c", "shortcut": "Clear completed tasks", "context": "Task list"},
+        {"keys": "u", "shortcut": "Mark all tasks as incomplete", "context": "Task list"}
+      ]
+    }
+  ]
+}
