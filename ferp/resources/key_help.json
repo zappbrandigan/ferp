@@ -43,7 +43,7 @@
         {"keys": "Ctrl+t", "shortcut": "Open a terminal in the current directory", "context": "File Tree"},
         {"keys": "E", "shortcut": "Create an archive from the current selection", "context": "File Tree"},
         {"keys": "Ctrl+e", "shortcut": "Extract the selected archive", "context": "File Tree"},
-        {"keys": "u", "shortcut": "Go to the parent directory", "context": "File Tree"},
+        {"keys": "u or backspace", "shortcut": "Go to the parent directory", "context": "File Tree"},
         {"keys": "~", "shortcut": "Go to the configured start path", "context": "File Tree"},
         {"keys": "h / l", "shortcut": "Go backward or forward in path history", "context": "File Tree"},
         {"keys": "r or F2", "shortcut": "Rename the highlighted item", "context": "File Tree"},
@@ -89,12 +89,8 @@
     },
     {
       "title": "Tasks",
-      "subtitle": "Task capture, edit, and full task list shortcuts.",
+      "subtitle": "Tasks list shortcuts.",
       "rows": [
-        {"keys": "Escape", "shortcut": "Close the quick-add task modal", "context": "Task capture modal"},
-        {"keys": "Enter", "shortcut": "Save the new task", "context": "Task capture modal"},
-        {"keys": "Escape", "shortcut": "Cancel task editing", "context": "Task edit modal"},
-        {"keys": "Enter", "shortcut": "Save the edited task", "context": "Task edit modal"},
         {"keys": "Escape or q", "shortcut": "Close the task list", "context": "Task list"},
         {"keys": "Space", "shortcut": "Toggle completion for the highlighted task", "context": "Task list"},
         {"keys": "T", "shortcut": "Open the add-task modal", "context": "Task list"},

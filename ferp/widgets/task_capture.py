@@ -11,8 +11,14 @@ from textual.widgets import Input
 class CaptureInput(Input):
     """Input widget that triggers a callback on submission."""
 
-    def __init__(self, submit_callback: Callable[[], None]) -> None:
-        super().__init__(id="task_capture_input", placeholder="New task…")
+    def __init__(
+        self,
+        submit_callback: Callable[[], None],
+        *,
+        input_id: str = "task_capture_input",
+        placeholder: str = "New task…",
+    ) -> None:
+        super().__init__(id=input_id, placeholder=placeholder)
         self._submit_callback = submit_callback
 
     def on_input_submitted(self, event: Input.Submitted) -> None:

@@ -1,19 +1,41 @@
 from textual.binding import Binding
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Label, MarkdownViewer
 
 
-class ReadmeScreen(ModalScreen):
+class _ReadmeMarkdown(MarkdownViewer):
     BINDINGS = [
-        Binding("j", "scroll_down", "Scroll down", show=False),
-        Binding("down", "scroll_down", "Scroll down", show=False),
-        Binding("k", "scroll_up", "Scroll up", show=False),
-        Binding("up", "scroll_up", "Scroll up", show=False),
+        Binding("j,down", "scroll_down", "Scroll down", show=False),
+        Binding("k,up", "scroll_up", "Scroll up", show=False),
+        Binding("g", "scroll_top", "Top", show=False),
+        Binding("G", "scroll_bottom", "Bottom", key_display="G", show=False),
         Binding("escape", "close", "Close README", show=True),
         Binding("q", "close", "Close README", show=False),
     ]
 
+    def action_scroll_down(self) -> None:
+        self._scroll_by(4)
+
+    def action_scroll_up(self) -> None:
+        self._scroll_by(-4)
+
+    def action_scroll_top(self) -> None:
+        self.scroll_to(y=0, animate=False)
+
+    def action_scroll_bottom(self) -> None:
+        max_y = max(0, self.virtual_size.height - self.size.height)
+        self.scroll_to(y=max_y, animate=False)
+
+    def action_close(self) -> None:
+        self.app.pop_screen()
+
+    def _scroll_by(self, delta: int) -> None:
+        current = getattr(self, "scroll_y", 0.0)
+        self.scroll_to(y=max(0, current + delta), animate=False)
+
+
+class ReadmeScreen(ModalScreen):
     def __init__(self, title: str, content: str, id: str) -> None:
         super().__init__(id=id)
         self.heading = title
@@ -21,28 +43,20 @@ class ReadmeScreen(ModalScreen):
         self._markdown: MarkdownViewer | None = None
 
     def compose(self):
-        markdown = MarkdownViewer(
+        markdown = _ReadmeMarkdown(
             self._content, id="readme_content", show_table_of_contents=False
         )
         self._markdown = markdown
         yield Vertical(
-            VerticalScroll(markdown, id="readme_scroll"),
+            markdown,
             id="readme_modal",
         )
 
     def on_mount(self) -> None:
-        self.query_one("#readme_scroll", VerticalScroll).focus()
+        self.query_one("#readme_content", _ReadmeMarkdown).focus()
 
     def action_close(self) -> None:
         self.app.pop_screen()
-
-    def action_scroll_down(self) -> None:
-        scroll = self.query_one("#readme_scroll", VerticalScroll)
-        scroll.scroll_down()
-
-    def action_scroll_up(self) -> None:
-        scroll = self.query_one("#readme_scroll", VerticalScroll)
-        scroll.scroll_up()
 
     def update_content(self, title: str, content: str) -> None:
         self.heading = title

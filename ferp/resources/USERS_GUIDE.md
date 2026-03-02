@@ -1,215 +1,196 @@
-# FERP User’s Guide
+# FERP User's Guide
 
-Welcome to FERP (For Executing Repetitive Processes). FERP is a keyboard‑first file navigator and automation workbench that runs in a terminal window but doesn’t require you to know terminal commands. You browse files, inspect details, and run approved scripts from a simple, structured interface.
-
-This guide covers the essentials to get you comfortable.
+FERP is a keyboard-first workspace for browsing files, running approved scripts, and tracking long-running work. This guide covers the core workflows most users actually need.
 
 ---
 
-## 1) What FERP Is For
+## 1) File Navigation
 
-FERP helps you:
+The file tree is the center of the app. It reflects the current folder and everything else builds on that context.
 
-- Navigate folders quickly with the keyboard.
-- Run repeatable scripts (automations) against the current folder, highlighted folder, or a highlited file.
-- Keep a lightweight task list inside the app.
+### Move Around
 
-If you already use file explorers or Finder/File Explorer, think of FERP as a power‑focused version built for repeatable workflows.
+- Use `j` / `k` to move the highlight.
+- Use `J` / `K` to move faster.
+- Use `g` / `G` to jump to the top or bottom.
+- Press `Enter` to open the highlighted directory.
+- Press `u` to go to the parent directory.
+- Press `~` to return to your configured start path.
+- Press `h` / `l` to move backward or forward through folder history.
 
----
+### Open Things Outside FERP
 
-## 2) Opening FERP
+- Press `o` to open the current folder in your system file explorer.
+- Press `O` to open the highlighted file with its default application.
+- Press `Ctrl+t` to open a terminal in the current directory.
 
-> This section assumes FERP was installed using `pipx`. 
-> The built-in update command also assumes FERP was installed using `pipx`. 
-> If you installed using a different method, you will need to manually manage launching and updating the app.
+### Work With Multiple Files
 
-FERP opens inside a terminal window (a black‑or‑white text window). You won’t need to type any extra commands unless someone has given you specific instructions.
+FERP has a visual selection mode for batch file operations.
 
-To launch FERP, open your terminal application (Terminal on macOS, Command Prompt/PowerShell on Windows) and type `ferp`, then press Enter. The symbols you see before the cursor (like `~>` or `$`) are just the prompt — you do **not** type those.
+- Press `v` to enter or leave visual mode.
+- Press `s` to toggle the highlighted item into or out of the selection.
+- Press `S` to select a range from the current anchor (last selected item).
+- Press `a` to select all items in the current folder.
+- Press `A` to clear the current selection.
+- Press `Escape` to clear staged copy or move items.
 
-```bash
-~> ferp
-```
+### Copy / Move / Rename / Delete
 
-To update FERP to the latest version, select "Upgrade FERP" from the command palette. Alternatively, you can run the following command in the terminal:
+- Press `y` or `Ctrl+c` to stage the current selection for copy.
+- Press `x` or `Ctrl+x` to stage the current selection for move.
+- Press `p` or `Ctrl+v` to paste staged items into the current folder.
+- Press `r` or `F2` to rename the highlighted item.
+- Press `Delete` to delete the highlighted item.
+- Press `n` to create a new file.
+- Press `N` to create a new folder.
 
-```bash
-~> pipx upgrade ferp
-```
+### Filter the Current Folder
 
-If you’re not sure how FERP was installed on your system, ask your team before updating.
+Press `/` to open the file-tree filter.
 
----
+- Plain text filters the visible list as you type.
+- Prefix with `!` to exclude matches.
+- Prefix with `/` to use regex matching.
+- Use `find/replace` to prepare a bulk rename.
+- Use `/regex/replace` for regex-based bulk rename.
 
-## 3) The Main Screen
+Press `Enter` in the filter to apply the current filter text. If the input is a valid `find/replace` pattern, FERP will open a bulk-rename confirmation instead. Press `Escape` to close the filter.
 
-FERP is split into sections (called "panels"):
+### Sort the Current Folder
 
-- **Title Bar (top)**: Shows the current app version, script runner status, current working directory, and cache file status.
-- **File Navigator (left)**: Shows folders and files you can navigate.
-- **Scripts List (top-right)**: Shows automations you can run (if any are installed).
-- **Output (bottom-right)**: Shows progress and results when a script runs.
-- **Process List (bottom-left)**: Shows recent script runs and their status.
-- **Metadata (bottom-middle)**: Shows details about the highlighted file or folder.
-- **Footer (bottom)**: Shows the most commonly used commands available from the currently focused panel.
+Press `,` to open the sort-order dialog.
 
-> FERP starts in your Home folder. You can change what directory is loaded on startup using the command palette.
+- Press `a` for `Name` sort.
+- Press `n` for `Natural` sort.
+- Press `e` for `Extension` sort.
+- Press `s` for `Size` sort.
+- Press `c` for `Created` sort.
+- Press `m` for `Modified` sort.
+- Press `d` to toggle descending order.
 
-## 4) Command Palette
+`Name` sort compares filenames as plain text, so values like `file10` come before `file2`. It also pushes directories whose names start with `_` to the top of the list. `Natural` sort compares numeric parts as numbers, so `file2` comes before `file10`.
 
-The command palette lets you run app-level actions (like changing themes or refreshing your cache file). Open it using `Ctrl+p`, then start typing the command name (arrow up/down).
+### Large Folders
 
----
+Very large folders are chunked so the UI stays responsive.
 
-## 5) Input Box Editing Shortcuts
-
-When a text input is focused (filter box, rename dialog, task entry, etc.), these shortcuts apply:
-
-```txt
-Key(s)             Description
-left               Move the cursor left.
-shift+left         Move cursor left and select.
-ctrl+left          Move the cursor one word to the left.
-right              Move the cursor right or accept the completion suggestion.
-ctrl+shift+left    Move cursor left a word and select.
-shift+right        Move cursor right and select.
-ctrl+right         Move the cursor one word to the right.
-backspace          Delete the character to the left of the cursor.
-ctrl+shift+right   Move cursor right a word and select.
-home,ctrl+a        Go to the beginning of the input.
-end,ctrl+e         Go to the end of the input.
-shift+home         Select up to the input start.
-shift+end          Select up to the input end.
-ctrl+d      Delete the character to the right of the cursor.
-ctrl+w             Delete the word to the left of the cursor.
-ctrl+u             Delete everything to the left of the cursor.
-ctrl+f             Delete the word to the right of the cursor.
-ctrl+k             Delete everything to the right of the cursor.
-```
+- Press `[` / `]` to move to the previous or next chunk.
+- Press `{` / `}` to jump to the first or last chunk.
 
 ---
 
-## 6) Basic Navigation
+## 2) Archives and Extraction
 
-FERP is keyboard‑first. Common actions:
+FERP can both create archives from the file tree and extract supported archives back into the current folder.
 
-- **Arrow keys**: Move selection up/down.
-- **Enter**: Open a folder or display a help file for a script.
+### Create an Archive
 
-Metadata updates automatically when you highlight a file or folder (with a short debounce).
+1. Highlight one file or folder, or use visual mode to select multiple items.
+2. Press `E`.
+3. In the archive dialog, confirm or edit the output name.
+4. Choose the archive format (`.zip` or `.7z`).
+5. Choose the compression level.
+6. Press `Enter` in the name field to start.
 
-Tip: You can move quickly without using the mouse. The full list of navigation keys are available in the app.
+FERP creates the archive in the current folder unless you enter an absolute path. If the destination already exists, FERP will ask before overwriting it.
 
----
+### Extract an Archive
 
-## 6b) Visual Mode (Multi‑Select)
+1. Highlight exactly one `.zip` or `.7z` file.
+2. Press `Ctrl+e`.
+3. Enter the destination folder name.
+4. Press `Enter` to start.
 
-Visual mode lets you select multiple items in the File Navigator without running scripts.
+Extraction creates a folder inside the current directory unless you enter an absolute path. If that folder already exists, FERP will ask before overwriting it.
 
-- **v**: Toggle visual mode (scripts panel is disabled while active).
-- **s**: Toggle selection for the highlighted item.
-- **Shift+s**: Select a range from the last anchor to the highlighted item.
-- **c**: Copy selected items.
-- **x**: Move selected items (cut).
-- **p**: Paste into the current directory.
-- **delete**: Delete selected items.
-- **a**: Select all visible items.
-- **Shift+a**: Deselect all items.
-- **escape**: Clear staged items.
+### Important Limits
 
-> Note: If the File Navigator is maximized, the first `escape` will un‑maximize it. Press `escape` again to clear staged items.
-
-Selections are cleared when you exit visual mode.
+- Extraction only supports `.zip` and `.7z`.
+- Archive creation will not let you write the archive on top of a selected source.
+- Archive creation will not let you create an archive inside one of the selected folders.
 
 ---
 
-## 6c) Filter Widget
+## 3) Running Scripts and Viewing READMEs
 
-Use the filter widget to quickly narrow the File Navigator list.
+The scripts panel lists the approved automations available in your current setup. Scripts run against the file or folder you currently have selected in the file tree.
 
-- Press `/` in the File Navigator to focus the filter box at the bottom of the File Navigator.
-- Text search matches the name and type column (e.g., `dir`, `pdf`, `report`).
-- Prefix with `!` to exclude matches (e.g., `!dir` to hide directories).
-- Prefix with `/` to use a regex (regex searches file/directory names only).
-- Use `pattern/replacement` to batch-rename files matching the filter (file extensions and directories will not be modified).
-- Use `/regex/replacement` for regex-based renames (regex runs on file stems).
+### Read a Script README First
 
-> Note: Use `\g<1>` notation to reference the first captured group.
+- Move focus to the scripts panel with `Tab` or `Space` then `s`.
+- Highlight a script.
+- Press `Enter`.
 
----
+FERP opens the script's bundled README in a modal. Use:
 
-## 6d) Favorites (Quick Jumps)
+- `j` / `k` or arrow keys to scroll.
+- `Escape` or `q` to close the README.
 
-Favorites let you mark locations and jump back quickly.
+If a script does not include a README, FERP will tell you that directly.
 
-- **f**: Toggle favorite for the highlighted item (or current directory).
-- **Shift+f**: Open the favorites list and jump to a saved path.
+### Run a Script
 
----
+1. In the file tree, highlight the file or folder the script should use.
+2. Move to the scripts panel.
+3. Highlight the script you want.
+4. Press `R`.
+5. Respond to any prompts shown by the script.
 
-## 6e) Panel Focus Shortcuts
+When a script starts, FERP sends its live output to the output panel and adds a record to the process panel.
 
-You can jump between panels without cycling through every widget:
+### What to Expect
 
-- **Tab / Shift+Tab**: Toggle focus between File Navigator and Scripts List.
-- **Alt+1**: Focus File Navigator.
-- **Alt+2**: Focus Scripts List.
-- **Alt+3**: Focus Output panel.
-- **Alt+4**: Focus Metadata panel.
-- **Alt+5**: Focus Process List panel.
+- Some scripts only make sense for certain file types or folders.
+- Many scripts will ask for confirmation, names, or destinations before they continue.
+- Only one script run is started at a time from the main UI.
 
 ---
 
-## 6f) Process List Panel
+## 4) The Process Panel
 
-The Process List shows recent script runs and their status:
+The process panel is your running-history view. It shows tracked script runs, their current state, and the target each run is working on.
 
-- **r**: Refresh the list.
-- **p**: Prune finished processes.
-- **k**: Cancel the selected process.
+### What It Shows
 
-Statuses are simplified for clarity (e.g., Running, Finished, Canceled, Error).
+Each entry includes:
 
----
+- The script name
+- A friendly status such as `Running`, `Waiting for input`, `Finished`, `Canceled`, or `Error`
+- The process ID when available
+- A shortened target path label
 
-## 7) Running a Script (Automation)
+The newest process appears at the top.
 
-Scripts are pre‑approved tasks like "rename files," "backup a folder," or "convert a file."
+### Process Panel Actions
 
-**How to run one:**
+- Press `Space` then `p` to focus the process panel.
+- Press `r` to refresh the list.
+- Press `p` to prune finished process records.
+- Press `x` to request termination of the highlighted process.
 
-1. Highlight the folder or file the script needs.
-2. Choose a script from the scripts list.
-3. Press `Shift+R` to run it.
-4. Follow any prompts (yes/no questions, names, destinations, etc.).
-5. Watch the output pane for progress and results.
+If no processes are currently tracked, the panel will show a placeholder message instead of an empty list.
 
-If a script needs a specific file type, FERP will only enable it when a matching file is selected.
+### Relationship to the Output Panel
 
----
+The output panel shows the live transcript for the active work. The process panel is the summary list.
 
-## 8) Script Help (READMEs)
-
-Each script can include built‑in documentation. To open it:
-
-- Select a script, then press **Enter** to view the script’s README.
-
-Use this to confirm what a script does before you run it.
+Use the output panel when you need detail.
+Use the process panel when you need status, history, or a quick cancel action.
 
 ---
 
-## 9) Task List (Quick Notes)
+## 5) Focus Shortcuts
 
-FERP includes a simple task list for quick capture. Tasks can include multiple `@` tags to make them easier to spot and filter (e.g. `@todo`).
+These shortcuts help you move between the main panels quickly:
 
----
+- `Tab` / `Shift+Tab`: switch primary focus between file tree and scripts
+- `Space` then `f`: focus file tree
+- `Space` then `s`: focus scripts panel
+- `Space` then `b`: focus sidebar
+- `Space` then `g`: focus path navigator
+- `Space` then `o`: focus output panel
+- `Space` then `m`: focus metadata panel
+- `Space` then `p`: focus process panel
 
-## 10) Logs and Output
-
-When a script runs, FERP shows:
-
-- **Live output** in the output pane.
-- **Transcripts** saved automatically for later review.
-
-If you need to confirm what happened in a past run, open the latest transcript (log file) from the command palette.
+If you forget a shortcut, press `?` to open the in-app key reference.

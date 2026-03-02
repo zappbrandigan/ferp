@@ -282,7 +282,7 @@ class FileTree(OptionList):
             tooltip="Create an archive from the current selection",
         ),
         Binding(
-            "u",
+            "u,backspace",
             "go_parent",
             "Go to parent",
             show=True,
@@ -934,7 +934,7 @@ class FileTree(OptionList):
             else:
                 title = f'{title} (filter: "{truncated}")'
         if self._is_visual_mode():
-            title = f"{title} · [$text-accent]Visual[/]"
+            title = f"{title}: [$text on $secondary] Visual Mode [/]"
         try:
             container = self.app.query_one("#file_list_container")
         except Exception:

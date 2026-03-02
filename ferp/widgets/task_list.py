@@ -16,14 +16,13 @@ from textual.widgets import (
     ListItem,
     ListView,
     LoadingIndicator,
-    Static,
 )
 
 from ferp.core.state import TaskListState, TaskListStateStore
 from ferp.core.task_store import Task as TodoTask
 from ferp.core.task_store import TaskStore
 from ferp.widgets.dialogs import ConfirmDialog
-from ferp.widgets.task_capture import TaskCaptureModal
+from ferp.widgets.task_capture import CaptureInput, TaskCaptureModal
 
 
 class TaskEditModal(ModalScreen[str | None]):
@@ -37,35 +36,34 @@ class TaskEditModal(ModalScreen[str | None]):
     def __init__(self, initial_text: str) -> None:
         super().__init__()
         self._initial_text = initial_text
-        self._area: Input | None = None
-        self._status: Static | None = None
+        self._area: CaptureInput | None = None
         self._clear_timer: Timer | None = None
+        self._default_subtitle = "Enter update | Esc cancel"
 
     def compose(self):
-        self._area = Input(id="task_edit_input", placeholder="Edit task")
-        self._status = Static("", classes="task_edit_status")
-        yield Container(
-            Vertical(self._area, self._status, Footer()), id="task_edit_modal"
+        self._area = CaptureInput(
+            self.action_submit,
+            input_id="task_edit_input",
+            placeholder="Edit task…",
         )
+        yield self._area
 
     def on_mount(self) -> None:
-        area = self.query_one(Input)
-        container = self.query_one("#task_edit_modal", Container)
-        container.border_title = "Edit Task"
+        area = self._area or self.query_one("#task_edit_input", CaptureInput)
+        area.border_title = "Edit Task"
+        area.border_subtitle = self._default_subtitle
         area.value = self._initial_text
         area.focus()
+        area.cursor_position = len(area.value)
         self._area = area
 
-    @on(Input.Submitted, "#task_edit_input")
-    def _handle_submit(self, event: Input.Submitted) -> None:
-        event.stop()
-        self.action_submit()
-
     def action_submit(self) -> None:
-        area = self._area or self.query_one(Input)
+        area = self._area or self.query_one("#task_edit_input", CaptureInput)
         text = area.value.strip()
         if not text:
-            self._set_status("[$warning]Task text required[/]")
+            self._set_status(
+                "[$warning]Task text required[/] | Enter update | Esc cancel"
+            )
             return
         self._set_status("")
         self.dismiss(text)
@@ -74,9 +72,9 @@ class TaskEditModal(ModalScreen[str | None]):
         self.dismiss(None)
 
     def _set_status(self, message: str) -> None:
-        if self._status is None:
+        if self._area is None:
             return
-        self._status.update(message)
+        self._area.border_subtitle = message or self._default_subtitle
         if self._clear_timer:
             self._clear_timer.stop()
             self._clear_timer = None
@@ -84,8 +82,8 @@ class TaskEditModal(ModalScreen[str | None]):
             self._clear_timer = self.set_timer(1.5, self._clear_status)
 
     def _clear_status(self) -> None:
-        if self._status:
-            self._status.update("")
+        if self._area is not None:
+            self._area.border_subtitle = self._default_subtitle
         if self._clear_timer:
             self._clear_timer.stop()
             self._clear_timer = None

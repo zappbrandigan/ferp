@@ -209,16 +209,16 @@ class SortOrderDialog(ModalScreen[str | None]):
         if self._current_mode in self._option_ids:
             option_list.highlighted = self._option_ids.index(self._current_mode)
 
-    def _build_options(self) -> list[Option]:
+    def _build_options(self) -> list[Option | None]:
         self._option_ids = []
-        options: list[Option] = []
+        options: list[Option | None] = []
         for mode_id, key_hint, label in self._MODE_ROWS:
             marker = "✓" if mode_id == self._current_mode else " "
             options.append(
                 Option(f"{marker} [dim]{key_hint}[/dim] {label}", id=mode_id)
             )
             self._option_ids.append(mode_id)
-        options.append(Option("[dim]----------------[/dim]", disabled=True))
+        options.append(None)
         direction_prefix = "✓" if self._sort_descending else " "
         options.append(
             Option(f"{direction_prefix} [dim]d[/dim] Descending", id="descending")
@@ -233,6 +233,8 @@ class SortOrderDialog(ModalScreen[str | None]):
 
     def on_key(self, event) -> None:
         if event.key == "escape":
+            event.stop()
+            event.prevent_default()
             self.dismiss(None)
             return
         key_map = {
@@ -246,4 +248,6 @@ class SortOrderDialog(ModalScreen[str | None]):
         }
         option_id = key_map.get((event.character or "").lower())
         if option_id is not None:
+            event.stop()
+            event.prevent_default()
             self.dismiss(option_id)

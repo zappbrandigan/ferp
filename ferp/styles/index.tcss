@@ -755,18 +755,10 @@ TaskCaptureModal {
     background: $modal-overlay;
 }
 
-#task_edit_modal {
-    align: center middle;
-    max-height: 10;
-    max-width: 130;
-    padding: 1 1;
-    border: $panel-border;
-    background: $modal-surface;
-}
-
 #task_edit_input {
-    width: 100%;
+    width: 110;
     height: 3;
+    padding: 0 1;
     border: $panel-border;
     background: transparent;
 }
