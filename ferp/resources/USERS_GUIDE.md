@@ -180,7 +180,43 @@ Use the process panel when you need status, history, or a quick cancel action.
 
 ---
 
-## 5) Focus Shortcuts
+## 5) Tasks
+
+FERP includes a lightweight task list for quick notes and follow-up items. Tasks can now link back to the current file, folder, or directory context so they are easier to revisit later.
+
+### Capture a Task Quickly
+
+- Press `T` from the main workspace to open the quick-add task modal.
+- Type the task and press `Enter` to save it.
+- By default, FERP links the task to the highlighted file or folder. If nothing is highlighted, it links to the current directory.
+- Press `Ctrl+l` in the add-task modal to toggle that path link on or off before saving.
+
+### Open the Task List
+
+- Press `t` from the main workspace to open the task list.
+- Use `j` / `k`, `J` / `K`, and `g` / `G` to move through tasks like other lists.
+- Type tags such as `@catalog` into the filter field to narrow the visible list.
+
+### Work With Existing Tasks
+
+- Press `Space` to toggle completion for the highlighted task.
+- Press `e` to edit the highlighted task.
+- Press `Delete` to remove the highlighted task.
+- Press `p` to link the highlighted task to the current file/folder context.
+- Press `P` to clear the linked path from the highlighted task.
+- Press `Enter` to jump to the linked path for the highlighted task.
+
+If the linked path points to a file, FERP opens its parent folder and reselects the file in the file tree. If the linked path no longer exists, FERP will warn you instead of failing silently.
+
+### Clean Up the List
+
+- Press `c` to clear all completed tasks.
+- Press `u` to mark every completed task as incomplete.
+- Press `Escape` or `q` to close the task list.
+
+---
+
+## 6) Focus Shortcuts
 
 These shortcuts help you move between the main panels quickly:
 

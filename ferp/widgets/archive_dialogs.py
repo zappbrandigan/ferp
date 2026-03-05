@@ -82,7 +82,7 @@ class ArchiveSingleSelectList(OptionList):
     def _render_rows(self) -> None:
         options: list[Option] = []
         for option_id, label in self._rows:
-            marker = "☑" if option_id == self._selected_id else "☐"
+            marker = "✓" if option_id == self._selected_id else " "
             options.append(Option(f"{marker} {label}", id=option_id))
         self.set_options(options)
 

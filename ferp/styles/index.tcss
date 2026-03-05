@@ -481,7 +481,7 @@ PathNavigator {
     width: 110;
     padding: 1 2;
     border: $panel-border;
-    background: $modal-surface;
+    background: $panel-background;
 }
 
 #bulk_rename_dialog_container {
@@ -755,6 +755,11 @@ TaskCaptureModal {
     background: $modal-overlay;
 }
 
+#task_capture_modal {
+    width: 110;
+    height: auto;
+}
+
 #task_edit_input {
     width: 110;
     height: 3;
@@ -775,6 +780,15 @@ TaskCaptureModal {
     background: transparent;
 }
 
+#task_capture_link_state {
+    width: 110;
+    height: 1;
+    padding: 0 1;
+    margin-top: 1;
+    color: $text-muted;
+    text-align: center;
+}
+
 /* ============================================================================
    Task List Screen
 ============================================================================ */
@@ -785,17 +799,10 @@ TaskListScreen {
 
 #task_list_modal {
     align: center middle;
-    max-height: 35;
-    max-width: 130;
+    max-height: 40;
+    max-width: 150;
     padding: 0;
     background: $surface;
-}
-
-#task_list_view {
-    height: 1fr;
-    margin: 0;
-    border: $panel-border;
-    background: $panel-background;
 }
 
 #task_filter_container {
@@ -810,6 +817,50 @@ TaskListScreen {
     background: $panel-background;
     padding: 0 1;
     height: auto;
+}
+
+#task_list_table {
+    height: 1fr;
+    border: $panel-border;
+    background: $panel-background;
+}
+
+#task_list_header {
+    width: 1fr;
+    height: 1;
+    padding: 0 1;
+    background: $panel-background;
+}
+
+.task_header {
+    color: $text;
+    text-style: bold;
+    content-align: left middle;
+}
+
+.task_header_task {
+    width: 1fr;
+}
+
+.task_header_link {
+    width: 28;
+    text-align: right;
+    padding-left: 1;
+    content-align: right middle;
+}
+
+.task_header_when {
+    width: 18;
+    text-align: right;
+    padding-left: 1;
+    content-align: right middle;
+}
+
+#task_list_view {
+    height: 1fr;
+    margin: 0;
+    border: none;
+    background: $panel-background;
 }
 
 .task_item {
@@ -835,9 +886,15 @@ ListItem.-highlight .task_item_text {
     color: $text;
 }
 
-.task_item_meta {
-    width: auto;
-    min-width: 16;
+.task_item_link {
+    width: 28;
+    text-align: right;
+    color: $text-muted;
+    padding-left: 1;
+}
+
+.task_item_when {
+    width: 18;
     text-align: right;
     color: $text-muted;
     padding-left: 1;

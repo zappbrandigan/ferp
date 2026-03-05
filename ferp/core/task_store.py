@@ -16,6 +16,7 @@ def _utcnow() -> datetime:
 class Task:
     id: str
     text: str
+    linked_path: str | None = None
     completed: bool = False
     created_at: datetime = field(default_factory=_utcnow)
     completed_at: datetime | None = None
@@ -24,6 +25,7 @@ class Task:
         return {
             "id": self.id,
             "text": self.text,
+            "linked_path": self.linked_path,
             "completed": self.completed,
             "created_at": self.created_at.isoformat(),
             "completed_at": self.completed_at.isoformat()
@@ -35,9 +37,12 @@ class Task:
     def from_json(cls, payload: dict[str, object]) -> Task:
         created_at = payload.get("created_at")
         completed_at = payload.get("completed_at")
+        linked_path = payload.get("linked_path")
+        linked_path_text = str(linked_path).strip() if linked_path is not None else ""
         return cls(
             id=str(payload.get("id") or uuid.uuid4()),
             text=str(payload.get("text") or "").strip(),
+            linked_path=linked_path_text or None,
             completed=bool(payload.get("completed", False)),
             created_at=datetime.fromisoformat(created_at)
             if isinstance(created_at, str)
@@ -104,13 +109,21 @@ class TaskStore:
         indexed.sort(key=lambda pair: (pair[1].completed, pair[0]))
         return [task for _, task in indexed]
 
-    def add(self, text: str) -> Task:
+    @staticmethod
+    def _normalize_linked_path(value: Path | str | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    def add(self, text: str, *, linked_path: Path | str | None = None) -> Task:
         normalized = text.strip()
         if not normalized:
             raise ValueError("Task text is required.")
         new_task = Task(
             id=str(uuid.uuid4()),
             text=normalized,
+            linked_path=self._normalize_linked_path(linked_path),
             completed=False,
             created_at=_utcnow(),
             completed_at=None,
@@ -137,6 +150,23 @@ class TaskStore:
                 self.save()
                 self._emit()
                 return task
+        return None
+
+    def set_linked_path(
+        self,
+        task_id: str,
+        linked_path: Path | str | None,
+    ) -> Task | None:
+        normalized = self._normalize_linked_path(linked_path)
+        for task in self._tasks:
+            if task.id != task_id:
+                continue
+            if task.linked_path == normalized:
+                return task
+            task.linked_path = normalized
+            self.save()
+            self._emit()
+            return task
         return None
 
     def toggle(self, task_id: str) -> Task | None:

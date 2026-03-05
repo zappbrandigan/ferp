@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Sequence
 
 from rich.markup import escape
@@ -16,6 +17,7 @@ from textual.widgets import (
     ListItem,
     ListView,
     LoadingIndicator,
+    Static,
 )
 
 from ferp.core.state import TaskListState, TaskListStateStore
@@ -102,12 +104,14 @@ class TaskListItem(ListItem):
             classes.append("task_item--priority")
 
         self._text_widget = Label("", classes="task_item_text", markup=True)
-        self._meta_widget = Label("", classes="task_item_meta")
+        self._link_widget = Label("", classes="task_item_link")
+        self._when_widget = Label("", classes="task_item_when")
 
         super().__init__(
             Horizontal(
                 self._text_widget,
-                self._meta_widget,
+                self._link_widget,
+                self._when_widget,
             ),
             classes=" ".join(classes),
         )
@@ -116,7 +120,8 @@ class TaskListItem(ListItem):
         self._text_widget.update(
             self._render_text_markup(self._task_model, highlighted=self._highlighted)
         )
-        self._meta_widget.update(self._render_meta(self._task_model))
+        self._link_widget.update(self._render_link_summary(self._task_model))
+        self._when_widget.update(self._render_when(self._task_model))
 
     def update_task(self, task: TodoTask) -> None:
         self._task_model = task
@@ -128,7 +133,8 @@ class TaskListItem(ListItem):
         self._text_widget.update(
             self._render_text_markup(self._task_model, highlighted=self._highlighted)
         )
-        self._meta_widget.update(self._render_meta(self._task_model))
+        self._link_widget.update(self._render_link_summary(self._task_model))
+        self._when_widget.update(self._render_when(self._task_model))
 
     def set_highlighted(self, highlighted: bool) -> None:
         if self._highlighted == highlighted:
@@ -170,10 +176,20 @@ class TaskListItem(ListItem):
         return text
 
     @staticmethod
-    def _render_meta(task: TodoTask) -> str:
+    def _render_when(task: TodoTask) -> str:
         stamp = task.completed_at or task.created_at
         label = "done" if task.completed else "added"
         return f"{label} {TaskListItem._format_timestamp(stamp)}"
+
+    @staticmethod
+    def _render_link_summary(task: TodoTask) -> str:
+        if not task.linked_path:
+            return "-"
+        path = Path(task.linked_path).expanduser()
+        label = path.name or str(path)
+        if path.exists():
+            return label
+        return f"{label} (missing)"
 
     @staticmethod
     def _format_timestamp(stamp: datetime) -> str:
@@ -190,6 +206,8 @@ class TaskListScreen(ModalScreen[None]):
         Binding("space", "toggle_task", "Toggle completion", show=True),
         Binding("T", "capture_task", "Add", key_display="T", show=True),
         Binding("e", "edit_task", "Edit", show=True),
+        Binding("p", "attach_current_path", "Link path", show=True),
+        Binding("P", "clear_linked_path", "Clear path", key_display="P", show=True),
         Binding("delete", "delete_task", "Delete", show=True),
         Binding("j", "cursor_down", "Next", show=False),
         Binding("k", "cursor_up", "Previous", show=False),
@@ -221,13 +239,22 @@ class TaskListScreen(ModalScreen[None]):
         placeholder.disabled = True
         filter_input = Input(
             id="task_filter_input",
-            placeholder="Filter by tags (e.g. @kenny, @cbs)",
+            placeholder="Filter by tags (e.g. @kenny, @catalog)",
         )
         self._filter_input = filter_input
         yield Container(
             Vertical(
                 Container(filter_input, id="task_filter_container"),
-                ListView(placeholder, id="task_list_view"),
+                Container(
+                    Horizontal(
+                        Static("Task", classes="task_header task_header_task"),
+                        Static("Link", classes="task_header task_header_link"),
+                        Static("When", classes="task_header task_header_when"),
+                        id="task_list_header",
+                    ),
+                    ListView(placeholder, id="task_list_view"),
+                    id="task_list_table",
+                ),
                 Footer(id="task_list_footer"),
             ),
             id="task_list_modal",
@@ -235,7 +262,8 @@ class TaskListScreen(ModalScreen[None]):
 
     def on_mount(self) -> None:
         list_view = self.query_one(ListView)
-        list_view.border_title = "Tasks"
+        table = self.query_one("#task_list_table", Container)
+        table.border_title = "Tasks"
         list_view.focus()
         if self._filter_input is None:
             self._filter_input = self.query_one("#task_filter_input", Input)
@@ -343,6 +371,12 @@ class TaskListScreen(ModalScreen[None]):
             if previous_item is not None:
                 previous_item.set_highlighted(False)
         self._state_store.set_highlighted_task_id(None)
+
+    @on(ListView.Selected, "#task_list_view")
+    def _handle_selected(self, event: ListView.Selected) -> None:
+        if not isinstance(event.item, TaskListItem):
+            return
+        self.action_open_linked_path()
 
     def _find_task_item(self, task_id: str) -> TaskListItem | None:
         list_view = self.query_one(ListView)
@@ -454,13 +488,15 @@ class TaskListScreen(ModalScreen[None]):
         return items
 
     def action_capture_task(self) -> None:
-        def handle_submit(text: str) -> None:
+        linked_path = self._preferred_link_path()
+
+        def handle_submit(text: str, selected_path: Path | None) -> None:
             try:
-                self._store.add(text)
+                self._store.add(text, linked_path=selected_path)
             except ValueError:
                 self.app.bell()
 
-        self.app.push_screen(TaskCaptureModal(handle_submit))
+        self.app.push_screen(TaskCaptureModal(handle_submit, linked_path=linked_path))
 
     def action_toggle_task(self) -> None:
         task = self._selected_task()
@@ -483,6 +519,43 @@ class TaskListScreen(ModalScreen[None]):
             self._store.update_text(task.id, result)
 
         self.app.push_screen(TaskEditModal(task.text), after)
+
+    def action_attach_current_path(self) -> None:
+        task = self._selected_task()
+        if not task:
+            return
+        linked_path = self._preferred_link_path()
+        if linked_path is None:
+            self.app.bell()
+            return
+        self._store.set_linked_path(task.id, linked_path)
+
+    def action_clear_linked_path(self) -> None:
+        task = self._selected_task()
+        if not task or not task.linked_path:
+            return
+        self._store.set_linked_path(task.id, None)
+
+    def action_open_linked_path(self) -> None:
+        task = self._selected_task()
+        if not task or not task.linked_path:
+            return
+        target = Path(task.linked_path).expanduser()
+        if not target.exists():
+            self.app.notify("Linked path no longer exists.", severity="warning")
+            return
+        navigator = getattr(self.app, "_request_navigation", None)
+        if not callable(navigator):
+            return
+        if target.is_dir():
+            navigator(target)
+        else:
+            file_tree_store = getattr(self.app, "file_tree_store", None)
+            selector = getattr(file_tree_store, "set_last_selected_path", None)
+            if callable(selector):
+                selector(target)
+            navigator(target.parent)
+        self.dismiss(None)
 
     def action_clear_completed(self) -> None:
         if not any(task.completed for task in self._store.all()):
@@ -523,6 +596,21 @@ class TaskListScreen(ModalScreen[None]):
             if not self._tag_fuzzy_match(filter_tag, task_tags):
                 return False
         return True
+
+    def _preferred_link_path(self) -> Path | None:
+        return self._preferred_link_path_for_app(self.app)
+
+    @staticmethod
+    def _preferred_link_path_for_app(app: object) -> Path | None:
+        file_tree_store = getattr(app, "file_tree_store", None)
+        state = getattr(file_tree_store, "state", None)
+        selected = getattr(state, "last_selected_path", None)
+        if isinstance(selected, Path):
+            return selected
+        current_path = getattr(app, "current_path", None)
+        if isinstance(current_path, Path):
+            return current_path
+        return None
 
     @staticmethod
     def _tag_fuzzy_match(filter_tag: str, task_tags: set[str]) -> bool:

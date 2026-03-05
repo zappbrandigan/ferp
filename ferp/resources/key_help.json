@@ -92,12 +92,24 @@
       "subtitle": "Tasks list shortcuts.",
       "rows": [
         {"keys": "Escape or q", "shortcut": "Close the task list", "context": "Task list"},
+        {"keys": "Enter", "shortcut": "Open the linked path for the highlighted task", "context": "Task list"},
         {"keys": "Space", "shortcut": "Toggle completion for the highlighted task", "context": "Task list"},
         {"keys": "T", "shortcut": "Open the add-task modal", "context": "Task list"},
         {"keys": "e", "shortcut": "Edit the highlighted task", "context": "Task list"},
+        {"keys": "p", "shortcut": "Link the highlighted task to the current file/folder context", "context": "Task list"},
+        {"keys": "P", "shortcut": "Clear the linked path from the highlighted task", "context": "Task list"},
         {"keys": "Delete", "shortcut": "Delete the highlighted task", "context": "Task list"},
         {"keys": "c", "shortcut": "Clear completed tasks", "context": "Task list"},
         {"keys": "u", "shortcut": "Mark all tasks as incomplete", "context": "Task list"}
+      ]
+    },
+    {
+      "title": "Task Capture",
+      "subtitle": "Quick-add task modal shortcuts.",
+      "rows": [
+        {"keys": "Enter", "shortcut": "Save the task", "context": "Task capture modal"},
+        {"keys": "Ctrl+l", "shortcut": "Toggle the current path link on or off", "context": "Task capture modal"},
+        {"keys": "Escape", "shortcut": "Close the add-task modal", "context": "Task capture modal"}
       ]
     }
   ]
