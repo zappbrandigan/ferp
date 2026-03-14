@@ -17,7 +17,8 @@ def collect_files(
 ) -> list[Path]:
     """Collect files matching pattern from a root file or directory.
 
-    When recursive is enabled, skips any paths under directories that start with "_".
+    When recursive is enabled, skips any matching paths under descendant
+    directories that start with "_".
     Skips files with common placeholder prefixes (e.g., ".", "~$").
     """
     if root.is_file():
@@ -29,9 +30,10 @@ def collect_files(
         for path in root.rglob(pattern, case_sensitive=case_sensitive):
             if check_cancel is not None:
                 check_cancel()
+            relative_parts = path.relative_to(root).parts[:-1]
             if (
                 path.is_file()
-                and not any(part.startswith("_") for part in path.parts)
+                and not any(part.startswith("_") for part in relative_parts)
                 and not path.name.startswith(_SKIP_FILE_PREFIXES)
             ):
                 files.append(path)
