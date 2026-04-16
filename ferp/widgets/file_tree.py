@@ -86,6 +86,16 @@ def _replace_in_stem(
     return new_name, new_stem, count
 
 
+def _validate_regex_replacement(
+    matcher: Pattern[str], replacement: str
+) -> Exception | None:
+    try:
+        matcher.subn(replacement, "")
+    except (re.error, IndexError) as exc:
+        return exc
+    return None
+
+
 def _truncate_row_value(value: str, width: int) -> str:
     if width <= 0:
         return ""
@@ -798,6 +808,10 @@ class FileTree(OptionList):
             except re.error as exc:
                 app.show_error(exc)
                 return
+            replacement_error = _validate_regex_replacement(matcher, replacement)
+            if replacement_error is not None:
+                app.show_error(replacement_error)
+                return
         else:
             matcher = re.compile(re.escape(pattern), re.IGNORECASE)
             replacement = _escape_regex_replacement(replacement)
@@ -817,9 +831,13 @@ class FileTree(OptionList):
                 continue
             name = entry.path.name
             stem, _suffix = _split_stem_suffix(name)
-            new_name, new_stem, count = _replace_in_stem(
-                name, matcher=matcher, replacement=replacement
-            )
+            try:
+                new_name, new_stem, count = _replace_in_stem(
+                    name, matcher=matcher, replacement=replacement
+                )
+            except (re.error, IndexError) as exc:
+                app.show_error(exc)
+                return
             if count == 0 or new_stem == stem:
                 continue
             if not new_stem:

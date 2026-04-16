@@ -178,7 +178,6 @@ PathNavigator {
         #navigator_sidebar {
             width: 24;
             height: 1fr;
-            margin-right: 1;
             border: $panel-border;
             background: $panel-background;
             border-title-align: right;

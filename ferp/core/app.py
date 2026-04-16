@@ -2648,10 +2648,16 @@ class Ferp(App):
 
     @worker_handler(WorkerGroup.FILE_INFO)
     def _handle_file_info_worker(self, event: Worker.StateChanged) -> bool:
+        try:
+            panel = self.query_one(MetadataPanel)
+        except NoMatches:
+            return True
+        if not getattr(panel, "is_attached", True):
+            return True
+
         if event.state is WorkerState.SUCCESS:
             result = event.worker.result
             if isinstance(result, FileInfoResult):
-                panel = self.query_one(MetadataPanel)
                 if result.error:
                     self.show_error(
                         FerpError(
@@ -2696,7 +2702,6 @@ class Ferp(App):
                     detail=str(error),
                 )
             )
-            panel = self.query_one(MetadataPanel)
             panel.show_info(
                 "Metadata",
                 [
