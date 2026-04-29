@@ -506,9 +506,8 @@ class Ferp(App):
         ]
 
         integrations = self.settings.get("integrations")
-        if not isinstance(integrations, dict) or not integrations:
-            lines.append("  None Configured")
-            return "\n".join(lines)
+        if not isinstance(integrations, dict):
+            integrations = {}
 
         monday_settings = self._monday_settings() or {}
         monday_board_id = str(monday_settings.get("boardId") or "").strip()
@@ -529,6 +528,13 @@ class Ferp(App):
             chrome_path = str(chrome_settings.get("path") or "").strip()
         chrome_state = "[$success]set[/]" if chrome_path else "[$error]missing[/]"
         lines.append(f"  [bold $text-accent]Chrome:[/] path {chrome_state}")
+
+        gftv_settings = integrations.get("gftv", {})
+        gftv_cues_inbox = ""
+        if isinstance(gftv_settings, dict):
+            gftv_cues_inbox = str(gftv_settings.get("cuesInboxEmail") or "").strip()
+        gftv_state = "[$success]set[/]" if gftv_cues_inbox else "[$error]missing[/]"
+        lines.append(f"  [bold $text-accent]GFTV:[/] cues inbox {gftv_state}")
 
         return "\n".join(lines)
 
@@ -901,6 +907,33 @@ class Ferp(App):
             self._refresh_output_panel_message()
 
         self.push_screen(InputDialog(prompt), after)
+
+    def _command_set_gftv_cues_inbox(self) -> None:
+        prompt = "GFTV cues inbox email"
+        default_value = self._gftv_cues_inbox()
+
+        def after(value: str | None) -> None:
+            if not value:
+                return
+            email = self._normalize_email(value)
+            if not self._is_valid_email(email):
+                self.notify(
+                    "Provide a valid email address.",
+                    title="GFTV Config",
+                    severity="error",
+                    timeout=self.notify_timeouts.normal,
+                )
+                return
+            self._set_gftv_cues_inbox(email)
+            self.settings_store.save(self.settings)
+            self.notify(
+                "GFTV cues inbox updated.",
+                title="GFTV Config",
+                timeout=self.notify_timeouts.short,
+            )
+            self._refresh_output_panel_message()
+
+        self.push_screen(InputDialog(prompt, default=default_value or None), after)
 
     def _command_set_monday_api_token(self) -> None:
         prompt = "Monday API token"
@@ -1423,10 +1456,22 @@ class Ferp(App):
             return ""
         return str(monday_root.get("apiToken") or "").strip()
 
+    def _gftv_cues_inbox(self) -> str:
+        integrations = self.settings.get("integrations", {})
+        gftv_root = integrations.get("gftv", {})
+        if not isinstance(gftv_root, dict):
+            return ""
+        return str(gftv_root.get("cuesInboxEmail") or "").strip()
+
     def _set_monday_token(self, value: str) -> None:
         integrations = self.settings.setdefault("integrations", {})
         monday_root = integrations.setdefault("monday", {})
         monday_root["apiToken"] = value
+
+    def _set_gftv_cues_inbox(self, value: str) -> None:
+        integrations = self.settings.setdefault("integrations", {})
+        gftv_root = integrations.setdefault("gftv", {})
+        gftv_root["cuesInboxEmail"] = value
 
     def _set_monday_setting(self, key: str, value: Any) -> None:
         integrations = self.settings.setdefault("integrations", {})
@@ -1436,6 +1481,16 @@ class Ferp(App):
             monday_root.setdefault(namespace, {})[key] = value
         else:
             monday_root[key] = value
+
+    def _normalize_email(self, value: str) -> str:
+        return value.strip().strip("\"'<>")
+
+    def _is_valid_email(self, value: str) -> bool:
+        email = self._normalize_email(value)
+        if not email or "@" not in email:
+            return False
+        local, _, domain = email.partition("@")
+        return bool(local and domain and "." in domain)
 
     def _monday_cache_path(self, *, create: bool) -> Path:
         namespace = self._active_namespace()

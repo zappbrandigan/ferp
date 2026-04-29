@@ -35,6 +35,7 @@ class LogPreferences(BaseModel):
 class Integrations(BaseModel):
     model_config = ConfigDict(extra="allow")
 
+    gftv: dict[str, Any] = Field(default_factory=dict)
     monday: dict[str, Any] = Field(default_factory=dict)
 
 

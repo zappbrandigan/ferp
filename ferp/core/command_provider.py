@@ -53,6 +53,11 @@ class FerpCommandProvider(SimpleProvider):
             "_command_set_monday_api_token",
         ),
         (
+            "Set GFTV Cues Inbox",
+            "Update the cues inbox email used for GFTV circulation drafts.",
+            "_command_set_gftv_cues_inbox",
+        ),
+        (
             "Set Monday Board ID",
             "Update the Monday board id for the active namespace.",
             "_command_set_monday_board_id",
