@@ -3,7 +3,9 @@ from __future__ import annotations
 import re
 import uuid
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import NameObject, NumberObject, StreamObject
@@ -11,6 +13,33 @@ from pypdf.generic import NameObject, NumberObject, StreamObject
 _DOC_ID_RE = re.compile(r"ferp:DocumentID=\{(uuid:)?([0-9a-fA-F-]+)\}")
 _DOC_ID_PROP_NAME = "ferp:DocumentID"
 _MSO_PROPERTY_TYPE_STRING = 4
+_FERP_NS = "https://tulbox.app/ferp/xmp/1.0"
+_RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+_XMP_MM_NS = "http://ns.adobe.com/xap/1.0/mm/"
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+@dataclass(frozen=True)
+class FerpEffectiveDate:
+    date: str
+    territories: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class FerpAgreement:
+    publishers: tuple[str, ...]
+    effective_dates: tuple[FerpEffectiveDate, ...]
+
+
+@dataclass(frozen=True)
+class FerpXmpMetadata:
+    administrator: str
+    catalog_code: str
+    data_added_date: str
+    stamp_spec_version: str
+    document_id: str | None
+    instance_id: str | None
+    agreements: tuple[FerpAgreement, ...]
 
 
 def generate_document_id() -> str:
@@ -93,15 +122,11 @@ def resolve_excel_document_id(workbook, worksheet) -> str:
 
 
 def _extract_xmp_mm_id_text(xmp_text: str) -> tuple[str | None, str | None]:
-    match = re.search(r"(<x:xmpmeta\b.*?</x:xmpmeta>)", xmp_text, re.DOTALL)
-    xml_payload = match.group(1) if match else xmp_text
-    try:
-        root = ET.fromstring(xml_payload)
-    except ET.ParseError:
+    root = _parse_xmp_root(xmp_text)
+    if root is None:
         return None, None
-    ns = "http://ns.adobe.com/xap/1.0/mm/"
-    doc_elem = root.find(f".//{{{ns}}}DocumentID")
-    inst_elem = root.find(f".//{{{ns}}}InstanceID")
+    doc_elem = root.find(f".//{{{_XMP_MM_NS}}}DocumentID")
+    inst_elem = root.find(f".//{{{_XMP_MM_NS}}}InstanceID")
     doc_id = doc_elem.text.strip() if doc_elem is not None and doc_elem.text else None
     inst_id = inst_elem.text.strip() if inst_elem is not None and inst_elem.text else None
     return doc_id, inst_id
@@ -116,26 +141,13 @@ def _extract_xmp_mm_ids(xmp_text: str) -> tuple[str | None, str | None]:
 
 def _get_existing_xmp_mm_ids(reader: PdfReader) -> tuple[str | None, str | None]:
     try:
-        xmp = getattr(reader, "xmp_metadata", None)
-        if xmp is not None:
-            raw = getattr(xmp, "xmpmeta", None)
-            if raw:
-                return _extract_xmp_mm_ids(str(raw))
+        xmp_text = extract_pdf_xmp_text(reader)
+        if xmp_text:
+            return _extract_xmp_mm_ids(xmp_text)
     except Exception:
         pass
 
-    try:
-        root = reader.trailer.get("/Root", {})
-        metadata = root.get("/Metadata")
-        if metadata is None:
-            return None, None
-        raw = metadata.get_data()
-        if not raw:
-            return None, None
-        text = raw.decode("utf-8", errors="ignore")
-        return _extract_xmp_mm_ids(text)
-    except Exception:
-        return None, None
+    return None, None
 
 
 def extract_pdf_document_id(reader: PdfReader) -> str | None:
@@ -151,26 +163,175 @@ def extract_pdf_document_id(reader: PdfReader) -> str | None:
 
 def _get_existing_xmp_mm_id_text(reader: PdfReader) -> tuple[str | None, str | None]:
     try:
+        xmp_text = extract_pdf_xmp_text(reader)
+        if xmp_text:
+            return _extract_xmp_mm_id_text(xmp_text)
+    except Exception:
+        pass
+
+    return None, None
+
+
+def _extract_xmp_payload(xmp_text: str) -> str:
+    match = re.search(r"(<x:xmpmeta\b.*?</x:xmpmeta>)", xmp_text, re.DOTALL)
+    return match.group(1) if match else xmp_text
+
+
+def _parse_xmp_root(xmp_text: str) -> ET.Element | None:
+    try:
+        return ET.fromstring(_extract_xmp_payload(xmp_text))
+    except ET.ParseError:
+        return None
+
+
+def _normalize_text_value(value: str) -> str:
+    return " ".join(value.split()).strip()
+
+
+def _normalize_unique_values(values: Iterable[str], *, sort_values: bool = False) -> tuple[str, ...]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        value = _normalize_text_value(raw)
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    if sort_values:
+        normalized.sort()
+    return tuple(normalized)
+
+
+def _collect_xmp_text_values(elem: ET.Element) -> list[str]:
+    values: list[str] = []
+    if elem.text and elem.text.strip():
+        values.append(elem.text.strip())
+    for child in elem.iter():
+        if child is elem:
+            continue
+        if child.text and child.text.strip():
+            values.append(child.text.strip())
+    return values
+
+
+def _normalize_date_values(values: Iterable[str]) -> tuple[str, ...]:
+    normalized = _normalize_unique_values(values)
+    valid = [value for value in normalized if _DATE_RE.fullmatch(value)]
+    invalid = [value for value in normalized if not _DATE_RE.fullmatch(value)]
+    return tuple(sorted(valid) + invalid)
+
+
+def extract_pdf_xmp_text(reader: PdfReader) -> str | None:
+    try:
         xmp = getattr(reader, "xmp_metadata", None)
         if xmp is not None:
             raw = getattr(xmp, "xmpmeta", None)
             if raw:
-                return _extract_xmp_mm_id_text(str(raw))
+                return str(raw)
     except Exception:
         pass
 
     try:
         root = reader.trailer.get("/Root", {})
+        if hasattr(root, "get_object"):
+            root = root.get_object()
         metadata = root.get("/Metadata")
         if metadata is None:
-            return None, None
+            return None
+        if hasattr(metadata, "get_object"):
+            metadata = metadata.get_object()
         raw = metadata.get_data()
         if not raw:
-            return None, None
-        text = raw.decode("utf-8", errors="ignore")
-        return _extract_xmp_mm_id_text(text)
+            return None
+        return raw.decode("utf-8", errors="ignore")
     except Exception:
-        return None, None
+        return None
+
+
+def parse_ferp_xmp(xmp_text: str) -> FerpXmpMetadata | None:
+    root = _parse_xmp_root(xmp_text)
+    if root is None:
+        return None
+
+    namespaces = {"ferp": _FERP_NS, "rdf": _RDF_NS}
+
+    def scalar(path: str) -> str:
+        elem = root.find(path, namespaces)
+        if elem is None:
+            return ""
+        values = _normalize_unique_values(_collect_xmp_text_values(elem))
+        return values[0] if values else ""
+
+    agreements: list[FerpAgreement] = []
+    for agreement_node in root.findall(".//ferp:agreements/rdf:Bag/rdf:li", namespaces):
+        publishers = _normalize_unique_values(
+            li.text or ""
+            for li in agreement_node.findall(".//ferp:publishers/rdf:Bag/rdf:li", namespaces)
+        )
+        effective_dates: list[FerpEffectiveDate] = []
+        for effective_node in agreement_node.findall(
+            ".//ferp:effectiveDates/rdf:Seq/rdf:li", namespaces
+        ):
+            date_elem = effective_node.find("./ferp:date", namespaces)
+            date_values = _normalize_date_values(
+                _collect_xmp_text_values(date_elem) if date_elem is not None else []
+            )
+            territories = _normalize_unique_values(
+                li.text or ""
+                for li in effective_node.findall(
+                    ".//ferp:territories/rdf:Bag/rdf:li", namespaces
+                )
+            )
+            if not date_values and not territories:
+                continue
+            effective_dates.append(
+                FerpEffectiveDate(
+                    date=date_values[0] if date_values else "",
+                    territories=territories,
+                )
+            )
+        if publishers or effective_dates:
+            agreements.append(
+                FerpAgreement(
+                    publishers=publishers,
+                    effective_dates=tuple(effective_dates),
+                )
+            )
+
+    document_id, instance_id = _extract_xmp_mm_ids(xmp_text)
+    metadata = FerpXmpMetadata(
+        administrator=scalar(".//ferp:administrator"),
+        catalog_code=scalar(".//ferp:catalogCode"),
+        data_added_date=scalar(".//ferp:dataAddedDate"),
+        stamp_spec_version=scalar(".//ferp:stampSpecVersion"),
+        document_id=document_id,
+        instance_id=instance_id,
+        agreements=tuple(agreements),
+    )
+    has_data = any(
+        [
+            metadata.administrator,
+            metadata.catalog_code,
+            metadata.data_added_date,
+            metadata.stamp_spec_version,
+            metadata.document_id,
+            metadata.instance_id,
+            metadata.agreements,
+        ]
+    )
+    return metadata if has_data else None
+
+
+def extract_pdf_ferp_metadata(reader: PdfReader) -> FerpXmpMetadata | None:
+    xmp_text = extract_pdf_xmp_text(reader)
+    if not xmp_text:
+        return None
+    return parse_ferp_xmp(xmp_text)
+
+
+def read_pdf_ferp_metadata(pdf_path: Path) -> FerpXmpMetadata | None:
+    reader = PdfReader(str(pdf_path))
+    return extract_pdf_ferp_metadata(reader)
 
 
 def build_xmp_mm_metadata(document_id: str | None) -> bytes:
