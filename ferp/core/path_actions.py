@@ -148,10 +148,17 @@ class PathActionController:
                 if not new_name.endswith(suffix):
                     new_name = f"{new_name}{suffix}"
             destination = target.with_name(new_name)
-            if destination == target:
+            if destination == target and destination.name == target.name:
                 return
 
             if destination.exists():
+                try:
+                    same_entry = target.samefile(destination)
+                except OSError:
+                    same_entry = False
+                if same_entry:
+                    perform(False)
+                    return
                 self._present_confirm(
                     ConfirmDialog(f"'{destination.name}' exists. Overwrite?"),
                     lambda confirmed: perform(True) if confirmed else None,

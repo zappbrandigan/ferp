@@ -86,6 +86,20 @@ def _replace_in_stem(
     return new_name, new_stem, count
 
 
+def _replace_in_stem_or_case_only_name(
+    name: str, *, matcher: Pattern[str], replacement: str
+) -> tuple[str, str, int]:
+    new_name, new_stem, count = _replace_in_stem(
+        name, matcher=matcher, replacement=replacement
+    )
+    if count == 0 or new_stem == _split_stem_suffix(name)[0]:
+        candidate, name_count = matcher.subn(replacement, name)
+        if name_count > 0 and candidate != name and candidate.casefold() == name.casefold():
+            candidate_stem, _suffix = _split_stem_suffix(candidate)
+            return candidate, candidate_stem, name_count
+    return new_name, new_stem, count
+
+
 def _validate_regex_replacement(
     matcher: Pattern[str], replacement: str
 ) -> Exception | None:
@@ -94,6 +108,13 @@ def _validate_regex_replacement(
     except (re.error, IndexError) as exc:
         return exc
     return None
+
+
+def _same_filesystem_entry(source: Path, destination: Path) -> bool:
+    try:
+        return source.samefile(destination)
+    except OSError:
+        return False
 
 
 def _truncate_row_value(value: str, width: int) -> str:
@@ -824,7 +845,7 @@ class FileTree(OptionList):
         plan: list[tuple[Path, Path]] = []
         invalid: list[str] = []
         conflicts: list[str] = []
-        planned_targets: dict[str, str] = {}
+        planned_targets: dict[tuple[Path, str], str] = {}
 
         for entry in self._filtered_entries:
             if entry.is_dir:
@@ -832,7 +853,7 @@ class FileTree(OptionList):
             name = entry.path.name
             stem, _suffix = _split_stem_suffix(name)
             try:
-                new_name, new_stem, count = _replace_in_stem(
+                new_name, new_stem, count = _replace_in_stem_or_case_only_name(
                     name, matcher=matcher, replacement=replacement
                 )
             except (re.error, IndexError) as exc:
@@ -846,19 +867,25 @@ class FileTree(OptionList):
             if Path(new_name).name != new_name:
                 invalid.append(f"{name} -> {new_name}")
                 continue
-            if new_name in planned_targets:
+            target_key = (entry.path.parent, new_name.casefold())
+            if target_key in planned_targets:
                 conflicts.append(
-                    f"{name} -> {new_name} (already used by {planned_targets[new_name]})"
+                    f"{name} -> {new_name} (already used by {planned_targets[target_key]})"
                 )
                 continue
             destination = entry.path.with_name(new_name)
-            if destination.exists() and destination != entry.path:
+            same_entry = _same_filesystem_entry(entry.path, destination)
+            if destination.exists() and not same_entry:
                 conflicts.append(f"{name} -> {new_name} (already exists)")
                 continue
-            if destination in sources and destination != entry.path:
+            if any(
+                _same_filesystem_entry(source, destination)
+                and not _same_filesystem_entry(source, entry.path)
+                for source in sources
+            ):
                 conflicts.append(f"{name} -> {new_name} (conflicts with another file)")
                 continue
-            planned_targets[new_name] = name
+            planned_targets[target_key] = name
             plan.append((entry.path, destination))
 
         if not plan:
