@@ -81,7 +81,11 @@ from ferp.services.file_listing import (
     normalize_sort_mode,
     poll_directory_names,
 )
-from ferp.services.monday import sync_monday_board
+from ferp.services.monday import (
+    MondaySyncDefinition,
+    monday_sync_definitions,
+    sync_monday_board,
+)
 from ferp.services.releases import (
     ScriptUpdateResult,
     check_for_script_updates,
@@ -509,18 +513,22 @@ class Ferp(App):
         if not isinstance(integrations, dict):
             integrations = {}
 
-        monday_settings = self._monday_settings() or {}
-        monday_board_id = str(monday_settings.get("boardId") or "").strip()
         monday_token = self._monday_token()
-        monday_board_state = (
-            "[$success]set[/]" if monday_board_id else "[$error]missing[/]"
-        )
         monday_token_state = (
             "[$success]set[/]" if monday_token else "[$error]missing[/]"
         )
-        lines.append(
-            f"  [bold $text-accent]Monday:[/] boardId {monday_board_state}, apiToken {monday_token_state}"
+        monday_parts = [f"apiToken {monday_token_state}"]
+        namespace = self._active_namespace()
+        definitions = (
+            self._monday_sync_definitions(namespace) if namespace is not None else ()
         )
+        for definition in definitions:
+            board_id = self._monday_board_id(definition)
+            board_state = (
+                "[$success]set[/]" if board_id is not None else "[$error]missing[/]"
+            )
+            monday_parts.append(f"{definition.label} boardId {board_state}")
+        lines.append(f"  [bold $text-accent]Monday:[/] {', '.join(monday_parts)}")
 
         chrome_settings = integrations.get("chrome", {})
         chrome_path = ""
@@ -757,35 +765,78 @@ class Ferp(App):
         )
 
     def _command_sync_monday_board(self) -> None:
-        monday_settings = self._monday_settings()
         namespace = self._active_namespace()
-        if not monday_settings:
-            if namespace:
-                monday_settings = {}
-            else:
-                label = f" '{namespace}'" if namespace else ""
-                self.notify(
-                    f"No Monday config for namespace{label}.",
-                    title="Sync Error",
-                    severity="error",
-                    timeout=self.notify_timeouts.normal,
-                )
+        if not namespace:
+            self.notify(
+                "Select a namespace before syncing Monday board data.",
+                title="Sync Error",
+                severity="error",
+                timeout=self.notify_timeouts.normal,
+            )
+            return
+
+        try:
+            definitions = self._monday_sync_definitions(namespace, strict=True)
+        except Exception as exc:
+            self.show_error(exc)
+            return
+        if not definitions:
+            self.notify(
+                f"No Monday sync definitions for namespace '{namespace}'.",
+                title="Sync Error",
+                severity="error",
+                timeout=self.notify_timeouts.normal,
+            )
+            return
+
+        def sync_definition(definition: MondaySyncDefinition) -> None:
+            self._sync_monday_definition(definition)
+
+        if len(definitions) == 1:
+            sync_definition(definitions[0])
+            return
+
+        labels = [definition.label for definition in definitions]
+        by_label = {definition.label: definition for definition in definitions}
+
+        def after(value: str | None) -> None:
+            if not value:
                 return
+            definition = by_label.get(value)
+            if definition is not None:
+                sync_definition(definition)
+
+        self.push_screen(
+            SelectDialog("Select Monday board data to sync", labels),
+            after,
+        )
+
+    def _sync_monday_definition(self, definition: MondaySyncDefinition) -> None:
+        namespace = self._active_namespace()
+        if not namespace:
+            self.notify(
+                "Select a namespace before syncing Monday board data.",
+                title="Sync Error",
+                severity="error",
+                timeout=self.notify_timeouts.normal,
+            )
+            return
 
         token = self._monday_token()
-        board_id_raw = monday_settings.get("boardId")
-        board_id_text = str(board_id_raw).strip() if board_id_raw is not None else ""
-        board_id_value: int | None
-        try:
-            board_id_value = int(board_id_text) if board_id_text else None
-        except (TypeError, ValueError):
-            board_id_value = None
+        board_id_value = self._monday_board_id(definition)
 
         def start_sync(api_token: str, board_id: int) -> None:
-            self.notify("Syncing Monday board...", timeout=self.notify_timeouts.normal)
+            self.notify(
+                f"Syncing Monday {definition.label}...",
+                timeout=self.notify_timeouts.normal,
+            )
             self.run_worker(
-                lambda token=api_token, board=board_id: self._sync_monday_board(
-                    token, board
+                lambda token=api_token,
+                board=board_id,
+                definition_id=definition.id: self._sync_monday_board(
+                    token,
+                    board,
+                    definition_id,
                 ),
                 group=WorkerGroup.MONDAY_SYNC,
                 exclusive=True,
@@ -813,7 +864,7 @@ class Ferp(App):
             self.push_screen(InputDialog(prompt), after)
 
         if board_id_value is None:
-            prompt = "Monday board id"
+            prompt = f"Monday board id ({definition.label})"
 
             def after(value: str | None) -> None:
                 if not value:
@@ -831,7 +882,7 @@ class Ferp(App):
                         timeout=self.notify_timeouts.normal,
                     )
                     return
-                self._set_monday_setting("boardId", board_id_value_local)
+                self._set_monday_board_id(definition.id, board_id_value_local)
                 self.settings_store.save(self.settings)
                 self.call_after_refresh(
                     lambda: prompt_for_token_and_sync(board_id_value_local)
@@ -879,34 +930,67 @@ class Ferp(App):
             )
             return
 
-        prompt = f"Monday board id ({namespace})"
+        try:
+            definitions = self._monday_sync_definitions(namespace, strict=True)
+        except Exception as exc:
+            self.show_error(exc)
+            return
+        if not definitions:
+            self.notify(
+                f"No Monday sync definitions for namespace '{namespace}'.",
+                title="Monday Config",
+                severity="error",
+                timeout=self.notify_timeouts.normal,
+            )
+            return
 
-        def after(value: str | None) -> None:
+        def prompt_for_definition(definition: MondaySyncDefinition) -> None:
+            current = self._monday_board_id(definition)
+            default = str(current) if current is not None else None
+            prompt = f"Monday board id ({definition.label})"
+
+            def after(value: str | None) -> None:
+                if not value:
+                    return
+                board_id_text = value.strip()
+                if not board_id_text:
+                    return
+                try:
+                    board_id_value = int(board_id_text)
+                except ValueError:
+                    self.notify(
+                        "Board id must be a number.",
+                        title="Monday Config",
+                        severity="error",
+                        timeout=self.notify_timeouts.normal,
+                    )
+                    return
+                self._set_monday_board_id(definition.id, board_id_value)
+                self.settings_store.save(self.settings)
+                self.notify(
+                    f"Monday board id updated for '{definition.label}'.",
+                    title="Monday Config",
+                    timeout=self.notify_timeouts.short,
+                )
+                self._refresh_output_panel_message()
+
+            self.push_screen(InputDialog(prompt, default=default), after)
+
+        if len(definitions) == 1:
+            prompt_for_definition(definitions[0])
+            return
+
+        labels = [definition.label for definition in definitions]
+        by_label = {definition.label: definition for definition in definitions}
+
+        def after_select(value: str | None) -> None:
             if not value:
                 return
-            board_id_text = value.strip()
-            if not board_id_text:
-                return
-            try:
-                board_id_value = int(board_id_text)
-            except ValueError:
-                self.notify(
-                    "Board id must be a number.",
-                    title="Monday Config",
-                    severity="error",
-                    timeout=self.notify_timeouts.normal,
-                )
-                return
-            self._set_monday_setting("boardId", board_id_value)
-            self.settings_store.save(self.settings)
-            self.notify(
-                f"Monday board id updated for '{namespace}'.",
-                title="Monday Config",
-                timeout=self.notify_timeouts.short,
-            )
-            self._refresh_output_panel_message()
+            definition = by_label.get(value)
+            if definition is not None:
+                prompt_for_definition(definition)
 
-        self.push_screen(InputDialog(prompt), after)
+        self.push_screen(SelectDialog("Select Monday board", labels), after_select)
 
     def _command_set_gftv_cues_inbox(self) -> None:
         prompt = "GFTV cues inbox email"
@@ -1063,10 +1147,15 @@ class Ferp(App):
             )
 
             if self._dev_config_enabled:
+                assets_status = self._install_namespace_config_assets(
+                    namespace,
+                    dry_run=False,
+                )
                 return {
                     "release_status": "Default scripts update skipped (dry run).",
                     "release_detail": (
-                        "FERP_DEV_CONFIG=1; downloaded assets were discarded."
+                        "FERP_DEV_CONFIG=1; downloaded script assets were discarded. "
+                        f"{assets_status}"
                     ),
                     "release_version": release_version,
                     "namespace": namespace,
@@ -1096,6 +1185,12 @@ class Ferp(App):
                 json.dumps(merged, indent=2) + "\n", encoding="utf-8"
             )
             config_status = f"Installed core + {namespace} scripts."
+            assets_status = self._install_namespace_config_assets(
+                namespace,
+                dry_run=False,
+            )
+            if assets_status:
+                config_status = f"{config_status} {assets_status}"
 
             dependency_manager = ScriptDependencyManager(
                 self._paths.config_file, python_executable=sys.executable
@@ -1124,6 +1219,42 @@ class Ferp(App):
             "release_version": release_version,
             "namespace": namespace,
         }
+
+    def _install_namespace_config_assets(
+        self, namespace: str, *, dry_run: bool
+    ) -> str:
+        source_dir = self.scripts_dir / namespace / "monday"
+        if not source_dir.exists():
+            return "No Monday config assets found."
+
+        source_files = [
+            path
+            for path in sorted(source_dir.iterdir())
+            if path.is_file() and path.suffix.lower() in {".json", ".graphql"}
+        ]
+        if not source_files:
+            return "No Monday config assets found."
+
+        target_dir = self._paths.config_dir / "monday"
+        installed = 0
+        updated = 0
+        for source in source_files:
+            target = target_dir / source.name
+            exists = target.exists()
+            if not dry_run:
+                target_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+            if exists:
+                updated += 1
+            else:
+                installed += 1
+
+        action = "Would install" if dry_run else "Installed"
+        update_action = "would update" if dry_run else "updated"
+        return (
+            f"{action} {installed} Monday config asset(s); "
+            f"{update_action} {updated} existing."
+        )
 
     def _upgrade_app(self, pipx_path: str) -> dict[str, object]:
         current_version = str(__version__)
@@ -1180,13 +1311,28 @@ class Ferp(App):
             return True
         return False
 
-    def _sync_monday_board(self, api_token: str, board_id: int) -> dict[str, object]:
-        cache_path = self._monday_cache_path(create=True)
+    def _sync_monday_board(
+        self, api_token: str, board_id: int, definition_id: str
+    ) -> dict[str, object]:
         try:
             namespace = self._active_namespace()
             if not namespace:
                 raise RuntimeError("Missing active namespace for Monday sync.")
-            return sync_monday_board(namespace, api_token, board_id, cache_path)
+            definition = self._monday_definition(definition_id)
+            if definition is None:
+                raise RuntimeError(f"Unknown Monday sync definition: {definition_id}")
+            cache_path = self._monday_cache_path(definition, create=True)
+            result = sync_monday_board(
+                namespace,
+                definition.id,
+                api_token,
+                board_id,
+                cache_path,
+                config_dir=self._paths.config_dir,
+            )
+            result["definition_id"] = definition.id
+            result["definition_label"] = definition.label
+            return result
         except Exception as exc:
             return {"error": str(exc)}
 
@@ -1385,15 +1531,13 @@ class Ferp(App):
         return self._is_shutting_down
 
     def has_monday_integration(self) -> bool:
-        settings = self._monday_settings()
-        if not settings:
+        namespace = self._active_namespace()
+        if not namespace:
             return False
-        board_id_raw = settings.get("boardId")
-        board_id_text = str(board_id_raw).strip() if board_id_raw is not None else ""
-        try:
-            return bool(int(board_id_text))
-        except (TypeError, ValueError):
-            return False
+        return any(
+            self._monday_board_id(definition) is not None
+            for definition in self._monday_sync_definitions(namespace)
+        )
 
     def _active_namespace(self) -> str | None:
         preferences = self.settings.get("userPreferences", {})
@@ -1449,6 +1593,71 @@ class Ferp(App):
             return candidate
         return None
 
+    def _monday_definition(self, definition_id: str) -> MondaySyncDefinition | None:
+        namespace = self._active_namespace()
+        if not namespace:
+            return None
+        for definition in self._monday_sync_definitions(namespace):
+            if definition.id == definition_id:
+                return definition
+        return None
+
+    def _monday_default_definition(self) -> MondaySyncDefinition | None:
+        namespace = self._active_namespace()
+        if not namespace:
+            return None
+        definitions = self._monday_sync_definitions(namespace)
+        return definitions[0] if definitions else None
+
+    def _monday_sync_definitions(
+        self, namespace: str, *, strict: bool = False
+    ) -> tuple[MondaySyncDefinition, ...]:
+        try:
+            return monday_sync_definitions(namespace, config_dir=self._paths.config_dir)
+        except Exception:
+            if strict:
+                raise
+            return monday_sync_definitions(namespace)
+
+    def _monday_board_settings(self, definition_id: str) -> dict[str, Any] | None:
+        integrations = self.settings.get("integrations", {})
+        monday_root = integrations.get("monday", {})
+        if not isinstance(monday_root, dict):
+            return None
+        namespace = self._active_namespace()
+        if not namespace:
+            return None
+        namespaces = monday_root.get("namespaces", {})
+        if isinstance(namespaces, dict):
+            namespace_settings = namespaces.get(namespace, {})
+            if isinstance(namespace_settings, dict):
+                boards = namespace_settings.get("boards", {})
+                if isinstance(boards, dict):
+                    board_settings = boards.get(definition_id)
+                    if isinstance(board_settings, dict):
+                        return board_settings
+        return None
+
+    def _legacy_monday_settings(self) -> dict[str, Any] | None:
+        return self._monday_settings()
+
+    def _monday_board_id(self, definition: MondaySyncDefinition) -> int | None:
+        board_settings = self._monday_board_settings(definition.id)
+        board_id_raw = None
+        if board_settings is not None:
+            board_id_raw = board_settings.get("boardId")
+        if board_id_raw is None:
+            board_id_raw = definition.board_id
+        if board_id_raw is None and definition.shipped:
+            legacy_settings = self._legacy_monday_settings()
+            if legacy_settings is not None:
+                board_id_raw = legacy_settings.get(definition.legacy_board_id_key)
+        board_id_text = str(board_id_raw).strip() if board_id_raw is not None else ""
+        try:
+            return int(board_id_text) if board_id_text else None
+        except (TypeError, ValueError):
+            return None
+
     def _monday_token(self) -> str:
         integrations = self.settings.get("integrations", {})
         monday_root = integrations.get("monday", {})
@@ -1473,14 +1682,17 @@ class Ferp(App):
         gftv_root = integrations.setdefault("gftv", {})
         gftv_root["cuesInboxEmail"] = value
 
-    def _set_monday_setting(self, key: str, value: Any) -> None:
+    def _set_monday_board_id(self, definition_id: str, value: int) -> None:
         integrations = self.settings.setdefault("integrations", {})
         monday_root = integrations.setdefault("monday", {})
         namespace = self._active_namespace()
-        if namespace:
-            monday_root.setdefault(namespace, {})[key] = value
-        else:
-            monday_root[key] = value
+        if not namespace:
+            return
+        namespaces = monday_root.setdefault("namespaces", {})
+        namespace_settings = namespaces.setdefault(namespace, {})
+        boards = namespace_settings.setdefault("boards", {})
+        board_settings = boards.setdefault(definition_id, {})
+        board_settings["boardId"] = value
 
     def _normalize_email(self, value: str) -> str:
         return value.strip().strip("\"'<>")
@@ -1492,14 +1704,22 @@ class Ferp(App):
         local, _, domain = email.partition("@")
         return bool(local and domain and "." in domain)
 
-    def _monday_cache_path(self, *, create: bool) -> Path:
+    def _monday_cache_path(
+        self, definition: MondaySyncDefinition | None = None, *, create: bool
+    ) -> Path:
+        if definition is None:
+            definition = self._monday_default_definition()
         namespace = self._active_namespace()
         if namespace:
             cache_dir = self._paths.cache_dir / namespace
             if create:
                 cache_dir.mkdir(parents=True, exist_ok=True)
-            return cache_dir / "publishers_cache.json"
-        return self._paths.cache_dir / "publishers_cache.json"
+            filename = (
+                definition.cache_filename if definition else "publishers_cache.json"
+            )
+            return cache_dir / filename
+        filename = definition.cache_filename if definition else "publishers_cache.json"
+        return self._paths.cache_dir / filename
 
     def show_error(self, error: BaseException) -> None:
         message, severity = format_error(error)
@@ -1749,6 +1969,9 @@ class Ferp(App):
         summary = "Default scripts updated."
         if release_version:
             summary = f"{summary} {release_version}"
+        release_detail = str(payload.get("release_detail") or "").strip()
+        if release_detail:
+            summary = f"{summary}\n{release_detail}"
         self.notify(summary, timeout=self.notify_timeouts.normal)
 
         scripts_panel = self.query_one(ScriptManager)
@@ -1810,15 +2033,18 @@ class Ferp(App):
             )
             return
         board_name = payload.get("board_name", "")
+        definition_label = payload.get("definition_label", "")
         group_count = payload.get("group_count", 0)
-        publisher_count = payload.get("publisher_count", 0)
+        item_count = payload.get("item_count", payload.get("publisher_count", 0))
         skipped = payload.get("skipped", 0)
 
         details = (
-            f"\nGroups {group_count}\nPublishers {publisher_count}\nSkipped {skipped}"
+            f"\nGroups {group_count}\nItems {item_count}\nSkipped {skipped}"
         )
         title = (
-            f"Synced: {escape(str(board_name))}"
+            f"Synced {escape(str(definition_label))}: {escape(str(board_name))}"
+            if definition_label and board_name
+            else f"Synced: {escape(str(board_name))}"
             if board_name
             else "Monday sync updated"
         )
