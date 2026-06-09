@@ -21,6 +21,7 @@ class PathActionController:
         show_error: Callable[[BaseException], None],
         refresh_listing: Callable[[], None],
         suppress_watcher_refreshes: Callable[[float], None] | None = None,
+        preserve_selection_after_mutation: Callable[[Path], None] | None = None,
         fs_controller: FileSystemController,
         delete_handler: Callable[[Path], None],
         bulk_delete_handler: Callable[[list[Path]], None],
@@ -42,6 +43,7 @@ class PathActionController:
         self._show_error = show_error
         self._refresh_listing = refresh_listing
         self._suppress_watcher_refreshes = suppress_watcher_refreshes
+        self._preserve_selection_after_mutation = preserve_selection_after_mutation
         self._fs = fs_controller
         self._delete_handler = delete_handler
         self._bulk_delete_handler = bulk_delete_handler
@@ -135,6 +137,8 @@ class PathActionController:
             except Exception as exc:
                 self._show_error(exc)
                 return
+            if self._preserve_selection_after_mutation is not None:
+                self._preserve_selection_after_mutation(target)
             if self._suppress_watcher_refreshes is not None:
                 self._suppress_watcher_refreshes(0.5)
             self._refresh_listing()

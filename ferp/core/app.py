@@ -334,6 +334,9 @@ class Ferp(App):
             show_error=self.show_error,
             refresh_listing=self.schedule_refresh_listing,
             suppress_watcher_refreshes=self.suppress_watcher_refreshes,
+            preserve_selection_after_mutation=(
+                self._preserve_file_tree_selection_after_mutation
+            ),
             fs_controller=self.fs_controller,
             delete_handler=self._start_delete_path,
             bulk_delete_handler=self._start_delete_paths,
@@ -1725,6 +1728,10 @@ class Ferp(App):
         message, severity = format_error(error)
         log_event(get_logger(), "ui_error", message=message, severity=severity)
         self.notify(message, severity=severity, timeout=self.notify_timeouts.normal)
+
+    def _preserve_file_tree_selection_after_mutation(self, target: Path) -> None:
+        file_tree = self.query_one(FileTree)
+        file_tree.set_pending_selection_index_for_path(target)
 
     def _start_delete_path(self, target: Path) -> None:
         file_tree = self.query_one(FileTree)

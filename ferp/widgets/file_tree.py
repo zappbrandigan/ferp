@@ -497,7 +497,7 @@ class FileTree(OptionList):
         self._current_listing_path = state_store.state.current_listing_path
         self._selection_history = dict(state_store.state.selection_history)
         self._last_chunk_direction: str | None = None
-        self._pending_delete_index: int | None = None
+        self._pending_selection_index: int | None = None
         self._pending_chunk_delta = 0
         self._chunk_timer: Timer | None = None
         self._listing_changed = False
@@ -513,7 +513,16 @@ class FileTree(OptionList):
         self._prompt_highlighted_index: int | None = None
 
     def set_pending_delete_index(self, index: int | None) -> None:
-        self._pending_delete_index = index
+        self.set_pending_selection_index(index)
+
+    def set_pending_selection_index(self, index: int | None) -> None:
+        self._pending_selection_index = index
+
+    def set_pending_selection_index_for_path(self, path: Path) -> None:
+        for idx, entry in enumerate(self._visible_entries):
+            if entry.path == path:
+                self.set_pending_selection_index(idx)
+                return
 
     @property
     def index(self) -> int | None:
@@ -638,9 +647,9 @@ class FileTree(OptionList):
 
     def _restore_selection(self) -> None:
         should_focus = self._should_focus_after_render()
-        pending_index = self._pending_delete_index
+        pending_index = self._pending_selection_index
         if pending_index is not None:
-            self._pending_delete_index = None
+            self._pending_selection_index = None
             if not self._visible_entries:
                 self.highlighted = None
                 return
