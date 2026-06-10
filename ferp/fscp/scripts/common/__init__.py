@@ -19,6 +19,7 @@ from .metadata import (
     parse_ferp_xmp,
     read_pdf_ferp_metadata,
     resolve_excel_document_id,
+    set_pdf_ferp_title_metadata_inplace,
     set_xmp_mm_metadata_inplace,
 )
 from .settings import get_settings_path, load_settings, save_settings
@@ -40,6 +41,7 @@ __all__ = [
     "parse_ferp_xmp",
     "read_pdf_ferp_metadata",
     "resolve_excel_document_id",
+    "set_pdf_ferp_title_metadata_inplace",
     "set_xmp_mm_metadata_inplace",
     "get_settings_path",
     "load_settings",

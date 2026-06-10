@@ -246,6 +246,21 @@ def _extract_ferp_summary(xmp_text: str) -> dict[str, str]:
     ferp_ns = "https://tulbox.app/ferp/xmp/1.0"
     rdf_ns = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
     ferp_items: list[tuple[str, str]] = []
+    production_title = root.find(f".//{{{ferp_ns}}}productionTitle")
+    if production_title is not None:
+        values = _collect_xmp_values(production_title)
+        if values:
+            ferp_items.append(("Production Title", values[0]))
+    episode_title = root.find(f".//{{{ferp_ns}}}episodeTitle")
+    if episode_title is not None:
+        values = _collect_xmp_values(episode_title)
+        if values:
+            ferp_items.append(("Episode Title", values[0]))
+    episode_info = root.find(f".//{{{ferp_ns}}}episodeInfo")
+    if episode_info is not None:
+        values = _collect_xmp_values(episode_info)
+        if values:
+            ferp_items.append(("Episode Info", values[0]))
     admin = root.find(f".//{{{ferp_ns}}}administrator")
     if admin is not None:
         values = _collect_xmp_values(admin)

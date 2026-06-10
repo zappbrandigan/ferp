@@ -13,10 +13,16 @@ from pypdf.generic import NameObject, NumberObject, StreamObject
 _DOC_ID_RE = re.compile(r"ferp:DocumentID=\{(uuid:)?([0-9a-fA-F-]+)\}")
 _DOC_ID_PROP_NAME = "ferp:DocumentID"
 _MSO_PROPERTY_TYPE_STRING = 4
+_X_NS = "adobe:ns:meta/"
 _FERP_NS = "https://tulbox.app/ferp/xmp/1.0"
 _RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 _XMP_MM_NS = "http://ns.adobe.com/xap/1.0/mm/"
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+ET.register_namespace("x", _X_NS)
+ET.register_namespace("rdf", _RDF_NS)
+ET.register_namespace("ferp", _FERP_NS)
+ET.register_namespace("xmpMM", _XMP_MM_NS)
 
 
 @dataclass(frozen=True)
@@ -33,6 +39,9 @@ class FerpAgreement:
 
 @dataclass(frozen=True)
 class FerpXmpMetadata:
+    production_title: str
+    episode_title: str
+    episode_info: str
     administrator: str
     catalog_code: str
     data_added_date: str
@@ -188,7 +197,9 @@ def _normalize_text_value(value: str) -> str:
     return " ".join(value.split()).strip()
 
 
-def _normalize_unique_values(values: Iterable[str], *, sort_values: bool = False) -> tuple[str, ...]:
+def _normalize_unique_values(
+    values: Iterable[str], *, sort_values: bool = False
+) -> tuple[str, ...]:
     normalized: list[str] = []
     seen: set[str] = set()
     for raw in values:
@@ -219,6 +230,145 @@ def _normalize_date_values(values: Iterable[str]) -> tuple[str, ...]:
     valid = [value for value in normalized if _DATE_RE.fullmatch(value)]
     invalid = [value for value in normalized if not _DATE_RE.fullmatch(value)]
     return tuple(sorted(valid) + invalid)
+
+
+def _remove_child_elements(root: ET.Element, expanded_names: set[str]) -> None:
+    for parent in root.iter():
+        for child in list(parent):
+            if child.tag in expanded_names:
+                parent.remove(child)
+
+
+def _ensure_xmp_root(xmp_text: str | None) -> ET.Element:
+    if xmp_text:
+        root = _parse_xmp_root(xmp_text)
+        if root is not None:
+            return root
+
+    root = ET.Element(f"{{{_X_NS}}}xmpmeta")
+    ET.SubElement(root, f"{{{_RDF_NS}}}RDF")
+    return root
+
+
+def _ensure_ferp_description(root: ET.Element) -> ET.Element:
+    rdf = root.find(f".//{{{_RDF_NS}}}RDF")
+    if rdf is None:
+        rdf = ET.SubElement(root, f"{{{_RDF_NS}}}RDF")
+
+    for description in rdf.findall(f"./{{{_RDF_NS}}}Description"):
+        if any(child.tag.startswith(f"{{{_FERP_NS}}}") for child in description):
+            return description
+
+    description = rdf.find(f"./{{{_RDF_NS}}}Description")
+    if description is not None:
+        return description
+
+    return ET.SubElement(rdf, f"{{{_RDF_NS}}}Description")
+
+
+def _build_title_xmp(
+    xmp_text: str | None,
+    *,
+    production_title: str,
+    episode_title: str | None,
+    episode_info: str | None,
+) -> bytes:
+    root = _ensure_xmp_root(xmp_text)
+    fields = {
+        "productionTitle": _normalize_text_value(production_title),
+        "episodeTitle": _normalize_text_value(episode_title or ""),
+        "episodeInfo": _normalize_text_value(episode_info or ""),
+    }
+    _remove_child_elements(
+        root,
+        {f"{{{_FERP_NS}}}{field_name}" for field_name in fields},
+    )
+    description = _ensure_ferp_description(root)
+    for field_name, value in fields.items():
+        if not value:
+            continue
+        elem = ET.SubElement(description, f"{{{_FERP_NS}}}{field_name}")
+        elem.text = value
+
+    payload = ET.tostring(root, encoding="unicode")
+    xmp = (
+        "<?xpacket begin='' id='W5M0MpCehiHzreSzNTczkc9d'?>\n"
+        f"{payload}\n"
+        "<?xpacket end='w'?>"
+    )
+    return xmp.encode("utf-8")
+
+
+def _close_pdf_reader(reader: PdfReader) -> None:
+    stream = getattr(reader, "stream", None)
+    close = getattr(stream, "close", None)
+    if callable(close):
+        close()
+
+
+def _write_pdf_xmp_metadata(pdf_path: Path, xmp_bytes: bytes) -> None:
+    reader = PdfReader(str(pdf_path))
+    try:
+        writer = PdfWriter()
+        for page in reader.pages:
+            writer.add_page(page)
+
+        info: dict[str, str] = {}
+        if reader.metadata:
+            for k, v in reader.metadata.items():
+                if isinstance(k, str) and k.startswith("/") and v is not None:
+                    info[k] = str(v)
+        if info:
+            writer.add_metadata(info)
+
+        md_stream = StreamObject()
+        set_data = getattr(md_stream, "set_data", None)
+        if callable(set_data):
+            set_data(xmp_bytes)
+        else:
+            md_stream._data = xmp_bytes
+            md_stream.update({NameObject("/Length"): NumberObject(len(xmp_bytes))})
+        md_stream.update(
+            {
+                NameObject("/Type"): NameObject("/Metadata"),
+                NameObject("/Subtype"): NameObject("/XML"),
+            }
+        )
+
+        md_ref = writer._add_object(md_stream)
+        writer._root_object.update({NameObject("/Metadata"): md_ref})
+
+        tmp_path = pdf_path.with_suffix(f"{pdf_path.suffix}.tmp")
+        try:
+            with tmp_path.open("wb") as handle:
+                writer.write(handle)
+            tmp_path.replace(pdf_path)
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
+    finally:
+        _close_pdf_reader(reader)
+
+
+def set_pdf_ferp_title_metadata_inplace(
+    pdf_path: Path,
+    *,
+    production_title: str,
+    episode_title: str | None = None,
+    episode_info: str | None = None,
+) -> None:
+    reader = PdfReader(str(pdf_path))
+    try:
+        xmp_text = extract_pdf_xmp_text(reader)
+    finally:
+        _close_pdf_reader(reader)
+    xmp_bytes = _build_title_xmp(
+        xmp_text,
+        production_title=production_title,
+        episode_title=episode_title,
+        episode_info=episode_info,
+    )
+    _write_pdf_xmp_metadata(pdf_path, xmp_bytes)
 
 
 def extract_pdf_xmp_text(reader: PdfReader) -> str | None:
@@ -300,6 +450,9 @@ def parse_ferp_xmp(xmp_text: str) -> FerpXmpMetadata | None:
 
     document_id, instance_id = _extract_xmp_mm_ids(xmp_text)
     metadata = FerpXmpMetadata(
+        production_title=scalar(".//ferp:productionTitle"),
+        episode_title=scalar(".//ferp:episodeTitle"),
+        episode_info=scalar(".//ferp:episodeInfo"),
         administrator=scalar(".//ferp:administrator"),
         catalog_code=scalar(".//ferp:catalogCode"),
         data_added_date=scalar(".//ferp:dataAddedDate"),
@@ -310,6 +463,9 @@ def parse_ferp_xmp(xmp_text: str) -> FerpXmpMetadata | None:
     )
     has_data = any(
         [
+            metadata.production_title,
+            metadata.episode_title,
+            metadata.episode_info,
             metadata.administrator,
             metadata.catalog_code,
             metadata.data_added_date,
