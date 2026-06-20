@@ -477,7 +477,7 @@ PathNavigator {
 #dialog_container {
     align: center middle;
     height: auto;
-    width: 110;
+    width: 125;
     padding: 1 2;
     border: $panel-border;
     background: $panel-background;
