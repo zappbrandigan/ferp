@@ -1750,7 +1750,7 @@ class Ferp(App):
     def _delete_path_worker(self, target: Path) -> DeletePathResult:
         try:
             self.fs_controller.delete_path(target)
-        except OSError as exc:
+        except Exception as exc:
             return DeletePathResult(target=target, error=str(exc))
         return DeletePathResult(target=target, error=None)
 
