@@ -4,7 +4,7 @@ import argparse
 import json
 import zipfile
 from pathlib import Path
-from typing import Sequence
+from typing import Sequence, cast
 
 from platformdirs import user_config_path
 
@@ -13,8 +13,6 @@ from ferp.app import main as run_app
 from ferp.core.config import get_runtime_config
 from ferp.core.paths import APP_AUTHOR, APP_NAME, SETTINGS_FILENAME
 from ferp.core.settings_store import SettingsStore
-from typing import cast
-
 from ferp.domain.scripts import TargetType, normalize_targets
 
 
